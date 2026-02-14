@@ -1,9 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Animated, Easing } from 'react-native';
+import { StyleSheet, View, Animated, Easing, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { Languages } from 'lucide-react-native';
 import { gradientColors } from '../src/theme';
 
 export default function SplashScreen() {
@@ -18,13 +17,13 @@ export default function SplashScreen() {
         Animated.parallel([
             Animated.timing(scaleAnim, {
                 toValue: 1,
-                duration: 700,
+                duration: 900,
                 easing: Easing.out(Easing.back(1.5)),
                 useNativeDriver: true,
             }),
             Animated.timing(fadeAnim, {
                 toValue: 1,
-                duration: 600,
+                duration: 700,
                 useNativeDriver: true,
             }),
         ]).start(() => {
@@ -53,10 +52,10 @@ export default function SplashScreen() {
             ).start();
         });
 
-        // Navigate after 2.5s
+        // Navigate after 3s to allow user to appreciate the logo
         const timer = setTimeout(() => {
             router.replace('/index' as any);
-        }, 2500);
+        }, 3000);
 
         return () => clearTimeout(timer);
     }, []);
@@ -71,9 +70,13 @@ export default function SplashScreen() {
                     { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
                 ]}
             >
-                {/* Icon */}
-                <View style={styles.iconCircle}>
-                    <Languages size={44} color="#FFF" />
+                {/* Image Logo */}
+                <View style={styles.logoContainer}>
+                    <Image
+                        source={require('../assets/logo.png')}
+                        style={styles.logoImage}
+                        resizeMode="contain"
+                    />
                 </View>
 
                 {/* Title */}
@@ -113,19 +116,24 @@ const styles = StyleSheet.create({
     logoWrap: {
         alignItems: 'center',
     },
-    iconCircle: {
-        width: 90,
-        height: 90,
-        borderRadius: 45,
-        backgroundColor: '#3B82F6',
+    logoContainer: {
+        width: 140,
+        height: 140,
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: 70,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 20,
-        shadowColor: '#3B82F6',
+        padding: 10,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.15,
         shadowRadius: 16,
-        elevation: 10,
+        elevation: 8,
+    },
+    logoImage: {
+        width: '90%',
+        height: '90%',
     },
     title: {
         fontSize: 38,
