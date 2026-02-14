@@ -1,0 +1,3 @@
+# Alembic
+for *.pyc files
+__pycache__/
