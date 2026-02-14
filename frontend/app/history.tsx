@@ -4,20 +4,18 @@ import {
     View,
     FlatList,
     TouchableOpacity,
-    TextInput,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    Search,
     Heart,
     Trash2,
     Volume2,
     Clock,
-    X,
+    MessageSquare,
 } from 'lucide-react-native';
 import axios from 'axios';
-import { gradientColors, glassCard, API_BASE_URL } from '../src/theme';
+import { gradientColors, API_BASE_URL, SUPPORTED_LANGUAGES } from '../src/theme';
 
 interface HistoryItem {
     id: number;
@@ -29,114 +27,124 @@ interface HistoryItem {
     created_at: string;
 }
 
-export default function HistoryScreen() {
-    const [history, setHistory] = useState<HistoryItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filter, setFilter] = useState<'all' | 'favorites'>('all');
+// Accent color per language
+const LANG_COLORS: Record<string, string> = {
+    tl: '#3B82F6',
+    ceb: '#8B5CF6',
+    hil: '#10B981',
+    en: '#F59E0B',
+};
 
-    const fetchHistory = async () => {
+export default function HistoryScreen() {
+    const [items, setItems] = useState<HistoryItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'favorites' | 'history'>('favorites');
+
+    const fetchData = async () => {
         try {
             const res = await axios.get(`${API_BASE_URL}/api/v1/history`);
-            setHistory(res.data);
+            setItems(res.data);
         } catch {
-            // Fallback mock
-            setHistory([
-                { id: 1, input_text: 'Magandang umaga', output_texts: ['Good morning'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
-                { id: 2, input_text: 'Salamat', output_texts: ['Thank you'], source_lang: 'tl', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
-                { id: 3, input_text: 'Hello', output_texts: ['Kumusta'], source_lang: 'en', target_langs: ['tl'], is_favorite: false, created_at: new Date().toISOString() },
+            // Mock data matching Figma
+            setItems([
+                { id: 1, input_text: 'Magandang umaga sa lahat', output_texts: ['Good morning everyone'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
+                { id: 2, input_text: 'Maayong buntag', output_texts: ['Good morning'], source_lang: 'ceb', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
+                { id: 3, input_text: 'Maayong aga', output_texts: ['Good morning'], source_lang: 'hil', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
+                { id: 4, input_text: 'Kumusta ka?', output_texts: ['How are you?'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
+                { id: 5, input_text: 'I love you', output_texts: ['Mahal kita'], source_lang: 'en', target_langs: ['tl'], is_favorite: false, created_at: new Date().toISOString() },
+                { id: 6, input_text: 'Salamat', output_texts: ['Thank you'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
+                { id: 7, input_text: 'Unsa imong pangalan?', output_texts: ['What is your name?'], source_lang: 'ceb', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
+                { id: 8, input_text: 'Diin ka nagpuyo?', output_texts: ['Where do you live?'], source_lang: 'hil', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
             ]);
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => { fetchHistory(); }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const toggleFav = (id: number) => {
-        setHistory(prev => prev.map(h => h.id === id ? { ...h, is_favorite: !h.is_favorite } : h));
+        setItems(prev => prev.map(h => h.id === id ? { ...h, is_favorite: !h.is_favorite } : h));
     };
 
     const deleteItem = (id: number) => {
-        setHistory(prev => prev.filter(h => h.id !== id));
+        setItems(prev => prev.filter(h => h.id !== id));
     };
 
-    const filtered = history
-        .filter(h => filter === 'favorites' ? h.is_favorite : true)
-        .filter(h =>
-            h.input_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            h.output_texts[0]?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+    const filtered = activeTab === 'favorites'
+        ? items.filter(i => i.is_favorite)
+        : items;
 
-    const renderItem = ({ item }: { item: HistoryItem }) => (
-        <View style={styles.card}>
-            <View style={styles.cardTop}>
-                <View style={styles.langBadges}>
-                    <Text style={styles.badge}>{item.source_lang.toUpperCase()}</Text>
-                    <Text style={styles.arrowText}>→</Text>
-                    <Text style={styles.badge}>{item.target_langs[0]?.toUpperCase()}</Text>
+    const renderItem = ({ item }: { item: HistoryItem }) => {
+        const accent = LANG_COLORS[item.source_lang] || '#3B82F6';
+        const langName = SUPPORTED_LANGUAGES[item.source_lang] || item.source_lang;
+
+        return (
+            <View style={styles.card}>
+                {/* Blue accent bar */}
+                <View style={[styles.accentBar, { backgroundColor: accent }]} />
+
+                <View style={styles.cardContent}>
+                    {/* Language label */}
+                    <Text style={[styles.langLabel, { color: accent }]}>{langName}</Text>
+
+                    {/* Source text */}
+                    <Text style={styles.sourceText}>{item.input_text}</Text>
+
+                    {/* Translation */}
+                    <Text style={styles.transText}>{item.output_texts[0]}</Text>
+
+                    {/* Actions */}
+                    <View style={styles.cardActions}>
+                        <TouchableOpacity style={styles.actionBtn}>
+                            <Volume2 size={15} color="#64748B" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => toggleFav(item.id)}>
+                            <Heart
+                                size={15}
+                                color={item.is_favorite ? '#EF4444' : '#94A3B8'}
+                                fill={item.is_favorite ? '#EF4444' : 'none'}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => deleteItem(item.id)}>
+                            <Trash2 size={15} color="#94A3B8" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-                <Text style={styles.dateText}>
-                    {new Date(item.created_at).toLocaleDateString()}
-                </Text>
             </View>
-            <Text style={styles.inputText}>{item.input_text}</Text>
-            <Text style={styles.outputText}>{item.output_texts[0]}</Text>
-            <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.actionBtn}>
-                    <Volume2 size={16} color="#3B82F6" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => toggleFav(item.id)}>
-                    <Heart
-                        size={16}
-                        color={item.is_favorite ? '#EF4444' : '#94A3B8'}
-                        fill={item.is_favorite ? '#EF4444' : 'none'}
-                    />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => deleteItem(item.id)}>
-                    <Trash2 size={16} color="#EF4444" />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
+        );
+    };
 
     return (
         <View style={styles.container}>
             <LinearGradient colors={[...gradientColors]} style={styles.bg} />
 
             <View style={styles.content}>
-                {/* Search */}
-                <View style={styles.searchBar}>
-                    <Search size={18} color="#94A3B8" />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Search translations..."
-                        placeholderTextColor="#94A3B8"
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                    />
-                    {searchQuery ? (
-                        <TouchableOpacity onPress={() => setSearchQuery('')}>
-                            <X size={18} color="#94A3B8" />
-                        </TouchableOpacity>
-                    ) : null}
+                {/* Logo Area */}
+                <View style={styles.logoArea}>
+                    <View style={styles.logoIcon}>
+                        <MessageSquare size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.logoText}>Ano-Kamo?</Text>
                 </View>
 
-                {/* Tabs */}
-                <View style={styles.tabs}>
+                {/* Toggle Tabs */}
+                <View style={styles.toggleRow}>
                     <TouchableOpacity
-                        style={[styles.tab, filter === 'all' && styles.tabActive]}
-                        onPress={() => setFilter('all')}
+                        style={[styles.toggleBtn, activeTab === 'favorites' && styles.toggleActive]}
+                        onPress={() => setActiveTab('favorites')}
                     >
-                        <Clock size={14} color={filter === 'all' ? '#1E293B' : '#94A3B8'} />
-                        <Text style={[styles.tabText, filter === 'all' && styles.tabTextActive]}>All</Text>
+                        <Text style={[styles.toggleText, activeTab === 'favorites' && styles.toggleTextActive]}>
+                            Favorites
+                        </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tab, filter === 'favorites' && styles.tabActive]}
-                        onPress={() => setFilter('favorites')}
+                        style={[styles.toggleBtn, activeTab === 'history' && styles.toggleActive]}
+                        onPress={() => setActiveTab('history')}
                     >
-                        <Heart size={14} color={filter === 'favorites' ? '#EF4444' : '#94A3B8'} />
-                        <Text style={[styles.tabText, filter === 'favorites' && styles.tabTextActive]}>Favorites</Text>
+                        <Text style={[styles.toggleText, activeTab === 'history' && styles.toggleTextActive]}>
+                            History
+                        </Text>
                     </TouchableOpacity>
                 </View>
 
@@ -153,9 +161,18 @@ export default function HistoryScreen() {
                         showsVerticalScrollIndicator={false}
                         ListEmptyComponent={
                             <View style={styles.center}>
-                                <Clock size={48} color="#E2E8F0" />
+                                {activeTab === 'favorites' ? (
+                                    <Heart size={48} color="#E2E8F0" />
+                                ) : (
+                                    <Clock size={48} color="#E2E8F0" />
+                                )}
                                 <Text style={styles.emptyText}>
-                                    {filter === 'favorites' ? 'No favorites yet' : 'No history yet'}
+                                    {activeTab === 'favorites' ? 'No favorites yet' : 'No history yet'}
+                                </Text>
+                                <Text style={styles.emptySubtext}>
+                                    {activeTab === 'favorites'
+                                        ? 'Tap the heart icon on a translation to save it'
+                                        : 'Your translations will appear here'}
                                 </Text>
                             </View>
                         }
@@ -171,67 +188,102 @@ const styles = StyleSheet.create({
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     content: { flex: 1, paddingTop: 100, paddingHorizontal: 20 },
 
-    /* Search */
-    searchBar: {
+    /* Logo */
+    logoArea: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.85)',
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        height: 48,
-        borderWidth: 1,
-        borderColor: 'rgba(226,232,240,0.6)',
-        marginBottom: 14,
+        justifyContent: 'center',
+        marginBottom: 20,
     },
-    searchInput: { flex: 1, fontSize: 15, color: '#1E293B', marginLeft: 10 },
+    logoIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#3B82F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    logoText: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: '#1E293B',
+    },
 
-    /* Tabs */
-    tabs: { flexDirection: 'row', marginBottom: 16, gap: 8 },
-    tab: {
+    /* Toggle */
+    toggleRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
         backgroundColor: 'rgba(241,245,249,0.9)',
+        borderRadius: 30,
+        padding: 4,
+        marginBottom: 20,
     },
-    tabActive: {
-        backgroundColor: '#FFF',
-        shadowColor: '#000',
+    toggleBtn: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 26,
+        alignItems: 'center',
+    },
+    toggleActive: {
+        backgroundColor: '#3B82F6',
+        shadowColor: '#3B82F6',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 3,
     },
-    tabText: { fontSize: 13, fontWeight: '600', color: '#94A3B8', marginLeft: 6 },
-    tabTextActive: { color: '#1E293B' },
+    toggleText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+    toggleTextActive: { color: '#FFFFFF' },
 
     /* Card */
     card: {
-        ...glassCard,
-        padding: 16,
-        marginBottom: 12,
-    },
-    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    langBadges: { flexDirection: 'row', alignItems: 'center' },
-    badge: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#64748B',
-        backgroundColor: '#F1F5F9',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 6,
-    },
-    arrowText: { fontSize: 12, color: '#94A3B8', marginHorizontal: 6 },
-    dateText: { fontSize: 11, color: '#94A3B8' },
-    inputText: { fontSize: 16, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
-    outputText: { fontSize: 15, color: '#3B82F6', marginBottom: 10 },
-    cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6 },
-    actionBtn: {
-        width: 32,
-        height: 32,
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
         borderRadius: 16,
+        marginBottom: 10,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(226, 232, 240, 0.5)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    accentBar: {
+        width: 5,
+    },
+    cardContent: {
+        flex: 1,
+        padding: 14,
+    },
+    langLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 4,
+    },
+    sourceText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1E293B',
+        marginBottom: 3,
+    },
+    transText: {
+        fontSize: 14,
+        color: '#64748B',
+        marginBottom: 8,
+    },
+    cardActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 4,
+    },
+    actionBtn: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
         backgroundColor: '#F1F5F9',
         justifyContent: 'center',
         alignItems: 'center',
@@ -240,5 +292,6 @@ const styles = StyleSheet.create({
     /* Empty */
     list: { paddingBottom: 20 },
     center: { alignItems: 'center', marginTop: 60 },
-    emptyText: { fontSize: 16, color: '#94A3B8', marginTop: 12 },
+    emptyText: { fontSize: 16, fontWeight: '600', color: '#94A3B8', marginTop: 12 },
+    emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', marginTop: 4, maxWidth: 240 },
 });

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
-import { X, BookOpen, Volume2 } from 'lucide-react-native';
+import { X, Volume2 } from 'lucide-react-native';
 import axios from 'axios';
-import { API_BASE_URL } from '../theme';
+import { API_BASE_URL, SUPPORTED_LANGUAGES } from '../theme';
 
 interface DictionaryModalProps {
     visible: boolean;
@@ -18,6 +18,7 @@ interface DictionaryEntry {
     pronunciation: string;
     meaning: string;
     partOfSpeech: string;
+    synonyms: string[];
     example: string;
 }
 
@@ -34,61 +35,87 @@ export default function DictionaryModal({
     useEffect(() => {
         if (visible && word) {
             setLoading(true);
-            // Try API, fallback to mock
-            const timer = setTimeout(() => {
+            // Try API first, fallback to mock
+            axios.post(`${API_BASE_URL}/api/v1/dictionary`, {
+                word, source_lang: sourceLang, target_lang: targetLang,
+            }).then(res => {
+                setEntry(res.data);
+                setLoading(false);
+            }).catch(() => {
+                // Mock data
                 setEntry({
                     word: word,
                     pronunciation: `/${word.toLowerCase()}/`,
-                    meaning: `Ang kahulugan ng "${word}" sa ${targetLang === 'tl' ? 'Tagalog' : targetLang}`,
-                    partOfSpeech: 'noun / verb',
-                    example: `"${word}" ay ginagamit sa pangungusap.`,
+                    meaning: `Ang kahulugan ng "${word}" sa ${SUPPORTED_LANGUAGES[targetLang] || targetLang}. Ito ay isang salita na karaniwan ginagamit sa pang-araw-araw na pakikipag-usap.`,
+                    partOfSpeech: 'Adjective (Slang/Colloquial)',
+                    synonyms: ['takot', 'kinakabahan'],
+                    example: `Buhay na naman pala ang pamilya, ${word} talaga ang taong iyon!`,
                 });
                 setLoading(false);
-            }, 800);
-            return () => clearTimeout(timer);
+            });
+        } else {
+            setEntry(null);
         }
     }, [visible, word]);
 
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onDismiss}>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+            <View style={styles.overlay}>
                 <View style={styles.container}>
-                    <View style={styles.handle} />
-                    <View style={styles.header}>
-                        <View style={styles.headerLeft}>
-                            <BookOpen size={22} color="#3B82F6" />
-                            <Text style={styles.title}>Dictionary</Text>
-                        </View>
-                        <TouchableOpacity onPress={onDismiss}>
-                            <X size={22} color="#64748B" />
-                        </TouchableOpacity>
-                    </View>
+                    {/* Close button */}
+                    <TouchableOpacity style={styles.closeBtn} onPress={onDismiss}>
+                        <X size={22} color="#94A3B8" />
+                    </TouchableOpacity>
 
                     {loading ? (
-                        <ActivityIndicator size="large" color="#3B82F6" style={{ padding: 40 }} />
+                        <View style={styles.loadingWrap}>
+                            <ActivityIndicator size="large" color="#3B82F6" />
+                        </View>
                     ) : entry ? (
-                        <View style={styles.content}>
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                            {/* Word */}
                             <View style={styles.wordRow}>
                                 <Text style={styles.word}>{entry.word}</Text>
                                 <TouchableOpacity style={styles.speakerBtn}>
-                                    <Volume2 size={18} color="#3B82F6" />
+                                    <Volume2 size={20} color="#3B82F6" />
                                 </TouchableOpacity>
                             </View>
-                            <Text style={styles.pronunciation}>{entry.pronunciation}</Text>
 
-                            <View style={styles.badge}>
-                                <Text style={styles.badgeText}>{entry.partOfSpeech}</Text>
+                            {/* Part of Speech */}
+                            <View style={styles.posBadge}>
+                                <Text style={styles.posText}>{entry.partOfSpeech}</Text>
                             </View>
 
-                            <Text style={styles.sectionLabel}>Meaning</Text>
-                            <Text style={styles.meaningText}>{entry.meaning}</Text>
+                            {/* Pronunciation */}
+                            <Text style={styles.pronunciation}>{entry.pronunciation}</Text>
 
-                            <Text style={styles.sectionLabel}>Example</Text>
-                            <Text style={styles.exampleText}>{entry.example}</Text>
-                        </View>
+                            {/* Synonyms */}
+                            {entry.synonyms && entry.synonyms.length > 0 && (
+                                <>
+                                    <Text style={styles.sectionTitle}>Synonyms</Text>
+                                    <View style={styles.synonymsRow}>
+                                        {entry.synonyms.map((s, i) => (
+                                            <View key={i} style={styles.synonymChip}>
+                                                <Text style={styles.synonymText}>{s}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Definition */}
+                            <Text style={styles.sectionTitle}>Definition</Text>
+                            <Text style={styles.definitionText}>{entry.meaning}</Text>
+
+                            {/* Example */}
+                            <Text style={styles.sectionTitle}>Example</Text>
+                            <View style={styles.exampleBox}>
+                                <Text style={styles.exampleText}>"{entry.example}"</Text>
+                            </View>
+                        </ScrollView>
                     ) : null}
                 </View>
-            </TouchableOpacity>
+            </View>
         </Modal>
     );
 }
@@ -96,97 +123,127 @@ export default function DictionaryModal({
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
-        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
     },
     container: {
-        backgroundColor: '#FFFFFF',
-        borderTopLeftRadius: 28,
-        borderTopRightRadius: 28,
-        padding: 24,
-        paddingBottom: 40,
-        minHeight: 320,
+        backgroundColor: '#1E293B',
+        borderRadius: 28,
+        padding: 28,
+        width: '100%',
+        maxWidth: 380,
+        maxHeight: '75%',
     },
-    handle: {
-        width: 40,
-        height: 4,
-        backgroundColor: '#E2E8F0',
-        borderRadius: 2,
-        alignSelf: 'center',
-        marginBottom: 16,
+    closeBtn: {
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        zIndex: 10,
+        padding: 4,
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    headerLeft: {
-        flexDirection: 'row',
+    loadingWrap: {
+        paddingVertical: 60,
         alignItems: 'center',
     },
-    title: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#1E293B',
-        marginLeft: 10,
+    scroll: {
+        paddingTop: 8,
     },
-    content: {},
+
+    /* Word */
     wordRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: 8,
     },
     word: {
-        fontSize: 28,
+        fontSize: 36,
         fontWeight: '800',
-        color: '#1E293B',
-        marginRight: 12,
+        color: '#FFFFFF',
+        marginRight: 14,
     },
     speakerBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: '#EFF6FF',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(59, 130, 246, 0.15)',
         justifyContent: 'center',
         alignItems: 'center',
     },
+
+    /* Part of Speech */
+    posBadge: {
+        alignSelf: 'flex-start',
+        backgroundColor: 'rgba(100, 116, 139, 0.3)',
+        paddingHorizontal: 14,
+        paddingVertical: 5,
+        borderRadius: 10,
+        marginBottom: 8,
+    },
+    posText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#94A3B8',
+    },
+
+    /* Pronunciation */
     pronunciation: {
         fontSize: 16,
         color: '#64748B',
         fontStyle: 'italic',
-        marginBottom: 12,
-    },
-    badge: {
-        alignSelf: 'flex-start',
-        backgroundColor: '#F1F5F9',
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 8,
         marginBottom: 20,
     },
-    badgeText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#64748B',
-    },
-    sectionLabel: {
+
+    /* Sections */
+    sectionTitle: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#94A3B8',
+        color: '#64748B',
         textTransform: 'uppercase',
-        letterSpacing: 1,
-        marginBottom: 6,
+        letterSpacing: 1.2,
+        marginBottom: 8,
+        marginTop: 4,
     },
-    meaningText: {
-        fontSize: 16,
-        color: '#1E293B',
+
+    /* Synonyms */
+    synonymsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 18,
+    },
+    synonymChip: {
+        backgroundColor: 'rgba(59, 130, 246, 0.12)',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 12,
+    },
+    synonymText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#60A5FA',
+    },
+
+    /* Definition */
+    definitionText: {
+        fontSize: 15,
+        color: '#CBD5E1',
         lineHeight: 24,
-        marginBottom: 16,
+        marginBottom: 18,
+    },
+
+    /* Example */
+    exampleBox: {
+        backgroundColor: 'rgba(100, 116, 139, 0.15)',
+        borderRadius: 14,
+        padding: 16,
+        borderLeftWidth: 3,
+        borderLeftColor: '#3B82F6',
     },
     exampleText: {
-        fontSize: 15,
-        color: '#475569',
+        fontSize: 14,
+        color: '#94A3B8',
         fontStyle: 'italic',
         lineHeight: 22,
     },
