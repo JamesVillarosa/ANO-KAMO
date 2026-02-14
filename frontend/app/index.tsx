@@ -21,13 +21,12 @@ import {
   BookOpen,
   MessageSquareMore,
 } from 'lucide-react-native';
-import axios from 'axios';
+import { translateSingle } from '../src/lib/api';
 import {
   theme,
   glassCard,
   gradientColors,
   SUPPORTED_LANGUAGES,
-  API_BASE_URL,
 } from '../src/theme';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
@@ -58,12 +57,8 @@ export default function HomeScreen() {
 
   const translate = useCallback(async (text: string, from: string, to: string): Promise<string> => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/translate`, {
-        text,
-        source_lang: from,
-        target_lang: to,
-      });
-      return res.data.output_text || '';
+      const res = await translateSingle(text, from, to);
+      return res.output_text || '';
     } catch {
       return 'Translation unavailable';
     }

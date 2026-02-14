@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { X, Volume2 } from 'lucide-react-native';
-import axios from 'axios';
-import { API_BASE_URL, SUPPORTED_LANGUAGES } from '../theme';
+import { dictionaryLookup } from '../lib/api';
+import { SUPPORTED_LANGUAGES } from '../theme';
 
 interface DictionaryModalProps {
     visible: boolean;
@@ -35,21 +35,24 @@ export default function DictionaryModal({
     useEffect(() => {
         if (visible && word) {
             setLoading(true);
-            // Try API first, fallback to mock
-            axios.post(`${API_BASE_URL}/api/v1/dictionary`, {
-                word, source_lang: sourceLang, target_lang: targetLang,
-            }).then(res => {
-                setEntry(res.data);
+            dictionaryLookup(word, sourceLang, targetLang).then(res => {
+                setEntry({
+                    word: res.word || word,
+                    pronunciation: res.pronunciation || `/${word.toLowerCase()}/`,
+                    meaning: res.definition || `Meaning of "${word}"`,
+                    partOfSpeech: res.part_of_speech || 'Word',
+                    synonyms: res.synonyms || [],
+                    example: res.example_sentence || '',
+                });
                 setLoading(false);
             }).catch(() => {
-                // Mock data
                 setEntry({
                     word: word,
                     pronunciation: `/${word.toLowerCase()}/`,
-                    meaning: `Ang kahulugan ng "${word}" sa ${SUPPORTED_LANGUAGES[targetLang] || targetLang}. Ito ay isang salita na karaniwan ginagamit sa pang-araw-araw na pakikipag-usap.`,
-                    partOfSpeech: 'Adjective (Slang/Colloquial)',
-                    synonyms: ['takot', 'kinakabahan'],
-                    example: `Buhay na naman pala ang pamilya, ${word} talaga ang taong iyon!`,
+                    meaning: `Ang kahulugan ng "${word}".`,
+                    partOfSpeech: 'Word',
+                    synonyms: [],
+                    example: `Ginamit niya ang "${word}" sa pangungusap.`,
                 });
                 setLoading(false);
             });

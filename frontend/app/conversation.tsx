@@ -8,54 +8,65 @@ import {
     TouchableOpacity,
     TextInput,
     Alert,
+    Dimensions,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
     Mic,
-    MicOff,
     Send,
     Volume2,
     ChevronDown,
     Trash2,
-    Smile,
 } from 'lucide-react-native';
-import axios from 'axios';
 import {
-    theme,
+    createConversation,
+    sendMessage as apiSendMessage,
+} from '../src/lib/api';
+import {
     gradientColors,
-    glassCard,
     SUPPORTED_LANGUAGES,
-    TONE_OPTIONS,
-    TONE_COLORS,
-    API_BASE_URL,
 } from '../src/theme';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
+
+const { width } = Dimensions.get('window');
 
 interface Message {
     id: string;
     text: string;
     translation: string;
-    sender: 'left' | 'right';
-    tone: string;
+    speaker: number; // 0, 1, or 2
     lang: string;
     targetLang: string;
 }
 
+// Color themes per speaker
+const SPEAKER_THEMES = [
+    { bg: '#3B82F6', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },   // Blue
+    { bg: '#F1F5F9', text: '#1E293B', trans: '#64748B', label: 'Speaker 2' },   // Gray (2-way)
+    { bg: '#F59E0B', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },   // Amber (3-way)
+];
+
+const SPEAKER_3WAY = [
+    { bg: '#3B82F6', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },   // Blue
+    { bg: '#F59E0B', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },   // Amber
+    { bg: '#EC4899', text: '#FFFFFF', trans: '#FBCFE8', label: 'Speaker 3' },   // Pink
+];
+
 export default function ConversationScreen() {
+    const [mode, setMode] = useState<'2way' | '3way'>('2way');
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
-    const [activeSpeaker, setActiveSpeaker] = useState<'left' | 'right'>('left');
+    const [activeSpeaker, setActiveSpeaker] = useState(0);
 
     // Languages
-    const [leftLang, setLeftLang] = useState('tl');
-    const [rightLang, setRightLang] = useState('ceb');
-    const [pickerTarget, setPickerTarget] = useState<'left' | 'right' | null>(null);
-
-    // Tone selector
-    const [toneModalMsg, setToneModalMsg] = useState<string | null>(null);
+    const [lang0, setLang0] = useState('tl');
+    const [lang1, setLang1] = useState('ceb');
+    const [lang2, setLang2] = useState('hil');
+    const [pickerFor, setPickerFor] = useState<number | null>(null);
+    const [conversationId, setConversationId] = useState<string | null>(null);
 
     const scrollRef = useRef<ScrollView>(null);
 
@@ -63,57 +74,71 @@ export default function ConversationScreen() {
         scrollRef.current?.scrollToEnd({ animated: true });
     }, [messages]);
 
-    const translateText = useCallback(async (text: string, from: string, to: string) => {
-        try {
-            const res = await axios.post(`${API_BASE_URL}/api/v1/translate`, {
-                text, source_lang: from, target_lang: to,
-            });
-            return { translation: res.data.output_text || '', tone: res.data.detected_tone || 'neutral' };
-        } catch {
-            return { translation: 'Translation unavailable', tone: 'neutral' };
+    // Create a new backend conversation session when mode changes
+    useEffect(() => {
+        setMessages([]);
+        setActiveSpeaker(0);
+        const speakerCount = mode === '3way' ? 3 : 2;
+        const participants = [
+            { speaker_label: 'A', preferred_language: lang0 },
+            { speaker_label: 'B', preferred_language: lang1 },
+        ];
+        if (speakerCount === 3) {
+            participants.push({ speaker_label: 'C', preferred_language: lang2 });
         }
-    }, []);
+        createConversation(mode === '2way' ? 'two_way' : 'three_way', participants)
+            .then(res => setConversationId(res.conversation_id))
+            .catch(() => setConversationId(null));
+    }, [mode]);
 
-    const sendMessage = async () => {
-        if (!inputText.trim()) return;
-        const fromLang = activeSpeaker === 'left' ? leftLang : rightLang;
-        const toLang = activeSpeaker === 'left' ? rightLang : leftLang;
-
-        setLoading(true);
-        const { translation, tone } = await translateText(inputText, fromLang, toLang);
-
-        const msg: Message = {
-            id: Date.now().toString(),
-            text: inputText,
-            translation,
-            sender: activeSpeaker,
-            tone,
-            lang: fromLang,
-            targetLang: toLang,
-        };
-        setMessages(prev => [...prev, msg]);
-        setInputText('');
-        setLoading(false);
+    const getLang = (speaker: number) => {
+        if (speaker === 0) return lang0;
+        if (speaker === 1) return lang1;
+        return lang2;
     };
 
-    const updateTone = async (msgId: string, newTone: string) => {
-        const msg = messages.find(m => m.id === msgId);
-        if (!msg) return;
+    const setLang = (speaker: number, code: string) => {
+        if (speaker === 0) setLang0(code);
+        else if (speaker === 1) setLang1(code);
+        else setLang2(code);
+    };
 
+    const getTheme = (speaker: number) => {
+        if (mode === '3way') return SPEAKER_3WAY[speaker] || SPEAKER_3WAY[0];
+        return speaker === 0 ? SPEAKER_THEMES[0] : SPEAKER_THEMES[1];
+    };
+
+    const handleSendMessage = async () => {
+        if (!inputText.trim()) return;
+        const fromLang = getLang(activeSpeaker);
+        const targetSpeaker = activeSpeaker === 0 ? 1 : 0;
+        const toLang = getLang(targetSpeaker);
+        const speakerLabel = ['A', 'B', 'C'][activeSpeaker];
+
+        setLoading(true);
         try {
-            const res = await axios.post(`${API_BASE_URL}/api/v1/translate`, {
-                text: msg.text,
-                source_lang: msg.lang,
-                target_lang: msg.targetLang,
-                tone: newTone,
-            });
-            setMessages(prev => prev.map(m =>
-                m.id === msgId ? { ...m, translation: res.data.output_text || m.translation, tone: newTone } : m
-            ));
+            let translation = '';
+            if (conversationId) {
+                const res = await apiSendMessage(
+                    conversationId, speakerLabel, inputText, fromLang, toLang
+                );
+                translation = res.translated_text || '';
+            }
+
+            const msg: Message = {
+                id: Date.now().toString(),
+                text: inputText,
+                translation,
+                speaker: activeSpeaker,
+                lang: fromLang,
+                targetLang: toLang,
+            };
+            setMessages(prev => [...prev, msg]);
+            setInputText('');
         } catch {
-            // Keep existing
+            Alert.alert('Error', 'Could not send message');
         }
-        setToneModalMsg(null);
+        setLoading(false);
     };
 
     const clearConversation = () => {
@@ -123,46 +148,64 @@ export default function ConversationScreen() {
         ]);
     };
 
-    const speakerColors = {
-        left: { bg: '#3B82F6', text: '#FFF', transBg: '#2563EB' },
-        right: { bg: '#E2E8F0', text: '#1E293B', transBg: '#CBD5E1' },
-    };
+    const speakerCount = mode === '3way' ? 3 : 2;
 
     return (
         <View style={styles.container}>
             <LinearGradient colors={[...gradientColors]} style={styles.bg} />
 
-            {/* Language Bar */}
-            <View style={styles.langBar}>
-                <TouchableOpacity
-                    style={[styles.langChip, activeSpeaker === 'left' && styles.langChipActive]}
-                    onPress={() => setActiveSpeaker('left')}
-                    onLongPress={() => setPickerTarget('left')}
-                >
-                    <Text style={[styles.langChipText, activeSpeaker === 'left' && styles.langChipTextActive]}>
-                        {SUPPORTED_LANGUAGES[leftLang]}
-                    </Text>
-                    <ChevronDown size={14} color={activeSpeaker === 'left' ? '#FFF' : '#64748B'} />
-                </TouchableOpacity>
-
-                <View style={styles.langVs}>
-                    <Text style={styles.langVsText}>⇄</Text>
+            <View style={styles.headerArea}>
+                {/* Mode Toggle */}
+                <View style={styles.toggleRow}>
+                    <TouchableOpacity
+                        style={[styles.toggleBtn, mode === '2way' && styles.toggleActive]}
+                        onPress={() => setMode('2way')}
+                    >
+                        <Text style={[styles.toggleText, mode === '2way' && styles.toggleTextActive]}>
+                            2 Way Talk
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.toggleBtn, mode === '3way' && styles.toggleActive]}
+                        onPress={() => setMode('3way')}
+                    >
+                        <Text style={[styles.toggleText, mode === '3way' && styles.toggleTextActive]}>
+                            3 Way Talk
+                        </Text>
+                    </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.langChip, activeSpeaker === 'right' && styles.langChipActive]}
-                    onPress={() => setActiveSpeaker('right')}
-                    onLongPress={() => setPickerTarget('right')}
-                >
-                    <Text style={[styles.langChipText, activeSpeaker === 'right' && styles.langChipTextActive]}>
-                        {SUPPORTED_LANGUAGES[rightLang]}
-                    </Text>
-                    <ChevronDown size={14} color={activeSpeaker === 'right' ? '#FFF' : '#64748B'} />
-                </TouchableOpacity>
+                {/* Speaker Language Chips */}
+                <View style={styles.speakerRow}>
+                    {Array.from({ length: speakerCount }).map((_, i) => {
+                        const t = getTheme(i);
+                        const isActive = activeSpeaker === i;
+                        return (
+                            <TouchableOpacity
+                                key={i}
+                                style={[
+                                    styles.speakerChip,
+                                    { borderColor: t.bg },
+                                    isActive && { backgroundColor: t.bg },
+                                ]}
+                                onPress={() => setActiveSpeaker(i)}
+                                onLongPress={() => setPickerFor(i)}
+                            >
+                                <Text style={[
+                                    styles.speakerChipText,
+                                    { color: isActive ? '#FFF' : t.bg },
+                                ]}>
+                                    {SUPPORTED_LANGUAGES[getLang(i)]}
+                                </Text>
+                                <ChevronDown size={12} color={isActive ? '#FFF' : t.bg} />
+                            </TouchableOpacity>
+                        );
+                    })}
 
-                <TouchableOpacity style={styles.clearBtn} onPress={clearConversation}>
-                    <Trash2 size={18} color="#EF4444" />
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.clearBtn} onPress={clearConversation}>
+                        <Trash2 size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* Chat Area */}
@@ -170,68 +213,54 @@ export default function ConversationScreen() {
                 ref={scrollRef}
                 style={styles.chatArea}
                 contentContainerStyle={styles.chatContent}
+                showsVerticalScrollIndicator={false}
             >
                 {messages.length === 0 && (
                     <View style={styles.emptyState}>
-                        <Mic size={40} color="#CBD5E1" />
-                        <Text style={styles.emptyText}>Start a conversation</Text>
+                        <Mic size={44} color="#CBD5E1" />
+                        <Text style={styles.emptyTitle}>
+                            {mode === '2way' ? '2-Way Conversation' : '3-Way Conversation'}
+                        </Text>
                         <Text style={styles.emptySubtext}>
-                            Tap a language above to set the active speaker, then type or speak.
+                            Tap a speaker above to set who's talking, then type or use the mic.
                         </Text>
                     </View>
                 )}
 
                 {messages.map((msg) => {
-                    const colors = speakerColors[msg.sender];
-                    const isLeft = msg.sender === 'left';
+                    const t = getTheme(msg.speaker);
+                    const isLeft = msg.speaker === 0;
+                    const isCenter = mode === '3way' && msg.speaker === 1;
+                    const isRight = (mode === '2way' && msg.speaker === 1) ||
+                        (mode === '3way' && msg.speaker === 2);
+
                     return (
                         <View
                             key={msg.id}
-                            style={[styles.msgRow, isLeft ? styles.msgRowLeft : styles.msgRowRight]}
+                            style={[
+                                styles.msgRow,
+                                isLeft ? styles.msgLeft :
+                                    isCenter ? styles.msgCenter :
+                                        styles.msgRight,
+                            ]}
                         >
-                            <View style={[styles.bubble, { backgroundColor: colors.bg }]}>
-                                <Text style={[styles.bubbleText, { color: colors.text }]}>{msg.text}</Text>
-                                <View style={[styles.bubbleDivider, { backgroundColor: isLeft ? 'rgba(255,255,255,0.2)' : '#94A3B8' }]} />
-                                <Text style={[styles.transText, { color: isLeft ? '#BFDBFE' : '#475569' }]}>
+                            <View style={[styles.bubble, { backgroundColor: t.bg }]}>
+                                <Text style={[styles.bubbleText, { color: t.text }]}>
+                                    {msg.text}
+                                </Text>
+                                <View style={[
+                                    styles.bubbleDivider,
+                                    { backgroundColor: t.bg === '#F1F5F9' ? '#CBD5E1' : 'rgba(255,255,255,0.2)' },
+                                ]} />
+                                <Text style={[styles.transText, { color: t.trans }]}>
                                     {msg.translation}
                                 </Text>
                                 <View style={styles.bubbleFooter}>
-                                    <TouchableOpacity
-                                        style={[styles.toneBadge, { backgroundColor: TONE_COLORS[msg.tone] + '22' }]}
-                                        onPress={() => setToneModalMsg(msg.id)}
-                                    >
-                                        <Smile size={12} color={TONE_COLORS[msg.tone] || '#64748B'} />
-                                        <Text style={[styles.toneText, { color: TONE_COLORS[msg.tone] || '#64748B' }]}>
-                                            {msg.tone}
-                                        </Text>
-                                    </TouchableOpacity>
                                     <TouchableOpacity>
-                                        <Volume2 size={16} color={isLeft ? '#BFDBFE' : '#64748B'} />
+                                        <Volume2 size={14} color={t.bg === '#F1F5F9' ? '#94A3B8' : 'rgba(255,255,255,0.6)'} />
                                     </TouchableOpacity>
                                 </View>
                             </View>
-
-                            {/* Tone Selector */}
-                            {toneModalMsg === msg.id && (
-                                <View style={styles.tonePopup}>
-                                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                        {TONE_OPTIONS.map(tone => (
-                                            <TouchableOpacity
-                                                key={tone}
-                                                style={[
-                                                    styles.toneOption,
-                                                    msg.tone === tone && { backgroundColor: TONE_COLORS[tone] + '22' },
-                                                ]}
-                                                onPress={() => updateTone(msg.id, tone)}
-                                            >
-                                                <Text style={[styles.toneOptionText, { color: TONE_COLORS[tone] }]}>
-                                                    {tone}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </ScrollView>
-                                </View>
-                            )}
                         </View>
                     );
                 })}
@@ -243,23 +272,28 @@ export default function ConversationScreen() {
                 keyboardVerticalOffset={90}
             >
                 <View style={styles.inputBar}>
-                    <TouchableOpacity style={styles.micBtn}>
+                    {/* Active speaker indicator */}
+                    <View style={[styles.speakerDot, { backgroundColor: getTheme(activeSpeaker).bg }]} />
+
+                    <TouchableOpacity style={[styles.micBtn, { backgroundColor: getTheme(activeSpeaker).bg }]}>
                         <Mic size={20} color="#FFF" />
                     </TouchableOpacity>
+
                     <TextInput
                         style={styles.textInput}
-                        placeholder="Type or speak..."
+                        placeholder={`Type as ${SUPPORTED_LANGUAGES[getLang(activeSpeaker)]}...`}
                         placeholderTextColor="#94A3B8"
                         value={inputText}
                         onChangeText={setInputText}
-                        onSubmitEditing={sendMessage}
+                        onSubmitEditing={handleSendMessage}
                     />
+
                     {loading ? (
-                        <ActivityIndicator color="#3B82F6" style={{ marginRight: 8 }} />
+                        <ActivityIndicator color="#3B82F6" style={{ marginRight: 10 }} />
                     ) : (
                         <TouchableOpacity
-                            style={[styles.sendBtn, !inputText.trim() && { opacity: 0.4 }]}
-                            onPress={sendMessage}
+                            style={[styles.sendBtn, !inputText.trim() && { opacity: 0.3 }]}
+                            onPress={handleSendMessage}
                             disabled={!inputText.trim()}
                         >
                             <Send size={18} color="#3B82F6" />
@@ -271,13 +305,12 @@ export default function ConversationScreen() {
             <BottomNav />
 
             <LanguagePicker
-                visible={pickerTarget !== null}
-                onDismiss={() => setPickerTarget(null)}
+                visible={pickerFor !== null}
+                onDismiss={() => setPickerFor(null)}
                 onSelect={(code) => {
-                    if (pickerTarget === 'left') setLeftLang(code);
-                    else setRightLang(code);
+                    if (pickerFor !== null) setLang(pickerFor, code);
                 }}
-                selected={pickerTarget === 'left' ? leftLang : rightLang}
+                selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
             />
         </View>
     );
@@ -287,68 +320,105 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-    /* Lang Bar */
-    langBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
+    /* Header Area */
+    headerArea: {
         paddingTop: 100,
-        paddingBottom: 12,
+        paddingHorizontal: 20,
     },
-    langChip: {
+
+    /* Mode Toggle */
+    toggleRow: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(241,245,249,0.9)',
+        borderRadius: 30,
+        padding: 4,
+        marginBottom: 14,
+    },
+    toggleBtn: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 26,
+        alignItems: 'center',
+    },
+    toggleActive: {
+        backgroundColor: '#FFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+    toggleTextActive: { color: '#1E293B' },
+
+    /* Speaker Chips */
+    speakerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(241,245,249,0.9)',
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 20,
+        gap: 6,
+        marginBottom: 4,
     },
-    langChipActive: { backgroundColor: '#3B82F6' },
-    langChipText: { fontSize: 14, fontWeight: '600', color: '#475569', marginRight: 4 },
-    langChipTextActive: { color: '#FFF' },
-    langVs: { marginHorizontal: 10 },
-    langVsText: { fontSize: 16, color: '#94A3B8' },
-    clearBtn: { marginLeft: 'auto', padding: 8 },
+    speakerChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 16,
+        borderWidth: 1.5,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+    },
+    speakerChipText: {
+        fontSize: 12,
+        fontWeight: '700',
+        marginRight: 3,
+    },
+    clearBtn: {
+        marginLeft: 'auto',
+        padding: 6,
+    },
 
     /* Chat */
     chatArea: { flex: 1 },
     chatContent: { padding: 16, paddingBottom: 140 },
-    emptyState: { alignItems: 'center', marginTop: 80 },
-    emptyText: { fontSize: 18, fontWeight: '600', color: '#94A3B8', marginTop: 16 },
-    emptySubtext: { fontSize: 14, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 8 },
+
+    emptyState: { alignItems: 'center', marginTop: 60 },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
+    emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     /* Messages */
-    msgRow: { marginBottom: 14, maxWidth: '82%' },
-    msgRowLeft: { alignSelf: 'flex-start' },
-    msgRowRight: { alignSelf: 'flex-end' },
-    bubble: { padding: 14, borderRadius: 20 },
-    bubbleText: { fontSize: 16, lineHeight: 22 },
-    bubbleDivider: { height: 1, marginVertical: 8 },
-    transText: { fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
-    bubbleFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-    toneBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-    toneText: { fontSize: 11, fontWeight: '600', marginLeft: 4 },
+    msgRow: { marginBottom: 10, maxWidth: '78%' },
+    msgLeft: { alignSelf: 'flex-start' },
+    msgCenter: { alignSelf: 'center' },
+    msgRight: { alignSelf: 'flex-end' },
 
-    /* Tone Popup */
-    tonePopup: {
-        marginTop: 6,
-        backgroundColor: '#FFF',
-        borderRadius: 14,
-        padding: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 4,
+    bubble: {
+        padding: 14,
+        borderRadius: 20,
     },
-    toneOption: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginRight: 4 },
-    toneOptionText: { fontSize: 12, fontWeight: '600' },
+    bubbleText: {
+        fontSize: 15,
+        lineHeight: 21,
+    },
+    bubbleDivider: {
+        height: 1,
+        marginVertical: 6,
+    },
+    transText: {
+        fontSize: 13,
+        fontStyle: 'italic',
+        lineHeight: 19,
+    },
+    bubbleFooter: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginTop: 6,
+    },
 
-    /* Input */
+    /* Input Bar */
     inputBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
+        paddingHorizontal: 10,
         paddingVertical: 8,
         backgroundColor: 'rgba(255,255,255,0.95)',
         borderTopLeftRadius: 24,
@@ -360,18 +430,23 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
         elevation: 6,
     },
+    speakerDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 4,
+    },
     micBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#EF4444',
+        width: 38,
+        height: 38,
+        borderRadius: 19,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 8,
     },
     textInput: {
         flex: 1,
-        fontSize: 15,
+        fontSize: 14,
         color: '#1E293B',
         paddingVertical: 10,
         paddingHorizontal: 12,

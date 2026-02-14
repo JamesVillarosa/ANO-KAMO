@@ -22,9 +22,12 @@ import {
     RotateCcw,
 } from 'lucide-react-native';
 import { gradientColors, glassCard, SUPPORTED_LANGUAGES } from '../src/theme';
+import { ocrExtract } from '../src/lib/api';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import DictionaryModal from '../src/components/DictionaryModal';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 
 const { width, height } = Dimensions.get('window');
 
@@ -45,24 +48,36 @@ export default function OCRScreen() {
     const [dictVisible, setDictVisible] = useState(false);
     const [dictWord, setDictWord] = useState('');
 
-    const handleCapture = () => {
+    const processImage = async (uri: string) => {
         setProcessing(true);
-        setTimeout(() => {
-            setExtractedText('BAWAL TUMAWID MAY NAMATAY NA DITO.');
-            setTranslation('DO NOT CROSS. SOMEONE DIED HERE.');
+        try {
+            const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' as any });
+            const res = await ocrExtract(b64, targetLang, sourceLang);
+            setExtractedText(res.extracted_text || 'No text detected');
+            setTranslation(res.translated_text || '');
             setHasResult(true);
-            setProcessing(false);
-        }, 1500);
+        } catch (e: any) {
+            Alert.alert('OCR Error', e?.message || 'Could not process image');
+        }
+        setProcessing(false);
     };
 
-    const handleGallery = () => {
-        setProcessing(true);
-        setTimeout(() => {
-            setExtractedText('Salamat sa iyong tulong.');
-            setTranslation('Thank you for your help.');
-            setHasResult(true);
-            setProcessing(false);
-        }, 1200);
+    const handleCapture = async () => {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { Alert.alert('Permission needed', 'Camera access is required'); return; }
+        const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: false });
+        if (!result.canceled && result.assets?.[0]?.uri) {
+            await processImage(result.assets[0].uri);
+        }
+    };
+
+    const handleGallery = async () => {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) { Alert.alert('Permission needed', 'Gallery access is required'); return; }
+        const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: false });
+        if (!result.canceled && result.assets?.[0]?.uri) {
+            await processImage(result.assets[0].uri);
+        }
     };
 
     const resetCamera = () => {

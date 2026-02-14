@@ -19,8 +19,12 @@ import {
     ChevronDown,
     MessageCircle,
 } from 'lucide-react-native';
-import axios from 'axios';
-import { gradientColors, glassCard, SUPPORTED_LANGUAGES, API_BASE_URL } from '../src/theme';
+import {
+    getSubmissions as apiGetSubmissions,
+    submitPhrase as apiSubmitPhrase,
+    voteSubmission as apiVoteSubmission,
+} from '../src/lib/api';
+import { gradientColors, glassCard, SUPPORTED_LANGUAGES } from '../src/theme';
 import LanguagePicker from '../src/components/LanguagePicker';
 
 interface Submission {
@@ -49,16 +53,10 @@ export default function CommunityScreen() {
 
     const fetchSubmissions = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/api/v1/community/submissions`);
-            setSubmissions(res.data);
+            const res = await apiGetSubmissions();
+            setSubmissions(res);
         } catch {
-            setSubmissions([
-                { id: 1, phrase: 'Char', proposed_translation: 'Just kidding / Not serious', source_lang: 'tl', target_lang: 'en', status: 'pending', votes: 12, notes: 'Filipino gay lingo' },
-                { id: 2, phrase: 'Werpa', proposed_translation: 'Power (reversed)', source_lang: 'tl', target_lang: 'en', status: 'approved', votes: 24, notes: 'Gen Z slang' },
-                { id: 3, phrase: 'Dasurv', proposed_translation: 'Deserves / Deserved it', source_lang: 'tl', target_lang: 'en', status: 'pending', votes: 8, notes: 'Social media slang' },
-                { id: 4, phrase: 'Lodi', proposed_translation: 'Idol (reversed)', source_lang: 'tl', target_lang: 'en', status: 'approved', votes: 30, notes: 'Gen Z slang' },
-                { id: 5, phrase: 'Petmalu', proposed_translation: 'Awesome / Amazing (from malupet)', source_lang: 'tl', target_lang: 'en', status: 'approved', votes: 18, notes: 'Street slang' },
-            ]);
+            setSubmissions([]);
         } finally {
             setLoading(false);
         }
@@ -72,13 +70,7 @@ export default function CommunityScreen() {
             return;
         }
         try {
-            await axios.post(`${API_BASE_URL}/api/v1/community/submissions`, {
-                phrase: newPhrase,
-                source_lang: formSourceLang,
-                target_lang: formTargetLang,
-                proposed_translation: newTranslation,
-                notes: newNotes,
-            });
+            await apiSubmitPhrase(newPhrase, formSourceLang, formTargetLang, newTranslation, newNotes);
         } catch { /* fallback */ }
 
         // Optimistic add
@@ -99,7 +91,10 @@ export default function CommunityScreen() {
         setNewNotes('');
     };
 
-    const vote = (id: number, direction: 'up' | 'down') => {
+    const vote = async (id: number, direction: 'up' | 'down') => {
+        try {
+            await apiVoteSubmission(id, direction === 'up' ? 1 : -1);
+        } catch { }
         setSubmissions(prev => prev.map(s =>
             s.id === id ? { ...s, votes: s.votes + (direction === 'up' ? 1 : -1) } : s
         ));

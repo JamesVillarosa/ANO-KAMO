@@ -14,17 +14,16 @@ import {
     Clock,
     MessageSquare,
 } from 'lucide-react-native';
-import axios from 'axios';
-import { gradientColors, API_BASE_URL, SUPPORTED_LANGUAGES } from '../src/theme';
+import { getHistory, getFavorites, toggleFavorite, deleteHistory } from '../src/lib/api';
+import { gradientColors, SUPPORTED_LANGUAGES } from '../src/theme';
 
 interface HistoryItem {
-    id: number;
+    translation_id: string;
     input_text: string;
-    output_texts: string[];
-    source_lang: string;
-    target_langs: string[];
-    is_favorite: boolean;
-    created_at: string;
+    input_language: string;
+    method: string;
+    outputs: { output_id: string, target_language: string, output_text: string, is_favorite: boolean }[];
+    timestamp: string;
 }
 
 // Accent color per language
@@ -41,21 +40,12 @@ export default function HistoryScreen() {
     const [activeTab, setActiveTab] = useState<'favorites' | 'history'>('favorites');
 
     const fetchData = async () => {
+        setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE_URL}/api/v1/history`);
-            setItems(res.data);
+            const res = await getHistory();
+            setItems(res);
         } catch {
-            // Mock data matching Figma
-            setItems([
-                { id: 1, input_text: 'Magandang umaga sa lahat', output_texts: ['Good morning everyone'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
-                { id: 2, input_text: 'Maayong buntag', output_texts: ['Good morning'], source_lang: 'ceb', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
-                { id: 3, input_text: 'Maayong aga', output_texts: ['Good morning'], source_lang: 'hil', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
-                { id: 4, input_text: 'Kumusta ka?', output_texts: ['How are you?'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
-                { id: 5, input_text: 'I love you', output_texts: ['Mahal kita'], source_lang: 'en', target_langs: ['tl'], is_favorite: false, created_at: new Date().toISOString() },
-                { id: 6, input_text: 'Salamat', output_texts: ['Thank you'], source_lang: 'tl', target_langs: ['en'], is_favorite: true, created_at: new Date().toISOString() },
-                { id: 7, input_text: 'Unsa imong pangalan?', output_texts: ['What is your name?'], source_lang: 'ceb', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
-                { id: 8, input_text: 'Diin ka nagpuyo?', output_texts: ['Where do you live?'], source_lang: 'hil', target_langs: ['en'], is_favorite: false, created_at: new Date().toISOString() },
-            ]);
+            setItems([]);
         } finally {
             setLoading(false);
         }
@@ -63,21 +53,30 @@ export default function HistoryScreen() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const toggleFav = (id: number) => {
-        setItems(prev => prev.map(h => h.id === id ? { ...h, is_favorite: !h.is_favorite } : h));
+    const handleToggleFav = async (outputId: string) => {
+        try {
+            await toggleFavorite(outputId);
+            // Refresh data
+            fetchData();
+        } catch { }
     };
 
-    const deleteItem = (id: number) => {
-        setItems(prev => prev.filter(h => h.id !== id));
+    const handleDelete = async (translationId: string) => {
+        try {
+            await deleteHistory(translationId);
+            setItems(prev => prev.filter(h => h.translation_id !== translationId));
+        } catch { }
     };
 
     const filtered = activeTab === 'favorites'
-        ? items.filter(i => i.is_favorite)
+        ? items.filter(i => i.outputs?.some(o => o.is_favorite))
         : items;
 
     const renderItem = ({ item }: { item: HistoryItem }) => {
-        const accent = LANG_COLORS[item.source_lang] || '#3B82F6';
-        const langName = SUPPORTED_LANGUAGES[item.source_lang] || item.source_lang;
+        const accent = LANG_COLORS[item.input_language] || '#3B82F6';
+        const langName = SUPPORTED_LANGUAGES[item.input_language] || item.input_language;
+        const firstOutput = item.outputs?.[0];
+        const isFav = firstOutput?.is_favorite || false;
 
         return (
             <View style={styles.card}>
@@ -92,21 +91,21 @@ export default function HistoryScreen() {
                     <Text style={styles.sourceText}>{item.input_text}</Text>
 
                     {/* Translation */}
-                    <Text style={styles.transText}>{item.output_texts[0]}</Text>
+                    <Text style={styles.transText}>{firstOutput?.output_text || ''}</Text>
 
                     {/* Actions */}
                     <View style={styles.cardActions}>
                         <TouchableOpacity style={styles.actionBtn}>
                             <Volume2 size={15} color="#64748B" />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => toggleFav(item.id)}>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => firstOutput && handleToggleFav(firstOutput.output_id)}>
                             <Heart
                                 size={15}
-                                color={item.is_favorite ? '#EF4444' : '#94A3B8'}
-                                fill={item.is_favorite ? '#EF4444' : 'none'}
+                                color={isFav ? '#EF4444' : '#94A3B8'}
+                                fill={isFav ? '#EF4444' : 'none'}
                             />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => deleteItem(item.id)}>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(item.translation_id)}>
                             <Trash2 size={15} color="#94A3B8" />
                         </TouchableOpacity>
                     </View>
@@ -156,7 +155,7 @@ export default function HistoryScreen() {
                     <FlatList
                         data={filtered}
                         renderItem={renderItem}
-                        keyExtractor={item => item.id.toString()}
+                        keyExtractor={item => item.translation_id}
                         contentContainerStyle={styles.list}
                         showsVerticalScrollIndicator={false}
                         ListEmptyComponent={

@@ -1,94 +1,86 @@
 """
-History Endpoints
-Retrieve and manage translation history
+History & Favorites Endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.crud import (
-    create_history,
-    get_all_history,
-    mark_favorite,
-    unmark_favorite,
-    get_favorites,
+    get_all_translations, toggle_favorite,
+    get_favorites, delete_translation,
 )
 from app.db.session import get_db
-from app.db.schemas import (
-    HistorySaveRequest,
-    HistoryResponse,
-    FavoriteRequest,
-    FavoriteResponse,
-)
+from app.db.schemas import HistoryItemResponse, FavoriteToggleRequest
 
 router = APIRouter()
 
 
-@router.get("/history", response_model=list[HistoryResponse])
+@router.get("/history", response_model=list[HistoryItemResponse])
 async def get_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    """
-    Get translation history
-    
-    - **skip**: Number of records to skip (pagination)
-    - **limit**: Maximum number of records to return
-    """
-    return get_all_history(db, skip=skip, limit=limit)
+    """Get all translation history with outputs."""
+    translations = get_all_translations(db, skip=skip, limit=limit)
+    results = []
+    for t in translations:
+        results.append({
+            "translation_id": t.translation_id,
+            "input_text": t.input_text,
+            "input_language": t.input_language,
+            "method": t.method,
+            "multi_target": t.multi_target,
+            "timestamp": t.timestamp,
+            "outputs": [
+                {
+                    "output_id": o.output_id,
+                    "target_language": o.target_language,
+                    "output_text": o.output_text,
+                    "detected_tone": o.detected_tone,
+                    "is_favorite": o.is_favorite,
+                }
+                for o in t.outputs
+            ],
+        })
+    return results
 
 
-@router.post("/history", response_model=HistoryResponse)
-async def save_history(request: HistorySaveRequest, db: Session = Depends(get_db)):
-    """
-    Save a translation to history
-    
-    - **source_lang**: Source language code
-    - **target_langs**: List of target language codes
-    - **input_text**: Original text
-    - **output_texts**: Translated texts (must match target_langs length)
-    - **tone**: Optional tone used
-    """
-    history = create_history(db, request)
-    return history
+@router.post("/favorites/toggle")
+async def toggle_fav(request: FavoriteToggleRequest, db: Session = Depends(get_db)):
+    """Toggle favorite status on a translation output."""
+    output = toggle_favorite(db, request.output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output not found")
+    return {"output_id": output.output_id, "is_favorite": output.is_favorite}
 
 
-@router.post("/favorites", response_model=HistoryResponse)
-async def add_favorite(request: FavoriteRequest, db: Session = Depends(get_db)):
-    """
-    Add a translation to favorites
-    
-    - **history_id**: ID of the history record to favorite
-    """
-    history = mark_favorite(db, request.history_id)
-    if not history:
-        raise HTTPException(status_code=404, detail="History record not found")
-    return history
-
-
-@router.get("/favorites", response_model=list[HistoryResponse])
+@router.get("/favorites", response_model=list)
 async def get_favorites_list(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    """
-    Get all favorited translations
-    
-    - **skip**: Number of records to skip (pagination)
-    - **limit**: Maximum number of records to return
-    """
-    return get_favorites(db, skip=skip, limit=limit)
+    """Get all favorited translation outputs."""
+    favs = get_favorites(db, skip=skip, limit=limit)
+    results = []
+    for o in favs:
+        t = o.translation
+        results.append({
+            "output_id": o.output_id,
+            "translation_id": t.translation_id if t else None,
+            "target_language": o.target_language,
+            "output_text": o.output_text,
+            "input_text": t.input_text if t else "",
+            "input_language": t.input_language if t else "",
+            "is_favorite": True,
+        })
+    return results
 
 
-@router.delete("/favorites/{history_id}", status_code=204)
-async def remove_favorite(history_id: int, db: Session = Depends(get_db)):
-    """
-    Remove a translation from favorites
-    
-    - **history_id**: ID of the history record to unfavorite
-    """
-    history = unmark_favorite(db, history_id)
-    if not history:
-        raise HTTPException(status_code=404, detail="History record not found")
+@router.delete("/history/{translation_id}", status_code=204)
+async def delete_history(translation_id: str, db: Session = Depends(get_db)):
+    """Delete a translation from history."""
+    deleted = delete_translation(db, translation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Translation not found")
     return None

@@ -1,114 +1,270 @@
 """
-CRUD Operations for Database Models
+CRUD Operations for all database models
 """
 from datetime import datetime
+from typing import Optional, List
+
 from sqlalchemy.orm import Session
 
-from app.db.models import TranslationHistory, CommunitySubmission
-from app.db.schemas import HistorySaveRequest, CommunitySubmissionRequest
+from app.db.models import (
+    Device, Translation, TranslationOutput,
+    Conversation, Participant, Message, Tone,
+    OcrRequest, OcrText,
+    DictionaryEntry, DictionaryLookup,
+    CommunitySubmission,
+)
 
 
-# ============ TranslationHistory CRUD ============
-
-
-def create_history(db: Session, request: HistorySaveRequest) -> TranslationHistory:
-    """Create a new translation history record"""
-    history = TranslationHistory(
-        source_lang=request.source_lang,
-        target_langs=request.target_langs,
-        input_text=request.input_text,
-        output_texts=request.output_texts,
-        tone=request.tone,
-    )
-    db.add(history)
+# ──────────────────── Device ────────────────────
+def get_or_create_device(db: Session, device_type: str, os_version: str = None) -> Device:
+    device = Device(device_type=device_type, os_version=os_version)
+    db.add(device)
     db.commit()
-    db.refresh(history)
-    return history
+    db.refresh(device)
+    return device
+
+def get_device(db: Session, device_id: str) -> Optional[Device]:
+    return db.query(Device).filter(Device.device_id == device_id).first()
 
 
-def get_history(db: Session, history_id: int) -> TranslationHistory | None:
-    """Get a history record by ID"""
-    return db.query(TranslationHistory).filter(TranslationHistory.id == history_id).first()
+# ──────────────────── Tone ──────────────────────
+def get_or_create_tone(db: Session, label: str) -> Tone:
+    tone = db.query(Tone).filter(Tone.tone_label == label).first()
+    if not tone:
+        tone = Tone(tone_label=label)
+        db.add(tone)
+        db.commit()
+        db.refresh(tone)
+    return tone
 
 
-def get_all_history(db: Session, skip: int = 0, limit: int = 100) -> list[TranslationHistory]:
-    """Get all history records"""
-    return db.query(TranslationHistory).offset(skip).limit(limit).all()
+# ──────────────────── Translation ───────────────
+def create_translation(
+    db: Session,
+    input_text: str,
+    input_language: str,
+    method: str = "text",
+    multi_target: bool = False,
+    device_id: str = None,
+) -> Translation:
+    t = Translation(
+        input_text=input_text,
+        input_language=input_language,
+        method=method,
+        multi_target=multi_target,
+        device_id=device_id,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
 
+def create_translation_output(
+    db: Session,
+    translation_id: str,
+    target_language: str,
+    output_text: str,
+    detected_tone: str = None,
+) -> TranslationOutput:
+    o = TranslationOutput(
+        translation_id=translation_id,
+        target_language=target_language,
+        output_text=output_text,
+        detected_tone=detected_tone,
+    )
+    db.add(o)
+    db.commit()
+    db.refresh(o)
+    return o
 
-def get_favorites(db: Session, skip: int = 0, limit: int = 100) -> list[TranslationHistory]:
-    """Get all favorited translations"""
+def get_all_translations(db: Session, skip: int = 0, limit: int = 100) -> List[Translation]:
     return (
-        db.query(TranslationHistory)
-        .filter(TranslationHistory.is_favorite == True)
-        .offset(skip)
-        .limit(limit)
+        db.query(Translation)
+        .order_by(Translation.timestamp.desc())
+        .offset(skip).limit(limit).all()
+    )
+
+def get_favorites(db: Session, skip: int = 0, limit: int = 100) -> List[TranslationOutput]:
+    return (
+        db.query(TranslationOutput)
+        .filter(TranslationOutput.is_favorite == True)
+        .offset(skip).limit(limit).all()
+    )
+
+def toggle_favorite(db: Session, output_id: str) -> Optional[TranslationOutput]:
+    o = db.query(TranslationOutput).filter(TranslationOutput.output_id == output_id).first()
+    if o:
+        o.is_favorite = not o.is_favorite
+        db.commit()
+        db.refresh(o)
+    return o
+
+def delete_translation(db: Session, translation_id: str) -> bool:
+    t = db.query(Translation).filter(Translation.translation_id == translation_id).first()
+    if t:
+        db.delete(t)
+        db.commit()
+        return True
+    return False
+
+
+# ──────────────────── Conversation ──────────────
+def create_conversation(
+    db: Session,
+    mode: str,
+    view_mode: str,
+    participants: list,
+    device_id: str = None,
+) -> Conversation:
+    conv = Conversation(mode=mode, view_mode=view_mode, device_id=device_id)
+    db.add(conv)
+    db.flush()
+    for p in participants:
+        part = Participant(
+            conversation_id=conv.conversation_id,
+            speaker_label=p["speaker_label"],
+            preferred_language=p["preferred_language"],
+        )
+        db.add(part)
+    db.commit()
+    db.refresh(conv)
+    return conv
+
+def get_conversation(db: Session, conversation_id: str) -> Optional[Conversation]:
+    return db.query(Conversation).filter(Conversation.conversation_id == conversation_id).first()
+
+def add_message(
+    db: Session,
+    conversation_id: str,
+    speaker_abc: str,
+    text: str,
+    translated_text: str,
+    language: str,
+    detected_language: str = None,
+    tone_id: str = None,
+) -> Message:
+    msg = Message(
+        conversation_id=conversation_id,
+        speaker_abc=speaker_abc,
+        text=text,
+        translated_text=translated_text,
+        language=language,
+        detected_language=detected_language,
+        tone_id=tone_id,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+def get_messages(db: Session, conversation_id: str) -> List[Message]:
+    return (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.timestamp.asc())
         .all()
     )
 
 
-def mark_favorite(db: Session, history_id: int) -> TranslationHistory | None:
-    """Mark a translation as favorite"""
-    history = get_history(db, history_id)
-    if history:
-        history.is_favorite = True
-        db.commit()
-        db.refresh(history)
-    return history
-
-
-def unmark_favorite(db: Session, history_id: int) -> TranslationHistory | None:
-    """Unmark a translation as favorite"""
-    history = get_history(db, history_id)
-    if history:
-        history.is_favorite = False
-        db.commit()
-        db.refresh(history)
-    return history
-
-
-# ============ CommunitySubmission CRUD ============
-
-
-def create_submission(
-    db: Session, request: CommunitySubmissionRequest
-) -> CommunitySubmission:
-    """Create a new community submission"""
-    submission = CommunitySubmission(
-        phrase=request.phrase,
-        source_lang=request.source_lang,
-        target_lang=request.target_lang,
-        proposed_translation=request.proposed_translation,
-        notes=request.notes,
+# ──────────────────── OCR ───────────────────────
+def create_ocr_request(
+    db: Session,
+    device_id: str = None,
+    source_image_path: str = None,
+    detected_language: str = None,
+) -> OcrRequest:
+    ocr = OcrRequest(
+        device_id=device_id,
+        source_image_path=source_image_path,
+        detected_language=detected_language,
     )
-    db.add(submission)
+    db.add(ocr)
     db.commit()
-    db.refresh(submission)
-    return submission
+    db.refresh(ocr)
+    return ocr
+
+def create_ocr_text(
+    db: Session,
+    ocr_id: str,
+    extracted_text: str,
+    translated_text: str = None,
+) -> OcrText:
+    txt = OcrText(
+        ocr_id=ocr_id,
+        extracted_text=extracted_text,
+        translated_text=translated_text,
+    )
+    db.add(txt)
+    db.commit()
+    db.refresh(txt)
+    return txt
 
 
-def get_submission(db: Session, submission_id: int) -> CommunitySubmission | None:
-    """Get a submission by ID"""
-    return db.query(CommunitySubmission).filter(CommunitySubmission.id == submission_id).first()
+# ──────────────────── Dictionary ────────────────
+def find_dictionary_entry(db: Session, word: str, language: str) -> Optional[DictionaryEntry]:
+    return (
+        db.query(DictionaryEntry)
+        .filter(DictionaryEntry.word == word, DictionaryEntry.language == language)
+        .first()
+    )
 
+def create_dictionary_entry(
+    db: Session,
+    word: str,
+    language: str,
+    definition: str = None,
+    example_sentence: str = None,
+    pronunciation: str = None,
+) -> DictionaryEntry:
+    entry = DictionaryEntry(
+        word=word,
+        language=language,
+        definition=definition,
+        example_sentence=example_sentence,
+        pronunciation=pronunciation,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+def create_dictionary_lookup(
+    db: Session,
+    entry_id: str,
+    device_id: str = None,
+    translation_id: str = None,
+) -> DictionaryLookup:
+    lookup = DictionaryLookup(
+        device_id=device_id,
+        translation_id=translation_id,
+        entry_id=entry_id,
+    )
+    db.add(lookup)
+    db.commit()
+    db.refresh(lookup)
+    return lookup
+
+
+# ──────────────────── Community ─────────────────
+def create_submission(db: Session, **kwargs) -> CommunitySubmission:
+    sub = CommunitySubmission(**kwargs)
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
 
 def get_all_submissions(
     db: Session, skip: int = 0, limit: int = 100, status: str = None
-) -> list[CommunitySubmission]:
-    """Get all submissions, optionally filtered by status"""
-    query = db.query(CommunitySubmission)
+) -> List[CommunitySubmission]:
+    q = db.query(CommunitySubmission).order_by(CommunitySubmission.created_at.desc())
     if status:
-        query = query.filter(CommunitySubmission.status == status)
-    return query.offset(skip).limit(limit).all()
+        q = q.filter(CommunitySubmission.status == status)
+    return q.offset(skip).limit(limit).all()
 
-
-def update_submission_status(
-    db: Session, submission_id: int, status: str
-) -> CommunitySubmission | None:
-    """Update submission status"""
-    submission = get_submission(db, submission_id)
-    if submission:
-        submission.status = status
+def vote_submission(db: Session, submission_id: int, direction: int = 1) -> Optional[CommunitySubmission]:
+    sub = db.query(CommunitySubmission).filter(CommunitySubmission.id == submission_id).first()
+    if sub:
+        sub.votes = (sub.votes or 0) + direction
         db.commit()
-        db.refresh(submission)
-    return submission
+        db.refresh(sub)
+    return sub

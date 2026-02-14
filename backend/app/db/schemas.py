@@ -1,70 +1,100 @@
 """
 Pydantic Schemas for Request/Response Validation
+Covers all ERD entities for the Ano-Kamo application.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
 
-# ============ Translation Schemas ============
+# ──────────────────── Device ────────────────────
+class DeviceRegisterRequest(BaseModel):
+    device_type: str = Field(..., description="iOS or Android")
+    os_version: Optional[str] = None
+
+class DeviceResponse(BaseModel):
+    device_id: str
+    device_type: str
+    os_version: Optional[str]
+    class Config:
+        from_attributes = True
 
 
+# ──────────────────── Translation ───────────────
 class TranslateRequest(BaseModel):
-    """Single language translation request"""
-
-    text: str = Field(..., min_length=1, max_length=5000, description="Text to translate")
-    source_lang: str = Field(..., min_length=2, max_length=10, description="Source language code")
-    target_lang: str = Field(..., min_length=2, max_length=10, description="Target language code")
-    tone: Optional[str] = Field(None, description="Translation tone (e.g., formal, casual, friendly)")
-
+    text: str = Field(..., min_length=1, max_length=5000)
+    source_lang: str = Field(..., min_length=2, max_length=10)
+    target_lang: str = Field(..., min_length=2, max_length=10)
+    tone: Optional[str] = None
+    device_id: Optional[str] = None
 
 class TranslateResponse(BaseModel):
-    """Single language translation response"""
-
+    translation_id: str
     input_text: str
     source_lang: str
     target_lang: str
     output_text: str
-    tone: Optional[str]
     detected_tone: Optional[str]
-
+    is_favorite: bool = False
 
 class TranslateMultiRequest(BaseModel):
-    """Multiple language translation request"""
-
-    text: str = Field(..., min_length=1, max_length=5000, description="Text to translate")
-    source_lang: str = Field(..., min_length=2, max_length=10, description="Source language code")
-    target_langs: list[str] = Field(..., min_items=1, max_items=2, description="Target language codes")
-    tone: Optional[str] = Field(None, description="Translation tone")
-
+    text: str = Field(..., min_length=1, max_length=5000)
+    source_lang: str = Field(..., min_length=2, max_length=10)
+    target_langs: List[str] = Field(..., min_length=1, max_length=2)
+    tone: Optional[str] = None
+    device_id: Optional[str] = None
 
 class TranslateMultiResponse(BaseModel):
-    """Multiple language translation response"""
-
+    translation_id: str
     input_text: str
     source_lang: str
-    target_langs: list[str]
-    output_texts: list[str]
-    tone: Optional[str]
+    target_langs: List[str]
+    output_texts: List[str]
     detected_tone: Optional[str]
 
 
-# ============ Conversation Schemas ============
+# ──────────────────── Conversation ──────────────
+class ConversationCreateRequest(BaseModel):
+    mode: str = Field("two_way", description="two_way or three_way")
+    view_mode: str = Field("face_to_face", description="face_to_face or side_by_side")
+    participants: List[dict] = Field(..., description="List of {speaker_label, preferred_language}")
+    device_id: Optional[str] = None
 
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    mode: str
+    view_mode: str
+    started_at: datetime
+    participants: List[dict]
+    class Config:
+        from_attributes = True
+
+class MessageSendRequest(BaseModel):
+    speaker_abc: str = Field(..., max_length=1, description="A, B, or C")
+    text: str = Field(..., min_length=1, max_length=5000)
+    language: str = Field(..., min_length=2, max_length=10)
+    target_lang: str = Field(..., min_length=2, max_length=10)
+    tone: Optional[str] = None
+
+class MessageResponse(BaseModel):
+    message_id: str
+    speaker_abc: str
+    text: str
+    translated_text: Optional[str]
+    language: str
+    detected_tone: Optional[str]
+    timestamp: datetime
+    class Config:
+        from_attributes = True
 
 class ConversationTurnRequest(BaseModel):
-    """Single conversation turn request"""
-
-    text: str = Field(..., min_length=1, max_length=5000, description="Message text")
-    source_lang: str = Field(..., description="Source language code")
-    target_lang: str = Field(..., description="Target language code")
-    tone: Optional[str] = Field(None, description="Optional tone override")
-
+    text: str = Field(..., min_length=1, max_length=5000)
+    source_lang: str
+    target_lang: str
+    tone: Optional[str] = None
 
 class ConversationTurnResponse(BaseModel):
-    """Single conversation turn response"""
-
     input_text: str
     source_lang: str
     target_lang: str
@@ -73,68 +103,76 @@ class ConversationTurnResponse(BaseModel):
     tone: str
 
 
-# ============ History Schemas ============
+# ──────────────────── OCR ───────────────────────
+class OcrExtractRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64 encoded image")
+    source_lang: Optional[str] = None
+    target_lang: str = Field(..., min_length=2, max_length=10)
+    device_id: Optional[str] = None
+
+class OcrExtractResponse(BaseModel):
+    ocr_id: str
+    extracted_text: str
+    translated_text: str
+    detected_language: Optional[str]
 
 
-class HistorySaveRequest(BaseModel):
-    """Save translation to history"""
+# ──────────────────── Dictionary ────────────────
+class DictionaryLookupRequest(BaseModel):
+    word: str = Field(..., min_length=1, max_length=200)
+    source_lang: str = Field(..., min_length=2, max_length=10)
+    target_lang: str = Field(..., min_length=2, max_length=10)
+    device_id: Optional[str] = None
+    translation_id: Optional[str] = None
 
-    source_lang: str
-    target_langs: list[str]
-    input_text: str
-    output_texts: list[str]
-    tone: Optional[str] = None
-
-
-class HistoryResponse(BaseModel):
-    """History item response"""
-
-    id: int
-    source_lang: str
-    target_langs: list[str]
-    input_text: str
-    output_texts: list[str]
-    tone: Optional[str]
-    detected_tone: Optional[str]
-    is_favorite: bool
-    created_at: datetime
-
+class DictionaryEntryResponse(BaseModel):
+    entry_id: str
+    word: str
+    language: str
+    pronunciation: Optional[str]
+    definition: Optional[str]
+    example_sentence: Optional[str]
+    part_of_speech: Optional[str] = None
+    synonyms: Optional[List[str]] = None
     class Config:
         from_attributes = True
 
 
-# ============ Favorites Schemas ============
+# ──────────────────── History ───────────────────
+class HistoryItemResponse(BaseModel):
+    translation_id: str
+    input_text: str
+    input_language: str
+    method: str
+    multi_target: bool
+    timestamp: datetime
+    outputs: List[dict]
+    class Config:
+        from_attributes = True
+
+class HistorySaveRequest(BaseModel):
+    source_lang: str
+    target_langs: List[str]
+    input_text: str
+    output_texts: List[str]
+    tone: Optional[str] = None
 
 
-class FavoriteRequest(BaseModel):
-    """Add to favorites"""
-
-    history_id: int
-
-
-class FavoriteResponse(BaseModel):
-    """Favorite item response"""
-
-    id: int
-    history_item: HistoryResponse
+# ──────────────────── Favorites ─────────────────
+class FavoriteToggleRequest(BaseModel):
+    output_id: str
 
 
-# ============ Community Schemas ============
-
-
+# ──────────────────── Community ─────────────────
 class CommunitySubmissionRequest(BaseModel):
-    """Submit a community translation"""
-
     phrase: str = Field(..., min_length=1, max_length=500)
     source_lang: str = Field(..., min_length=2, max_length=10)
     target_lang: str = Field(..., min_length=2, max_length=10)
     proposed_translation: str = Field(..., min_length=1, max_length=500)
     notes: Optional[str] = Field(None, max_length=1000)
-
+    device_id: Optional[str] = None
 
 class CommunitySubmissionResponse(BaseModel):
-    """Community submission response"""
-
     id: int
     phrase: str
     source_lang: str
@@ -142,17 +180,13 @@ class CommunitySubmissionResponse(BaseModel):
     proposed_translation: str
     notes: Optional[str]
     status: str
+    votes: int
     created_at: datetime
-
     class Config:
         from_attributes = True
 
 
-# ============ Health Schemas ============
-
-
+# ──────────────────── Health ────────────────────
 class HealthResponse(BaseModel):
-    """Health check response"""
-
     status: str
     timestamp: datetime

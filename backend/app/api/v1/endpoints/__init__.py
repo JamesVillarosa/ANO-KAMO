@@ -1,3 +1,3 @@
 """
-Endpoints module initialization
+Endpoint Sub-Package
 """
