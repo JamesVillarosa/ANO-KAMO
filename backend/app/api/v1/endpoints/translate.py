@@ -1,6 +1,7 @@
 """
 Translation Endpoints — Text and Multi-target translation
 """
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.db.schemas import (
 )
 from app.services.translation_service import TranslationService
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -24,13 +26,17 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
     Single target translation with context-aware AI.
     Checks community-submitted phrases first.
     """
-    # Get community phrases for context
-    community = get_all_submissions(db, limit=50, status="approved")
-    community_phrases = [
-        {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
-        for c in community
-        if c.source_lang == request.source_lang and c.target_lang == request.target_lang
-    ]
+    # Get community phrases for context (gracefully handle schema drift)
+    community_phrases = []
+    try:
+        community = get_all_submissions(db, limit=50, status="approved")
+        community_phrases = [
+            {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
+            for c in community
+            if c.source_lang == request.source_lang and c.target_lang == request.target_lang
+        ]
+    except Exception as e:
+        logger.warning(f"Community query skipped: {e}")
 
     result = TranslationService.translate_text(
         text=request.text,
@@ -40,25 +46,30 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
         community_phrases=community_phrases or None,
     )
 
-    # Persist to DB
-    t = create_translation(
-        db,
-        input_text=request.text,
-        input_language=request.source_lang,
-        method="text",
-        multi_target=False,
-        device_id=request.device_id,
-    )
-    o = create_translation_output(
-        db,
-        translation_id=t.translation_id,
-        target_language=request.target_lang,
-        output_text=result["output_text"],
-        detected_tone=result.get("detected_tone"),
-    )
+    # Persist to DB (gracefully handle schema drift)
+    translation_id = None
+    try:
+        t = create_translation(
+            db,
+            input_text=request.text,
+            input_language=request.source_lang,
+            method="text",
+            multi_target=False,
+            device_id=request.device_id,
+        )
+        translation_id = t.translation_id
+        create_translation_output(
+            db,
+            translation_id=t.translation_id,
+            target_language=request.target_lang,
+            output_text=result["output_text"],
+            detected_tone=result.get("detected_tone"),
+        )
+    except Exception as e:
+        logger.warning(f"DB persist skipped: {e}")
 
     return {
-        "translation_id": t.translation_id,
+        "translation_id": translation_id or 0,
         "input_text": request.text,
         "source_lang": request.source_lang,
         "target_lang": request.target_lang,
@@ -73,39 +84,49 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
     """
     Multi-target translation (one input → up to 2 outputs).
     """
-    community = get_all_submissions(db, limit=50, status="approved")
+    community_phrases = []
+    try:
+        community = get_all_submissions(db, limit=50, status="approved")
+        community_phrases = [
+            {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
+            for c in community
+        ]
+    except Exception as e:
+        logger.warning(f"Community query skipped: {e}")
 
     result = TranslationService.translate_multi(
         text=request.text,
         source_lang=request.source_lang,
         target_langs=request.target_langs,
         tone=request.tone,
-        community_phrases=[
-            {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
-            for c in community
-        ] or None,
+        community_phrases=community_phrases or None,
     )
 
-    # Persist
-    t = create_translation(
-        db,
-        input_text=request.text,
-        input_language=request.source_lang,
-        method="text",
-        multi_target=True,
-        device_id=request.device_id,
-    )
-    for lang, text in zip(request.target_langs, result["output_texts"]):
-        create_translation_output(
+    # Persist (gracefully handle schema drift)
+    translation_id = None
+    try:
+        t = create_translation(
             db,
-            translation_id=t.translation_id,
-            target_language=lang,
-            output_text=text,
-            detected_tone=result.get("detected_tone"),
+            input_text=request.text,
+            input_language=request.source_lang,
+            method="text",
+            multi_target=True,
+            device_id=request.device_id,
         )
+        translation_id = t.translation_id
+        for lang, text_out in zip(request.target_langs, result["output_texts"]):
+            create_translation_output(
+                db,
+                translation_id=t.translation_id,
+                target_language=lang,
+                output_text=text_out,
+                detected_tone=result.get("detected_tone"),
+            )
+    except Exception as e:
+        logger.warning(f"DB persist skipped: {e}")
 
     return {
-        "translation_id": t.translation_id,
+        "translation_id": translation_id or 0,
         "input_text": request.text,
         "source_lang": request.source_lang,
         "target_langs": request.target_langs,

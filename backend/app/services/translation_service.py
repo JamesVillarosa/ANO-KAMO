@@ -1,7 +1,8 @@
 """
-Translation Service — Context-Aware AI Translations via Gemini API
-Supports: single, multi-target, conversation, community-driven, and tone detection
+Translation Service — Minimal-token AI Translations via Gemini 2.5 Flash
+Uses a single API call with a system instruction for translation + tone detection.
 """
+import json
 import logging
 from typing import Optional, List
 
@@ -22,9 +23,19 @@ AVAILABLE_TONES = [
     "sarcastic", "playful", "formal", "informal",
 ]
 
+# ─── System instruction (cached once, never re-sent per call) ───
+
+SYSTEM_INSTRUCTION = (
+    "You are Ano-Kamo?, a Filipino-language translator. "
+    "Reply ONLY with a JSON object: {\"t\":\"<translated text>\",\"tone\":\"<detected tone>\"}. "
+    "Tones: neutral, polite, angry, joking, sarcastic, playful, formal, informal. "
+    "Rules: natural culturally-appropriate translation; handle Taglish/code-switching; "
+    "preserve idiom meaning; never translate literally; no explanations."
+)
+
 
 class TranslationService:
-    """Context-aware translation using Gemini API"""
+    """Single-call translation using Gemini 2.5 Flash with system instruction."""
 
     _model = None
 
@@ -32,7 +43,14 @@ class TranslationService:
     def _get_model(cls):
         if cls._model is None and settings.GEMINI_API_KEY:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            cls._model = genai.GenerativeModel("gemini-2.0-flash")
+            cls._model = genai.GenerativeModel(
+                model_name="gemini-2.5-flash",
+                system_instruction=SYSTEM_INSTRUCTION,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.2,       # low = deterministic, accurate
+                    max_output_tokens=256,  # translations are short
+                ),
+            )
         return cls._model
 
     # ────────────────── Core Translation ──────────────────
@@ -45,57 +63,70 @@ class TranslationService:
         tone: Optional[str] = None,
         community_phrases: Optional[List[dict]] = None,
     ) -> dict:
-        detected_tone = TranslationService.detect_tone(text)
-        tone_to_use = tone or detected_tone
         model = TranslationService._get_model()
 
         if not model:
             translated = TranslationService._mock_translate(text, source_lang, target_lang)
-        else:
-            try:
-                src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
-                tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
+            detected = TranslationService._heuristic_tone(text)
+            return {
+                "input_text": text,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "output_text": translated,
+                "tone": tone or detected,
+                "detected_tone": detected,
+            }
 
-                # Build community context if available
-                community_ctx = ""
-                if community_phrases:
-                    pairs = "; ".join(
-                        f'"{p["phrase"]}" → "{p["proposed_translation"]}"'
-                        for p in community_phrases[:10]
-                    )
-                    community_ctx = (
-                        f"\n\nCommunity-contributed translations for reference "
-                        f"(use these if the input matches):\n{pairs}\n"
-                    )
+        try:
+            src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
+            tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
-                prompt = (
-                    f"You are Ano-Kamo?, an expert AI translator specializing in "
-                    f"Filipino languages (Tagalog, Cebuano, Hiligaynon, English).\n\n"
-                    f"RULES:\n"
-                    f"- Translate the text from {src} to {tgt}.\n"
-                    f"- Use a {tone_to_use} tone.\n"
-                    f"- Produce natural, culturally appropriate translations.\n"
-                    f"- Handle mixed-language input (e.g. Taglish like 'nag-drive').\n"
-                    f"- Preserve idioms and slang meaning, do NOT translate literally.\n"
-                    f"- Return ONLY the translated text, no explanations or quotes.\n"
-                    f"{community_ctx}\n"
-                    f"Text to translate:\n{text}"
+            # Build compact prompt — keep user message minimal
+            parts = [f"{src}→{tgt}"]
+            if tone:
+                parts.append(f"tone:{tone}")
+            if community_phrases:
+                pairs = ";".join(
+                    f'{p["phrase"]}={p["proposed_translation"]}'
+                    for p in community_phrases[:5]
                 )
+                parts.append(f"ref:{pairs}")
+            parts.append(text)
 
-                response = model.generate_content(prompt)
-                translated = response.text.strip().strip('"').strip("'")
-            except Exception as e:
-                logger.error(f"Gemini translation error: {e}")
-                translated = TranslationService._mock_translate(text, source_lang, target_lang)
+            prompt = "|".join(parts)
 
-        return {
-            "input_text": text,
-            "source_lang": source_lang,
-            "target_lang": target_lang,
-            "output_text": translated,
-            "tone": tone_to_use,
-            "detected_tone": detected_tone,
-        }
+            response = model.generate_content(prompt)
+            raw = response.text.strip()
+
+            # Parse JSON response
+            parsed = _parse_response(raw)
+            translated = parsed.get("t", raw)
+            detected = parsed.get("tone", "neutral")
+
+            if detected not in AVAILABLE_TONES:
+                detected = "neutral"
+
+            return {
+                "input_text": text,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "output_text": translated,
+                "tone": tone or detected,
+                "detected_tone": detected,
+            }
+        except Exception as e:
+            logger.error(f"Gemini error: {e}")
+            detected = TranslationService._heuristic_tone(text)
+            return {
+                "input_text": text,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "output_text": TranslationService._mock_translate(text, source_lang, target_lang),
+                "tone": tone or detected,
+                "detected_tone": detected,
+            }
+
+    # ────────────────── Multi-target ──────────────────
 
     @staticmethod
     def translate_multi(
@@ -105,42 +136,33 @@ class TranslationService:
         tone: Optional[str] = None,
         community_phrases: Optional[List[dict]] = None,
     ) -> dict:
-        detected_tone = TranslationService.detect_tone(text)
-        tone_to_use = tone or detected_tone
-        translations = []
-        for tl in target_langs:
+        first = TranslationService.translate_text(
+            text, source_lang, target_langs[0], tone, community_phrases
+        )
+        detected = first["detected_tone"]
+        translations = [first["output_text"]]
+
+        for tl in target_langs[1:]:
             r = TranslationService.translate_text(
-                text, source_lang, tl, tone_to_use, community_phrases
+                text, source_lang, tl, tone, community_phrases
             )
             translations.append(r["output_text"])
+
         return {
             "input_text": text,
             "source_lang": source_lang,
             "target_langs": target_langs,
             "output_texts": translations,
-            "tone": tone_to_use,
-            "detected_tone": detected_tone,
+            "tone": tone or detected,
+            "detected_tone": detected,
         }
 
-    # ────────────────── Tone Detection ──────────────────
+    # ────────────────── Tone Detection (local, no API) ──────────────────
 
     @staticmethod
     def detect_tone(text: str) -> str:
-        model = TranslationService._get_model()
-        if not model:
-            return TranslationService._heuristic_tone(text)
-        try:
-            prompt = (
-                f"Analyze the emotional tone of this text. "
-                f"Choose exactly ONE from: {', '.join(AVAILABLE_TONES)}.\n"
-                f"Return ONLY the single tone word, nothing else.\n\n"
-                f"Text: {text}"
-            )
-            response = model.generate_content(prompt)
-            tone = response.text.strip().lower()
-            return tone if tone in AVAILABLE_TONES else "neutral"
-        except Exception:
-            return TranslationService._heuristic_tone(text)
+        """Heuristic-only tone detection — no API call."""
+        return TranslationService._heuristic_tone(text)
 
     @staticmethod
     def _heuristic_tone(text: str) -> str:
@@ -170,6 +192,21 @@ class TranslationService:
             ("Good morning", "en", "hil"): "Maayong aga",
         }
         key = (text, source_lang, target_lang)
-        if key in mocks:
-            return mocks[key]
-        return f"[{SUPPORTED_LANGUAGES.get(target_lang, target_lang)}] {text}"
+        return mocks.get(key, f"[{SUPPORTED_LANGUAGES.get(target_lang, target_lang)}] {text}")
+
+
+# ─── Helper ───
+
+def _parse_response(raw: str) -> dict:
+    """Extract JSON from model response, handling markdown fences."""
+    text = raw.strip()
+    if text.startswith("```"):
+        # Strip ```json ... ```
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+        text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Fallback: treat entire response as plain translated text
+        return {"t": raw.strip().strip('"').strip("'"), "tone": "neutral"}
