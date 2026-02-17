@@ -62,7 +62,7 @@ class DictionaryService:
 
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
             src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
             tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)

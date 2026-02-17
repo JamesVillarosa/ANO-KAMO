@@ -57,7 +57,7 @@ class OcrService:
 
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
             # Decode base64
             image_bytes = base64.b64decode(image_base64)

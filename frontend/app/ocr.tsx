@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     StyleSheet,
     View,
@@ -6,11 +6,12 @@ import {
     Alert,
     Clipboard,
     Dimensions,
+    Image,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    Camera,
+    Camera as CameraIcon,
     ImagePlus,
     Zap,
     ZapOff,
@@ -28,6 +29,7 @@ import LanguagePicker from '../src/components/LanguagePicker';
 import DictionaryModal from '../src/components/DictionaryModal';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,6 +40,11 @@ export default function OCRScreen() {
     const [translation, setTranslation] = useState('');
     const [processing, setProcessing] = useState(false);
     const [isFavorite, setIsFavorite] = useState(false);
+    const [capturedImage, setCapturedImage] = useState<string | null>(null);
+
+    // Camera
+    const [permission, requestPermission] = useCameraPermissions();
+    const cameraRef = useRef<CameraView>(null);
 
     // Languages
     const [sourceLang, setSourceLang] = useState('tl');
@@ -47,6 +54,12 @@ export default function OCRScreen() {
     // Dictionary
     const [dictVisible, setDictVisible] = useState(false);
     const [dictWord, setDictWord] = useState('');
+
+    useEffect(() => {
+        if (!permission || !permission.granted) {
+            requestPermission();
+        }
+    }, [permission]);
 
     const processImage = async (uri: string) => {
         setProcessing(true);
@@ -63,20 +76,46 @@ export default function OCRScreen() {
     };
 
     const handleCapture = async () => {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) { Alert.alert('Permission needed', 'Camera access is required'); return; }
-        const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: false });
-        if (!result.canceled && result.assets?.[0]?.uri) {
-            await processImage(result.assets[0].uri);
+        if (!cameraRef.current) return;
+        setProcessing(true);
+        try {
+            const photo = await cameraRef.current.takePictureAsync({
+                quality: 0.7,
+                base64: true,
+            });
+            if (photo && photo.uri) {
+                setCapturedImage(photo.uri);
+                const res = await ocrExtract(photo.base64 || '', targetLang, sourceLang);
+                setExtractedText(res.extracted_text || 'No text detected');
+                setTranslation(res.translated_text || '');
+                setHasResult(true);
+            }
+        } catch (e: any) {
+            Alert.alert('OCR Error', e?.message || 'Could not process image');
         }
+        setProcessing(false);
     };
 
     const handleGallery = async () => {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) { Alert.alert('Permission needed', 'Gallery access is required'); return; }
-        const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: false });
+        const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: true });
         if (!result.canceled && result.assets?.[0]?.uri) {
-            await processImage(result.assets[0].uri);
+            setCapturedImage(result.assets[0].uri);
+            if (result.assets[0].base64) {
+                setProcessing(true);
+                try {
+                    const res = await ocrExtract(result.assets[0].base64, targetLang, sourceLang);
+                    setExtractedText(res.extracted_text || 'No text detected');
+                    setTranslation(res.translated_text || '');
+                    setHasResult(true);
+                } catch (e: any) {
+                    Alert.alert('OCR Error', e?.message || 'Could not process image');
+                }
+                setProcessing(false);
+            } else {
+                await processImage(result.assets[0].uri);
+            }
         }
     };
 
@@ -85,6 +124,7 @@ export default function OCRScreen() {
         setExtractedText('');
         setTranslation('');
         setIsFavorite(false);
+        setCapturedImage(null);
     };
 
     const copyText = (text: string) => {
@@ -96,20 +136,25 @@ export default function OCRScreen() {
         <View style={styles.container}>
             {/* Camera Viewfinder (full screen) */}
             <View style={styles.viewfinder}>
-                {/* Simulated dark camera background */}
-                <View style={styles.cameraFeed}>
-                    {hasResult ? (
-                        <View style={styles.resultOverlay}>
-                            <Camera size={50} color="#475569" />
-                            <Text style={styles.capturedLabel}>Image Captured</Text>
-                        </View>
-                    ) : (
-                        <View style={styles.cameraEmpty}>
-                            <Camera size={50} color="#475569" />
-                            <Text style={styles.cameraHint}>Point camera at text</Text>
-                        </View>
-                    )}
-                </View>
+                {hasResult ? (
+                    <Image source={{ uri: capturedImage || '' }} style={styles.cameraFeed} />
+                ) : (permission && permission.granted) ? (
+                    <CameraView
+                        ref={cameraRef}
+                        style={styles.cameraFeed}
+                        enableTorch={flashOn}
+                        facing="back"
+                    />
+                ) : (
+                    <View style={styles.cameraEmpty}>
+                        <CameraIcon size={50} color="#475569" />
+                        <Text style={styles.cameraHint}>
+                            {permission?.status === 'denied'
+                                ? 'Camera permission denied'
+                                : 'Requesting camera permission...'}
+                        </Text>
+                    </View>
+                )}
 
                 {/* Top Language Bar */}
                 <View style={styles.topBar}>

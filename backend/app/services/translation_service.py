@@ -44,11 +44,12 @@ class TranslationService:
         if cls._model is None and settings.GEMINI_API_KEY:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             cls._model = genai.GenerativeModel(
-                model_name="gemini-2.5-flash",
+                "gemini-1.5-flash", # Model name as positional argument
                 system_instruction=SYSTEM_INSTRUCTION,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.2,       # low = deterministic, accurate
-                    max_output_tokens=256,  # translations are short
+                    temperature=0.2,
+                    max_output_tokens=256,
+                    response_mime_type="application/json",
                 ),
             )
         return cls._model
