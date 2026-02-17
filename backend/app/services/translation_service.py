@@ -1,5 +1,5 @@
 """
-Translation Service — Minimal-token AI Translations via Gemini 2.5 Flash
+Translation Service — Minimal-token AI Translations via Gemini 1.5 Flash
 Uses a single API call with a system instruction for translation + tone detection.
 """
 import json
@@ -35,7 +35,7 @@ SYSTEM_INSTRUCTION = (
 
 
 class TranslationService:
-    """Single-call translation using Gemini 2.5 Flash with system instruction."""
+    """Single-call translation using Gemini 1.5 Flash with system instruction."""
 
     _model = None
 

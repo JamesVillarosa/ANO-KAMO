@@ -26,13 +26,17 @@ import {
   theme,
   glassCard,
   gradientColors,
+  darkGradientColors,
   SUPPORTED_LANGUAGES,
 } from '../src/theme';
+import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import DictionaryModal from '../src/components/DictionaryModal';
-
 export default function HomeScreen() {
+  const { isDarkMode } = useTheme();
+  const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
+
   // Mode toggle
   const [mode, setMode] = useState<'2way' | '3way'>('2way');
 
@@ -95,6 +99,15 @@ export default function HomeScreen() {
     setTranslated2('');
   };
 
+  const swapTarget2 = () => {
+    const oldSource = sourceLang;
+    setSourceLang(targetLang2);
+    setTargetLang2(oldSource);
+    setSourceText(translated2);
+    setTranslated1('');
+    setTranslated2('');
+  };
+
   const handlePickerSelect = (code: string) => {
     if (pickerTarget === 'source') setSourceLang(code);
     else if (pickerTarget === 'target1') setTargetLang1(code);
@@ -115,8 +128,8 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={[...gradientColors]} style={styles.bg} />
+    <View style={[styles.container, isDarkMode && styles.containerDark]}>
+      <LinearGradient colors={[...activeGradient]} style={styles.bg} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -224,9 +237,13 @@ export default function HomeScreen() {
             {/* Target 2 Panel (3-way only) */}
             {mode === '3way' && (
               <>
+                {/* Swap for Target 2 (Moved above label, no line) */}
                 <View style={styles.dividerRow}>
-                  <View style={styles.dividerLine} />
+                  <TouchableOpacity style={styles.swapBtn} onPress={swapTarget2}>
+                    <Repeat size={18} color="#FFF" />
+                  </TouchableOpacity>
                 </View>
+
                 <View style={styles.panel}>
                   <TouchableOpacity
                     style={styles.langRow}
@@ -237,6 +254,7 @@ export default function HomeScreen() {
                     </Text>
                     <ChevronDown size={18} color="#3B82F6" />
                   </TouchableOpacity>
+
                   <View style={styles.outputArea}>
                     {loading2 ? (
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
@@ -294,6 +312,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
+  containerDark: { backgroundColor: '#0F172A' },
   bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   keyboardView: { flex: 1, marginTop: 90 },
   scroll: { paddingHorizontal: 20, paddingBottom: 120 },

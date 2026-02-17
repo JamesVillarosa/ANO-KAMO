@@ -15,10 +15,14 @@ import {
     ChevronRight,
     Heart,
 } from 'lucide-react-native';
-import { gradientColors, glassCard, theme } from '../src/theme';
+import { gradientColors, darkGradientColors, glassCard, darkGlassCard } from '../src/theme';
+import { useTheme } from '../src/context/ThemeContext';
 
 export default function SettingsScreen() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const { isDarkMode, toggleTheme } = useTheme();
+    const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
+    const activeGlassCard = isDarkMode ? darkGlassCard : glassCard;
+
     const [highQualityAudio, setHighQualityAudio] = useState(true);
     const [autoDetectTone, setAutoDetectTone] = useState(true);
 
@@ -37,53 +41,57 @@ export default function SettingsScreen() {
         right?: React.ReactNode;
         onPress?: () => void;
     }) => (
-        <TouchableOpacity style={styles.settingsItem} onPress={onPress} disabled={!onPress && !right}>
+        <TouchableOpacity
+            style={styles.settingsItem}
+            onPress={onPress}
+            disabled={!onPress && !right}
+        >
             <View style={[styles.iconBox, { backgroundColor: iconColor + '18' }]}>
                 <Icon size={18} color={iconColor} />
             </View>
             <View style={styles.itemContent}>
-                <Text style={styles.itemTitle}>{title}</Text>
-                {subtitle ? <Text style={styles.itemSubtitle}>{subtitle}</Text> : null}
+                <Text style={[styles.itemTitle, isDarkMode && styles.textWhite]}>{title}</Text>
+                {subtitle ? <Text style={[styles.itemSubtitle, isDarkMode && styles.textSecondary]}>{subtitle}</Text> : null}
             </View>
-            {right || <ChevronRight size={18} color="#CBD5E1" />}
+            {right || <ChevronRight size={18} color={isDarkMode ? '#64748B' : '#CBD5E1'} />}
         </TouchableOpacity>
     );
 
     return (
-        <View style={styles.container}>
-            <LinearGradient colors={[...gradientColors]} style={styles.bg} />
+        <View style={[styles.container, isDarkMode && styles.containerDark]}>
+            <LinearGradient colors={[...activeGradient]} style={styles.bg} />
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
                 {/* Profile Card */}
-                <View style={styles.profileCard}>
-                    <View style={styles.avatar}>
+                <View style={[styles.profileCard, activeGlassCard]}>
+                    <View style={[styles.avatar, isDarkMode && styles.avatarDark]}>
                         <User size={32} color="#3B82F6" />
                     </View>
                     <View style={styles.profileInfo}>
-                        <Text style={styles.profileName}>Guest User</Text>
-                        <Text style={styles.profileEmail}>guest@ano-kamo.dev</Text>
+                        <Text style={[styles.profileName, isDarkMode && styles.textWhite]}>Guest User</Text>
+                        <Text style={[styles.profileEmail, isDarkMode && styles.textSecondary]}>guest@ano-kamo.dev</Text>
                     </View>
-                    <TouchableOpacity style={styles.editBtn}>
+                    <TouchableOpacity style={[styles.editBtn, isDarkMode && styles.editBtnDark]}>
                         <Text style={styles.editBtnText}>Edit</Text>
                     </TouchableOpacity>
                 </View>
 
                 {/* Preferences */}
                 <Text style={styles.sectionLabel}>PREFERENCES</Text>
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, activeGlassCard]}>
                     <SettingsItem
                         icon={Moon}
                         title="Dark Mode"
                         right={
                             <Switch
                                 value={isDarkMode}
-                                onValueChange={setIsDarkMode}
+                                onValueChange={toggleTheme}
                                 trackColor={{ false: '#E2E8F0', true: '#3B82F6' }}
                                 thumbColor="#FFF"
                             />
                         }
                     />
-                    <View style={styles.separator} />
+                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={Volume2}
                         iconColor="#10B981"
@@ -98,7 +106,7 @@ export default function SettingsScreen() {
                             />
                         }
                     />
-                    <View style={styles.separator} />
+                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={Sparkles}
                         iconColor="#8B5CF6"
@@ -117,14 +125,14 @@ export default function SettingsScreen() {
 
                 {/* Data */}
                 <Text style={styles.sectionLabel}>ACCOUNT & DATA</Text>
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, activeGlassCard]}>
                     <SettingsItem
                         icon={Trash2}
                         iconColor="#EF4444"
                         title="Clear History"
                         onPress={() => { }}
                     />
-                    <View style={styles.separator} />
+                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={Download}
                         iconColor="#F59E0B"
@@ -136,19 +144,19 @@ export default function SettingsScreen() {
 
                 {/* About */}
                 <Text style={styles.sectionLabel}>ABOUT</Text>
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, activeGlassCard]}>
                     <SettingsItem
                         icon={Info}
                         title="Version"
                         right={<Text style={styles.versionText}>1.0.0</Text>}
                     />
-                    <View style={styles.separator} />
+                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={FileText}
                         title="Terms of Service"
                         onPress={() => { }}
                     />
-                    <View style={styles.separator} />
+                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={Shield}
                         title="Privacy Policy"
@@ -168,12 +176,12 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
+    containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     scroll: { paddingTop: 100, paddingHorizontal: 20, paddingBottom: 40 },
 
     /* Profile */
     profileCard: {
-        ...glassCard,
         flexDirection: 'row',
         alignItems: 'center',
         padding: 18,
@@ -187,6 +195,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    avatarDark: { backgroundColor: '#1E293B' },
     profileInfo: { flex: 1, marginLeft: 14 },
     profileName: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
     profileEmail: { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -196,6 +205,7 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 12,
     },
+    editBtnDark: { backgroundColor: '#1E293B' },
     editBtnText: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
 
     /* Section */
@@ -208,7 +218,6 @@ const styles = StyleSheet.create({
         marginLeft: 4,
     },
     sectionCard: {
-        ...glassCard,
         padding: 6,
         marginBottom: 20,
     },
@@ -232,6 +241,9 @@ const styles = StyleSheet.create({
     itemTitle: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
     itemSubtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
     separator: { height: 1, backgroundColor: '#F1F5F9', marginHorizontal: 12 },
+    separatorDark: { backgroundColor: '#334155' },
+    textWhite: { color: '#F8FAFC' },
+    textSecondary: { color: '#94A3B8' },
     versionText: { fontSize: 14, color: '#94A3B8' },
 
     /* Footer */

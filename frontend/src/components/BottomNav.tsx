@@ -4,6 +4,8 @@ import { Text } from 'react-native-paper';
 import { useRouter, usePathname } from 'expo-router';
 import { Type, Camera, MessageSquare } from 'lucide-react-native';
 
+import { useTheme } from '../context/ThemeContext';
+
 const { width } = Dimensions.get('window');
 
 const TABS = [
@@ -15,30 +17,34 @@ const TABS = [
 export default function BottomNav() {
     const router = useRouter();
     const pathname = usePathname();
+    const { isDarkMode } = useTheme();
 
     const activeTab = pathname === '/' ? 'text'
         : pathname === '/ocr' ? 'camera'
             : pathname === '/conversation' ? 'conversation'
                 : 'text';
 
+    const activeColor = isDarkMode ? '#F8FAFC' : '#1E293B';
+    const inactiveColor = isDarkMode ? '#64748B' : '#64748B';
+
     return (
         <View style={styles.container}>
-            <View style={styles.nav}>
+            <View style={[styles.nav, isDarkMode && styles.navDark]}>
                 {TABS.map((tab) => {
                     const isActive = activeTab === tab.key;
                     const IconComponent = tab.icon;
                     return (
                         <TouchableOpacity
                             key={tab.key}
-                            style={[styles.item, isActive && styles.itemActive]}
+                            style={[styles.item, isActive && (isDarkMode ? styles.itemActiveDark : styles.itemActive)]}
                             onPress={() => {
                                 if (tab.route !== `/${pathname.replace('/', '')}` && !(tab.route === '/' && pathname === '/')) {
                                     router.push(tab.route as any);
                                 }
                             }}
                         >
-                            <IconComponent size={20} color={isActive ? '#1E293B' : '#64748B'} />
-                            <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
+                            <IconComponent size={20} color={isActive ? activeColor : inactiveColor} />
+                            <Text style={[styles.label, isActive && (isDarkMode ? styles.labelActiveDark : styles.labelActive)]}>{tab.label}</Text>
                         </TouchableOpacity>
                     );
                 })}
@@ -68,6 +74,10 @@ const styles = StyleSheet.create({
         width: width * 0.88,
         justifyContent: 'space-between',
     },
+    navDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.95)',
+        shadowOpacity: 0.3,
+    },
     item: {
         flex: 1,
         flexDirection: 'row',
@@ -84,6 +94,11 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2,
     },
+    itemActiveDark: {
+        backgroundColor: '#334155',
+        shadowColor: '#000',
+        shadowOpacity: 0.2,
+    },
     label: {
         fontSize: 12,
         fontWeight: '600',
@@ -92,5 +107,8 @@ const styles = StyleSheet.create({
     },
     labelActive: {
         color: '#1E293B',
+    },
+    labelActiveDark: {
+        color: '#F8FAFC',
     },
 });

@@ -3,6 +3,7 @@ import { StyleSheet, View, TouchableOpacity, Modal } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Check, X } from 'lucide-react-native';
 import { SUPPORTED_LANGUAGES } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 
 interface LanguagePickerProps {
     visible: boolean;
@@ -21,6 +22,7 @@ export default function LanguagePicker({
     exclude = [],
     title = 'Select Language',
 }: LanguagePickerProps) {
+    const { isDarkMode } = useTheme();
     const languages = Object.entries(SUPPORTED_LANGUAGES).filter(
         ([code]) => !exclude.includes(code)
     );
@@ -28,20 +30,27 @@ export default function LanguagePicker({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onDismiss}>
-                <View style={styles.container}>
+                <View style={[styles.container, isDarkMode && styles.containerDark]}>
                     <View style={styles.header}>
-                        <Text style={styles.title}>{title}</Text>
+                        <Text style={[styles.title, isDarkMode && styles.textWhite]}>{title}</Text>
                         <TouchableOpacity onPress={onDismiss}>
-                            <X size={22} color="#64748B" />
+                            <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                         </TouchableOpacity>
                     </View>
                     {languages.map(([code, name]) => (
                         <TouchableOpacity
                             key={code}
-                            style={[styles.option, selected === code && styles.optionSelected]}
+                            style={[
+                                styles.option,
+                                selected === code && (isDarkMode ? styles.optionSelectedDark : styles.optionSelected)
+                            ]}
                             onPress={() => { onSelect(code); onDismiss(); }}
                         >
-                            <Text style={[styles.optionText, selected === code && styles.optionTextSelected]}>
+                            <Text style={[
+                                styles.optionText,
+                                isDarkMode && styles.textSecondary,
+                                selected === code && (isDarkMode ? styles.optionTextSelectedDark : styles.optionTextSelected)
+                            ]}>
                                 {name}
                             </Text>
                             {selected === code && <Check size={18} color="#3B82F6" />}
@@ -56,7 +65,7 @@ export default function LanguagePicker({
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -66,6 +75,9 @@ const styles = StyleSheet.create({
         padding: 20,
         width: '80%',
         maxWidth: 340,
+    },
+    containerDark: {
+        backgroundColor: '#1E293B',
     },
     header: {
         flexDirection: 'row',
@@ -78,6 +90,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#1E293B',
     },
+    textWhite: { color: '#FFFFFF' },
     option: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -90,12 +103,20 @@ const styles = StyleSheet.create({
     optionSelected: {
         backgroundColor: '#EFF6FF',
     },
+    optionSelectedDark: {
+        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    },
     optionText: {
         fontSize: 16,
         color: '#475569',
     },
+    textSecondary: { color: '#94A3B8' },
     optionTextSelected: {
         color: '#3B82F6',
+        fontWeight: '600',
+    },
+    optionTextSelectedDark: {
+        color: '#60A5FA',
         fontWeight: '600',
     },
 });

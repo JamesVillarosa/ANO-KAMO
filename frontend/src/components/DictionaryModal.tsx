@@ -3,7 +3,7 @@ import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollVie
 import { Text } from 'react-native-paper';
 import { X, Volume2 } from 'lucide-react-native';
 import { dictionaryLookup } from '../lib/api';
-import { SUPPORTED_LANGUAGES } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 
 interface DictionaryModalProps {
     visible: boolean;
@@ -29,6 +29,7 @@ export default function DictionaryModal({
     sourceLang,
     targetLang,
 }: DictionaryModalProps) {
+    const { isDarkMode } = useTheme();
     const [loading, setLoading] = useState(false);
     const [entry, setEntry] = useState<DictionaryEntry | null>(null);
 
@@ -64,10 +65,10 @@ export default function DictionaryModal({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <View style={styles.overlay}>
-                <View style={styles.container}>
+                <View style={[styles.container, isDarkMode && styles.containerDark]}>
                     {/* Close button */}
                     <TouchableOpacity style={styles.closeBtn} onPress={onDismiss}>
-                        <X size={22} color="#94A3B8" />
+                        <X size={22} color={isDarkMode ? '#64748B' : '#94A3B8'} />
                     </TouchableOpacity>
 
                     {loading ? (
@@ -78,15 +79,15 @@ export default function DictionaryModal({
                         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
                             {/* Word */}
                             <View style={styles.wordRow}>
-                                <Text style={styles.word}>{entry.word}</Text>
+                                <Text style={[styles.word, isDarkMode && styles.textWhite]}>{entry.word}</Text>
                                 <TouchableOpacity style={styles.speakerBtn}>
                                     <Volume2 size={20} color="#3B82F6" />
                                 </TouchableOpacity>
                             </View>
 
                             {/* Part of Speech */}
-                            <View style={styles.posBadge}>
-                                <Text style={styles.posText}>{entry.partOfSpeech}</Text>
+                            <View style={[styles.posBadge, isDarkMode && styles.posBadgeDark]}>
+                                <Text style={[styles.posText, isDarkMode && styles.posTextDark]}>{entry.partOfSpeech}</Text>
                             </View>
 
                             {/* Pronunciation */}
@@ -98,7 +99,7 @@ export default function DictionaryModal({
                                     <Text style={styles.sectionTitle}>Synonyms</Text>
                                     <View style={styles.synonymsRow}>
                                         {entry.synonyms.map((s, i) => (
-                                            <View key={i} style={styles.synonymChip}>
+                                            <View key={i} style={[styles.synonymChip, isDarkMode && styles.synonymChipDark]}>
                                                 <Text style={styles.synonymText}>{s}</Text>
                                             </View>
                                         ))}
@@ -108,12 +109,12 @@ export default function DictionaryModal({
 
                             {/* Definition */}
                             <Text style={styles.sectionTitle}>Definition</Text>
-                            <Text style={styles.definitionText}>{entry.meaning}</Text>
+                            <Text style={[styles.definitionText, isDarkMode && styles.textSecondary]}>{entry.meaning}</Text>
 
                             {/* Example */}
                             <Text style={styles.sectionTitle}>Example</Text>
-                            <View style={styles.exampleBox}>
-                                <Text style={styles.exampleText}>"{entry.example}"</Text>
+                            <View style={[styles.exampleBox, isDarkMode && styles.exampleBoxDark]}>
+                                <Text style={[styles.exampleText, isDarkMode && styles.textMuted]}>"{entry.example}"</Text>
                             </View>
                         </ScrollView>
                     ) : null}
@@ -132,12 +133,15 @@ const styles = StyleSheet.create({
         padding: 24,
     },
     container: {
-        backgroundColor: '#1E293B',
+        backgroundColor: '#FFFFFF',
         borderRadius: 28,
         padding: 28,
         width: '100%',
         maxWidth: 380,
         maxHeight: '75%',
+    },
+    containerDark: {
+        backgroundColor: '#1E293B',
     },
     closeBtn: {
         position: 'absolute',
@@ -153,8 +157,6 @@ const styles = StyleSheet.create({
     scroll: {
         paddingTop: 8,
     },
-
-    /* Word */
     wordRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -163,9 +165,10 @@ const styles = StyleSheet.create({
     word: {
         fontSize: 36,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: '#1E293B',
         marginRight: 14,
     },
+    textWhite: { color: '#FFFFFF' },
     speakerBtn: {
         width: 40,
         height: 40,
@@ -174,31 +177,27 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-
-    /* Part of Speech */
     posBadge: {
         alignSelf: 'flex-start',
-        backgroundColor: 'rgba(100, 116, 139, 0.3)',
+        backgroundColor: 'rgba(100, 116, 139, 0.1)',
         paddingHorizontal: 14,
         paddingVertical: 5,
         borderRadius: 10,
         marginBottom: 8,
     },
+    posBadgeDark: { backgroundColor: 'rgba(148, 163, 184, 0.2)' },
     posText: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#94A3B8',
+        color: '#64748B',
     },
-
-    /* Pronunciation */
+    posTextDark: { color: '#94A3B8' },
     pronunciation: {
         fontSize: 16,
         color: '#64748B',
         fontStyle: 'italic',
         marginBottom: 20,
     },
-
-    /* Sections */
     sectionTitle: {
         fontSize: 12,
         fontWeight: '700',
@@ -208,8 +207,6 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         marginTop: 4,
     },
-
-    /* Synonyms */
     synonymsRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -217,37 +214,37 @@ const styles = StyleSheet.create({
         marginBottom: 18,
     },
     synonymChip: {
-        backgroundColor: 'rgba(59, 130, 246, 0.12)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
         paddingHorizontal: 14,
         paddingVertical: 6,
         borderRadius: 12,
     },
+    synonymChipDark: { backgroundColor: 'rgba(96, 165, 250, 0.15)' },
     synonymText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#60A5FA',
+        color: '#3B82F6',
     },
-
-    /* Definition */
     definitionText: {
         fontSize: 15,
-        color: '#CBD5E1',
+        color: '#475569',
         lineHeight: 24,
         marginBottom: 18,
     },
-
-    /* Example */
+    textSecondary: { color: '#CBD5E1' },
     exampleBox: {
-        backgroundColor: 'rgba(100, 116, 139, 0.15)',
+        backgroundColor: 'rgba(100, 116, 139, 0.05)',
         borderRadius: 14,
         padding: 16,
         borderLeftWidth: 3,
         borderLeftColor: '#3B82F6',
     },
+    exampleBoxDark: { backgroundColor: 'rgba(148, 163, 184, 0.1)' },
     exampleText: {
         fontSize: 14,
-        color: '#94A3B8',
+        color: '#64748B',
         fontStyle: 'italic',
         lineHeight: 22,
     },
+    textMuted: { color: '#94A3B8' },
 });

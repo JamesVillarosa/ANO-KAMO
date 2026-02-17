@@ -1,9 +1,9 @@
-import { DefaultTheme } from 'react-native-paper';
+import { DefaultTheme, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
 
-export const theme = {
-    ...DefaultTheme,
+export const lightTheme = {
+    ...MD3LightTheme,
     colors: {
-        ...DefaultTheme.colors,
+        ...MD3LightTheme.colors,
         primary: '#3B82F6',
         accent: '#6366F1',
         background: '#EDF1F7',
@@ -19,18 +19,48 @@ export const theme = {
     roundness: 24,
 };
 
+export const darkTheme = {
+    ...MD3DarkTheme,
+    colors: {
+        ...MD3DarkTheme.colors,
+        primary: '#60A5FA',
+        accent: '#818CF8',
+        background: '#0F172A',
+        surface: 'rgba(30, 41, 59, 0.85)',
+        text: '#F8FAFC',
+        secondaryText: '#94A3B8',
+        error: '#F87171',
+        placeholder: '#64748B',
+        white: '#FFFFFF',
+        success: '#34D399',
+        warning: '#FBBF24',
+    },
+    roundness: 24,
+};
+
+// Legacy export for backward compatibility
+export const theme = lightTheme;
+
 export const gradientColors = ['#E0E7FF', '#F0F4FF', '#FFFFFF'] as const;
+export const darkGradientColors = ['#1E293B', '#0F172A', '#020617'] as const;
 
 export const glassCard = {
     backgroundColor: 'rgba(255, 255, 255, 0.75)',
     borderRadius: 32,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.85)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 24,
     elevation: 5,
+};
+
+export const darkGlassCard = {
+    ...glassCard,
+    backgroundColor: 'rgba(30, 41, 59, 0.75)',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    shadowOpacity: 0.2,
 };
 
 export const SUPPORTED_LANGUAGES: Record<string, string> = {
