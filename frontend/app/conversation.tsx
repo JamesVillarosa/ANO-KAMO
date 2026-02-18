@@ -50,19 +50,19 @@ interface Message {
 // Glass-compatible speaker themes
 const SPEAKER_THEMES = [
     { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
-    { bg: 'rgba(241, 245, 249, 0.85)', text: '#1E293B', trans: '#64748B', label: 'Speaker 2' },
-    { bg: 'rgba(245, 158, 11, 0.85)', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },
+    { bg: 'rgba(239, 68, 68, 0.85)', text: '#FFFFFF', trans: '#FECACA', label: 'Speaker 2' },
 ];
 
 const SPEAKER_3WAY = [
     { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
-    { bg: 'rgba(245, 158, 11, 0.85)', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },
-    { bg: 'rgba(236, 72, 153, 0.85)', text: '#FFFFFF', trans: '#FBCFE8', label: 'Speaker 3' },
+    { bg: 'rgba(239, 68, 68, 0.85)', text: '#FFFFFF', trans: '#FECACA', label: 'Speaker 2' },
+    { bg: 'rgba(234, 179, 8, 0.85)', text: '#FFFFFF', trans: '#FEF08A', label: 'Speaker 3' },
 ];
 
 const DARK_SPEAKER_THEMES = [
     { bg: 'rgba(37, 99, 235, 0.75)', text: '#FFFFFF', trans: '#93C5FD', label: 'Speaker 1' },
-    { bg: 'rgba(30, 41, 59, 0.75)', text: '#F8FAFC', trans: '#94A3B8', label: 'Speaker 2' },
+    { bg: 'rgba(220, 38, 38, 0.75)', text: '#FFFFFF', trans: '#FCA5A5', label: 'Speaker 2' },
+    { bg: 'rgba(202, 138, 4, 0.75)', text: '#FFFFFF', trans: '#FDE047', label: 'Speaker 3' },
 ];
 
 export default function ConversationScreen() {
@@ -198,19 +198,20 @@ export default function ConversationScreen() {
                                 key={i}
                                 style={[
                                     styles.speakerChip,
-                                    { borderColor: t.bg },
+                                    { borderColor: isActive ? t.bg : 'rgba(0,0,0,0.1)' },
                                     isActive && { backgroundColor: t.bg },
+                                    isDarkMode && !isActive && { borderColor: 'rgba(255,255,255,0.2)' }
                                 ]}
                                 onPress={() => setActiveSpeaker(i)}
                                 onLongPress={() => setPickerFor(i)}
                             >
                                 <Text style={[
                                     styles.speakerChipText,
-                                    { color: isActive ? '#FFF' : t.bg },
+                                    { color: isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B') },
                                 ]}>
                                     {SUPPORTED_LANGUAGES[getLang(i)]}
                                 </Text>
-                                <ChevronDown size={12} color={isActive ? '#FFF' : t.bg} />
+                                <ChevronDown size={12} color={isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
                             </TouchableOpacity>
                         );
                     })}
@@ -369,7 +370,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     toggleActive: {
-        backgroundColor: '#FFF',
+        backgroundColor: 'rgba(255,255,255,0.7)',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
@@ -495,10 +496,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         backgroundColor: 'rgba(255,255,255,0.5)',
         borderRadius: 20,
+        outlineStyle: 'none',
     },
     textInputDark: {
         color: '#F8FAFC',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        outlineStyle: 'none',
     },
     sendBtn: { padding: 10 },
 });

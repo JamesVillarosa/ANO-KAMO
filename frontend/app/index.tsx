@@ -182,7 +182,7 @@ export default function HomeScreen() {
                 style={styles.langRow}
                 onPress={() => setPickerTarget('source')}
               >
-                <Text style={styles.langLabel}>
+                <Text style={[styles.langLabel, isDarkMode && styles.textWhite]}>
                   {SUPPORTED_LANGUAGES[sourceLang]}
                 </Text>
                 <ChevronDown size={18} color="#3B82F6" />
@@ -216,7 +216,7 @@ export default function HomeScreen() {
                 style={styles.langRow}
                 onPress={() => setPickerTarget('target1')}
               >
-                <Text style={styles.langLabel}>
+                <Text style={[styles.langLabel, isDarkMode && styles.textWhite]}>
                   {SUPPORTED_LANGUAGES[targetLang1]}
                 </Text>
                 <ChevronDown size={18} color="#3B82F6" />
@@ -225,7 +225,7 @@ export default function HomeScreen() {
                 {loading1 ? (
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
-                  <Text style={[styles.outputText, !translated1 && { color: '#94A3B8' }]}>
+                  <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}>
                     {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
                   </Text>
                 )}
@@ -264,7 +264,7 @@ export default function HomeScreen() {
                     style={styles.langRow}
                     onPress={() => setPickerTarget('target2')}
                   >
-                    <Text style={styles.langLabel}>
+                    <Text style={[styles.langLabel, isDarkMode && styles.textWhite]}>
                       {SUPPORTED_LANGUAGES[targetLang2]}
                     </Text>
                     <ChevronDown size={18} color="#3B82F6" />
@@ -274,7 +274,7 @@ export default function HomeScreen() {
                     {loading2 ? (
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                     ) : (
-                      <Text style={[styles.outputText, !translated2 && { color: '#94A3B8' }]}>
+                      <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}>
                         {translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
                       </Text>
                     )}
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toggleActive: {
-    backgroundColor: '#FFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -390,9 +390,11 @@ const styles = StyleSheet.create({
     maxHeight: 150,
     textAlignVertical: 'top',
     padding: 0,
+    outlineStyle: 'none',
   },
   outputArea: { minHeight: 60 },
-  outputText: { fontSize: 17, color: '#1E293B' },
+  outputText: { fontSize: 17, color: '#1E293B', lineHeight: 24 },
+  outputTextDark: { color: '#F8FAFC' },
   panelFooter: { flexDirection: 'row', marginTop: 14, gap: 10 },
   iconCircle: {
     width: 42,

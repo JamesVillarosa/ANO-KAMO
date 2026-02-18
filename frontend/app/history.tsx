@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     toggleActive: {
-        backgroundColor: '#FFF',
+        backgroundColor: 'rgba(255,255,255,0.45)',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
