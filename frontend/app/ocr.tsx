@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     Camera as CameraIcon,
     ImagePlus,
@@ -22,7 +23,8 @@ import {
     Heart,
     RotateCcw,
 } from 'lucide-react-native';
-import { gradientColors, glassCard, SUPPORTED_LANGUAGES } from '../src/theme';
+import { gradientColors, glassCard, SUPPORTED_LANGUAGES, darkGradientColors } from '../src/theme';
+import { useTheme } from '../src/context/ThemeContext';
 import { ocrExtract } from '../src/lib/api';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
@@ -34,6 +36,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 const { width, height } = Dimensions.get('window');
 
 export default function OCRScreen() {
+    const { isDarkMode } = useTheme();
     const [hasResult, setHasResult] = useState(false);
     const [flashOn, setFlashOn] = useState(false);
     const [extractedText, setExtractedText] = useState('');
@@ -133,7 +136,8 @@ export default function OCRScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, isDarkMode && styles.containerDark]}>
+            <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
             {/* Camera Viewfinder (full screen) */}
             <View style={styles.viewfinder}>
                 {hasResult ? (
@@ -157,7 +161,7 @@ export default function OCRScreen() {
                 )}
 
                 {/* Top Language Bar */}
-                <View style={styles.topBar}>
+                <BlurView intensity={30} tint="dark" style={styles.topBar}>
                     <TouchableOpacity
                         style={styles.langChip}
                         onPress={() => setPickerTarget('source')}
@@ -179,50 +183,52 @@ export default function OCRScreen() {
                         </Text>
                         <ChevronDown size={14} color="#FFF" />
                     </TouchableOpacity>
-                </View>
+                </BlurView>
 
                 {/* Translation Overlay on Image */}
                 {hasResult && translation ? (
-                    <View style={styles.transOverlay}>
+                    <BlurView intensity={40} tint="dark" style={styles.transOverlay}>
                         <Text style={styles.transOverlayText}>{translation}</Text>
-                    </View>
+                    </BlurView>
                 ) : null}
 
-                {/* Bottom Controls */}
-                <View style={styles.bottomControls}>
-                    {/* Left: Gallery */}
-                    <TouchableOpacity style={styles.sideBtn} onPress={handleGallery}>
-                        <ImagePlus size={22} color="#FFF" />
-                    </TouchableOpacity>
-
-                    {/* Center: Shutter */}
-                    {hasResult ? (
-                        <TouchableOpacity style={styles.shutterBtn} onPress={resetCamera}>
-                            <RotateCcw size={28} color="#FFF" />
+                {/* Bottom Controls Area */}
+                <View style={styles.bottomArea}>
+                    <BlurView intensity={40} tint="dark" style={styles.bottomControls}>
+                        {/* Left: Gallery */}
+                        <TouchableOpacity style={styles.sideBtn} onPress={handleGallery}>
+                            <ImagePlus size={22} color="#FFF" />
                         </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity style={styles.shutterBtn} onPress={handleCapture} disabled={processing}>
-                            {processing ? (
-                                <ActivityIndicator color="#FFF" size="large" />
+
+                        {/* Center: Shutter */}
+                        {hasResult ? (
+                            <TouchableOpacity style={styles.shutterBtn} onPress={resetCamera}>
+                                <RotateCcw size={28} color="#FFF" />
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity style={styles.shutterBtn} onPress={handleCapture} disabled={processing}>
+                                {processing ? (
+                                    <ActivityIndicator color="#FFF" size="large" />
+                                ) : (
+                                    <View style={styles.shutterInner} />
+                                )}
+                            </TouchableOpacity>
+                        )}
+
+                        {/* Right: Flash */}
+                        <TouchableOpacity style={styles.sideBtn} onPress={() => setFlashOn(!flashOn)}>
+                            {flashOn ? (
+                                <Zap size={22} color="#F59E0B" />
                             ) : (
-                                <View style={styles.shutterInner} />
+                                <ZapOff size={22} color="#FFF" />
                             )}
                         </TouchableOpacity>
-                    )}
-
-                    {/* Right: Flash */}
-                    <TouchableOpacity style={styles.sideBtn} onPress={() => setFlashOn(!flashOn)}>
-                        {flashOn ? (
-                            <Zap size={22} color="#F59E0B" />
-                        ) : (
-                            <ZapOff size={22} color="#FFF" />
-                        )}
-                    </TouchableOpacity>
+                    </BlurView>
                 </View>
 
                 {/* Result Actions Bar */}
                 {hasResult ? (
-                    <View style={styles.resultBar}>
+                    <BlurView intensity={35} tint="dark" style={styles.resultBar}>
                         <TouchableOpacity style={styles.resultAction}>
                             <Volume2 size={18} color="#FFF" />
                         </TouchableOpacity>
@@ -242,7 +248,7 @@ export default function OCRScreen() {
                                 fill={isFavorite ? '#EF4444' : 'none'}
                             />
                         </TouchableOpacity>
-                    </View>
+                    </BlurView>
                 ) : null}
             </View>
 
@@ -270,7 +276,9 @@ export default function OCRScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
+    container: { flex: 1, backgroundColor: '#FFF' },
+    containerDark: { backgroundColor: '#0F172A' },
+    bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
     /* Camera Full Screen */
     viewfinder: {
@@ -294,7 +302,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     capturedLabel: {
-        color: '#64748B',
+        color: '#94A3B8',
         fontSize: 14,
         marginTop: 10,
     },
@@ -302,24 +310,27 @@ const styles = StyleSheet.create({
     /* Top Language Bar */
     topBar: {
         position: 'absolute',
-        top: 100,
-        left: 0,
-        right: 0,
+        top: 60,
+        alignSelf: 'center',
         flexDirection: 'row',
-        justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 30,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden',
     },
     langChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        paddingHorizontal: 18,
-        paddingVertical: 10,
-        borderRadius: 24,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
     },
     langChipText: {
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: '700',
         color: '#FFFFFF',
         marginRight: 6,
     },
@@ -332,72 +343,93 @@ const styles = StyleSheet.create({
     /* Translation Overlay */
     transOverlay: {
         position: 'absolute',
-        bottom: 220,
+        bottom: 240,
         left: 24,
         right: 24,
-        backgroundColor: 'rgba(59, 130, 246, 0.9)',
-        padding: 16,
-        borderRadius: 16,
+        backgroundColor: 'rgba(59, 130, 246, 0.4)',
+        padding: 20,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        overflow: 'hidden',
     },
     transOverlayText: {
         color: '#FFF',
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '700',
         textAlign: 'center',
-        lineHeight: 24,
+        lineHeight: 26,
+        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
     },
 
     /* Bottom Controls */
-    bottomControls: {
+    bottomArea: {
         position: 'absolute',
-        bottom: 120,
+        bottom: 110,
         left: 0,
         right: 0,
+        alignItems: 'center',
+    },
+    bottomControls: {
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 40,
+        gap: 32,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 32,
+        paddingVertical: 20,
+        borderRadius: 100,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        overflow: 'hidden',
     },
     sideBtn: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.15)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     shutterBtn: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        width: 76,
+        height: 76,
+        borderRadius: 38,
+        backgroundColor: 'rgba(255,255,255,0.25)',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 3,
-        borderColor: 'rgba(255,255,255,0.4)',
+        borderColor: '#FFF',
     },
     shutterInner: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         backgroundColor: '#FFFFFF',
     },
 
     /* Result Actions */
     resultBar: {
         position: 'absolute',
-        bottom: 180,
-        left: 0,
-        right: 0,
+        bottom: 230,
+        alignSelf: 'center',
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: 16,
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        padding: 8,
+        borderRadius: 30,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        overflow: 'hidden',
     },
     resultAction: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        backgroundColor: 'rgba(255,255,255,0.12)',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },

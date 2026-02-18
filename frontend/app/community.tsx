@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     Plus,
     ThumbsUp,
@@ -24,7 +25,8 @@ import {
     submitPhrase as apiSubmitPhrase,
     voteSubmission as apiVoteSubmission,
 } from '../src/lib/api';
-import { gradientColors, glassCard, SUPPORTED_LANGUAGES } from '../src/theme';
+import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED_LANGUAGES } from '../src/theme';
+import { useTheme } from '../src/context/ThemeContext';
 import LanguagePicker from '../src/components/LanguagePicker';
 
 interface Submission {
@@ -39,6 +41,8 @@ interface Submission {
 }
 
 export default function CommunityScreen() {
+    const { isDarkMode } = useTheme();
+    const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
     const [submissions, setSubmissions] = useState<Submission[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
@@ -104,7 +108,11 @@ export default function CommunityScreen() {
         status === 'approved' ? '#10B981' : status === 'rejected' ? '#EF4444' : '#F59E0B';
 
     const renderItem = ({ item }: { item: Submission }) => (
-        <View style={styles.card}>
+        <BlurView
+            intensity={isDarkMode ? 30 : 50}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.card, isDarkMode && styles.cardDark]}
+        >
             <View style={styles.cardHeader}>
                 <View style={[styles.statusBadge, { backgroundColor: statusColor(item.status) + '22' }]}>
                     <Text style={[styles.statusText, { color: statusColor(item.status) }]}>
@@ -129,15 +137,15 @@ export default function CommunityScreen() {
                     <Text style={styles.noteText}>{item.notes}</Text>
                 </View>
             ) : null}
-            <Text style={styles.langMeta}>
+            <Text style={[styles.langMeta, isDarkMode && styles.textSecondary]}>
                 {item.source_lang.toUpperCase()} → {item.target_lang.toUpperCase()}
             </Text>
-        </View>
+        </BlurView>
     );
 
     return (
-        <View style={styles.container}>
-            <LinearGradient colors={[...gradientColors]} style={styles.bg} />
+        <View style={[styles.container, isDarkMode && styles.containerDark]}>
+            <LinearGradient colors={[...activeGradient]} style={styles.bg} />
 
             <View style={styles.content}>
                 <Text style={styles.subtitle}>
@@ -172,12 +180,16 @@ export default function CommunityScreen() {
             {/* Submit Modal */}
             <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modal}>
+                    <BlurView
+                        intensity={60}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.modal, isDarkMode && styles.modalDark]}
+                    >
                         <View style={styles.modalHandle} />
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Suggest a Phrase</Text>
+                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Phrase</Text>
                             <TouchableOpacity onPress={() => setModalVisible(false)}>
-                                <X size={22} color="#64748B" />
+                                <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                             </TouchableOpacity>
                         </View>
 
@@ -231,7 +243,7 @@ export default function CommunityScreen() {
                             <Send size={18} color="#FFF" />
                             <Text style={styles.submitText}>Submit</Text>
                         </TouchableOpacity>
-                    </View>
+                    </BlurView>
                 </View>
             </Modal>
 
@@ -250,22 +262,34 @@ export default function CommunityScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
+    containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     content: { flex: 1, paddingTop: 100, paddingHorizontal: 20 },
-    subtitle: { fontSize: 14, color: '#64748B', marginBottom: 16, lineHeight: 20 },
+    subtitle: { fontSize: 13, color: '#64748B', marginBottom: 20, lineHeight: 20 },
 
     /* Card */
-    card: { ...glassCard, padding: 16, marginBottom: 12 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-    statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
+    card: {
+        ...glassCard,
+        padding: 16,
+        marginBottom: 12,
+        overflow: 'hidden',
+    },
+    cardDark: {
+        ...darkGlassCard,
+        backgroundColor: 'rgba(30, 41, 59, 0.45)', // Blur support
+    },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
     statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-    voteRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    voteRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     voteCount: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
-    phrase: { fontSize: 14, color: '#64748B', marginBottom: 2 },
-    translation: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 6 },
-    noteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+    phrase: { fontSize: 13, color: '#64748B', marginBottom: 2 },
+    translation: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
+    noteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
     noteText: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
     langMeta: { fontSize: 11, color: '#94A3B8' },
+    textWhite: { color: '#F8FAFC' },
+    textSecondary: { color: '#94A3B8' },
 
     /* FAB */
     fab: {
@@ -287,34 +311,58 @@ const styles = StyleSheet.create({
 
     /* Modal */
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-    modal: { backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
-    modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 20, fontWeight: '700', color: '#1E293B' },
-    modalLangs: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-    modalLangChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
-    modalLangText: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginRight: 4 },
-    modalArrow: { fontSize: 16, color: '#94A3B8', marginHorizontal: 12 },
-    modalInput: {
-        backgroundColor: '#F8FAFC',
-        borderRadius: 14,
+    modal: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        paddingBottom: 40,
+        overflow: 'hidden',
+    },
+    modalDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    },
+    modalHandle: { width: 40, height: 4, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    modalTitle: { fontSize: 22, fontWeight: '700', color: '#1E293B' },
+    modalLangs: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+    modalLangChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.5)',
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingVertical: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    modalLangText: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginRight: 6 },
+    modalArrow: { fontSize: 16, color: '#94A3B8', marginHorizontal: 16 },
+    modalInput: {
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 16,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
         fontSize: 15,
         color: '#1E293B',
         borderWidth: 1,
-        borderColor: '#E2E8F0',
-        marginBottom: 12,
+        borderColor: 'rgba(255,255,255,0.3)',
+        marginBottom: 14,
     },
     submitBtn: {
         flexDirection: 'row',
         backgroundColor: '#3B82F6',
-        borderRadius: 16,
-        paddingVertical: 14,
+        borderRadius: 18,
+        paddingVertical: 16,
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 8,
-        marginTop: 4,
+        gap: 10,
+        marginTop: 6,
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
     },
     submitText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 

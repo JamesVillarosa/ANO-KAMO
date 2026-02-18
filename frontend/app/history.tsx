@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     Heart,
     Trash2,
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react-native';
 import { getHistory, toggleFavorite, deleteHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
-import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES } from '../src/theme';
+import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED_LANGUAGES } from '../src/theme';
 
 interface HistoryItem {
     translation_id: string;
@@ -79,7 +80,11 @@ export default function HistoryScreen() {
         const isFav = firstOutput?.is_favorite || false;
 
         return (
-            <View style={[styles.card, isDarkMode && styles.cardDark]}>
+            <BlurView
+                intensity={isDarkMode ? 30 : 50}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.card, isDarkMode && styles.cardDark]}
+            >
                 <View style={[styles.accentBar, { backgroundColor: accent }]} />
                 <View style={styles.cardContent}>
                     <Text style={[styles.langLabel, { color: accent }]}>{langName}</Text>
@@ -107,7 +112,7 @@ export default function HistoryScreen() {
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
+            </BlurView>
         );
     };
 
@@ -115,24 +120,28 @@ export default function HistoryScreen() {
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <LinearGradient colors={[...activeGradient]} style={styles.bg} />
             <View style={styles.content}>
-                <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
+                <BlurView
+                    intensity={40}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}
+                >
                     <TouchableOpacity
-                        style={[styles.toggleBtn, activeTab === 'favorites' && styles.toggleActive]}
+                        style={[styles.toggleBtn, activeTab === 'favorites' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
                         onPress={() => setActiveTab('favorites')}
                     >
-                        <Text style={[styles.toggleText, activeTab === 'favorites' && styles.toggleTextActive]}>
+                        <Text style={[styles.toggleText, activeTab === 'favorites' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             Favorites
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, activeTab === 'history' && styles.toggleActive]}
+                        style={[styles.toggleBtn, activeTab === 'history' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
                         onPress={() => setActiveTab('history')}
                     >
-                        <Text style={[styles.toggleText, activeTab === 'history' && styles.toggleTextActive]}>
+                        <Text style={[styles.toggleText, activeTab === 'history' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             History
                         </Text>
                     </TouchableOpacity>
-                </View>
+                </BlurView>
 
                 {loading ? (
                     <View style={styles.center}>
@@ -171,12 +180,18 @@ const styles = StyleSheet.create({
     content: { flex: 1, paddingTop: 100, paddingHorizontal: 20 },
     toggleRow: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(241,245,249,0.9)',
+        backgroundColor: 'rgba(241,245,249,0.5)',
         borderRadius: 30,
         padding: 4,
-        marginBottom: 20,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        overflow: 'hidden',
     },
-    toggleRowDark: { backgroundColor: 'rgba(30, 41, 59, 0.9)' },
+    toggleRowDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.5)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
     toggleBtn: {
         flex: 1,
         paddingVertical: 10,
@@ -184,30 +199,31 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     toggleActive: {
-        backgroundColor: '#3B82F6',
-        shadowColor: '#3B82F6',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-        elevation: 3,
+        backgroundColor: '#FFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
-    toggleText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
-    toggleTextActive: { color: '#FFFFFF' },
+    toggleActiveDark: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+    toggleTextActive: { color: '#1E293B' },
+    toggleTextActiveDark: { color: '#F8FAFC' },
     card: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
-        borderRadius: 16,
-        marginBottom: 10,
+        ...glassCard,
+        marginBottom: 12,
         overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(226, 232, 240, 0.5)',
     },
     cardDark: {
-        backgroundColor: 'rgba(30, 41, 59, 0.85)',
-        borderColor: 'rgba(51, 65, 85, 0.5)',
+        ...darkGlassCard,
+        backgroundColor: 'rgba(30, 41, 59, 0.45)', // Blur support
     },
-    accentBar: { width: 5 },
-    cardContent: { flex: 1, padding: 14 },
+    accentBar: { width: 6 },
+    cardContent: { flex: 1, padding: 18 },
     langLabel: {
         fontSize: 11,
         fontWeight: '700',
@@ -221,14 +237,16 @@ const styles = StyleSheet.create({
     textSecondary: { color: '#94A3B8' },
     cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 4 },
     actionBtn: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        backgroundColor: '#F1F5F9',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
     },
-    actionBtnDark: { backgroundColor: '#1E293B' },
+    actionBtnDark: { backgroundColor: 'rgba(255,255,255,0.05)' },
     list: { paddingBottom: 20 },
     center: { alignItems: 'center', marginTop: 60 },
     emptyText: { fontSize: 16, fontWeight: '600', color: '#94A3B8', marginTop: 12 },

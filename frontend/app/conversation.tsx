@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     Mic,
     Send,
@@ -25,8 +26,12 @@ import {
 } from '../src/lib/api';
 import {
     gradientColors,
+    darkGradientColors,
+    glassCard,
+    darkGlassCard,
     SUPPORTED_LANGUAGES,
 } from '../src/theme';
+import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 
@@ -41,20 +46,26 @@ interface Message {
     targetLang: string;
 }
 
-// Color themes per speaker
+// Glass-compatible speaker themes
 const SPEAKER_THEMES = [
-    { bg: '#3B82F6', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },   // Blue
-    { bg: '#F1F5F9', text: '#1E293B', trans: '#64748B', label: 'Speaker 2' },   // Gray (2-way)
-    { bg: '#F59E0B', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },   // Amber (3-way)
+    { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
+    { bg: 'rgba(241, 245, 249, 0.85)', text: '#1E293B', trans: '#64748B', label: 'Speaker 2' },
+    { bg: 'rgba(245, 158, 11, 0.85)', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },
 ];
 
 const SPEAKER_3WAY = [
-    { bg: '#3B82F6', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },   // Blue
-    { bg: '#F59E0B', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },   // Amber
-    { bg: '#EC4899', text: '#FFFFFF', trans: '#FBCFE8', label: 'Speaker 3' },   // Pink
+    { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
+    { bg: 'rgba(245, 158, 11, 0.85)', text: '#FFFFFF', trans: '#FDE68A', label: 'Speaker 2' },
+    { bg: 'rgba(236, 72, 153, 0.85)', text: '#FFFFFF', trans: '#FBCFE8', label: 'Speaker 3' },
+];
+
+const DARK_SPEAKER_THEMES = [
+    { bg: 'rgba(37, 99, 235, 0.75)', text: '#FFFFFF', trans: '#93C5FD', label: 'Speaker 1' },
+    { bg: 'rgba(30, 41, 59, 0.75)', text: '#F8FAFC', trans: '#94A3B8', label: 'Speaker 2' },
 ];
 
 export default function ConversationScreen() {
+    const { isDarkMode } = useTheme();
     const [mode, setMode] = useState<'2way' | '3way'>('2way');
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState('');
@@ -105,7 +116,8 @@ export default function ConversationScreen() {
 
     const getTheme = (speaker: number) => {
         if (mode === '3way') return SPEAKER_3WAY[speaker] || SPEAKER_3WAY[0];
-        return speaker === 0 ? SPEAKER_THEMES[0] : SPEAKER_THEMES[1];
+        const themes = isDarkMode ? DARK_SPEAKER_THEMES : SPEAKER_THEMES;
+        return speaker === 0 ? themes[0] : themes[1];
     };
 
     const handleSendMessage = async () => {
@@ -151,25 +163,25 @@ export default function ConversationScreen() {
     const speakerCount = mode === '3way' ? 3 : 2;
 
     return (
-        <View style={styles.container}>
-            <LinearGradient colors={[...gradientColors]} style={styles.bg} />
+        <View style={[styles.container, isDarkMode && styles.containerDark]}>
+            <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
             <View style={styles.headerArea}>
                 {/* Mode Toggle */}
-                <View style={styles.toggleRow}>
+                <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, mode === '2way' && styles.toggleActive]}
+                        style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
                         onPress={() => setMode('2way')}
                     >
-                        <Text style={[styles.toggleText, mode === '2way' && styles.toggleTextActive]}>
+                        <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             2 Way Talk
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, mode === '3way' && styles.toggleActive]}
+                        style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
                         onPress={() => setMode('3way')}
                     >
-                        <Text style={[styles.toggleText, mode === '3way' && styles.toggleTextActive]}>
+                        <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             3 Way Talk
                         </Text>
                     </TouchableOpacity>
@@ -244,23 +256,27 @@ export default function ConversationScreen() {
                                         styles.msgRight,
                             ]}
                         >
-                            <View style={[styles.bubble, { backgroundColor: t.bg }]}>
+                            <BlurView
+                                intensity={35}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={[styles.bubble, { backgroundColor: t.bg }]}
+                            >
                                 <Text style={[styles.bubbleText, { color: t.text }]}>
                                     {msg.text}
                                 </Text>
                                 <View style={[
                                     styles.bubbleDivider,
-                                    { backgroundColor: t.bg === '#F1F5F9' ? '#CBD5E1' : 'rgba(255,255,255,0.2)' },
+                                    { backgroundColor: t.bg.includes('241, 245, 249') ? '#CBD5E1' : 'rgba(255,255,255,0.2)' },
                                 ]} />
                                 <Text style={[styles.transText, { color: t.trans }]}>
                                     {msg.translation}
                                 </Text>
                                 <View style={styles.bubbleFooter}>
                                     <TouchableOpacity>
-                                        <Volume2 size={14} color={t.bg === '#F1F5F9' ? '#94A3B8' : 'rgba(255,255,255,0.6)'} />
+                                        <Volume2 size={14} color={t.bg.includes('241, 245, 249') ? '#94A3B8' : 'rgba(255,255,255,0.6)'} />
                                     </TouchableOpacity>
                                 </View>
-                            </View>
+                            </BlurView>
                         </View>
                     );
                 })}
@@ -269,9 +285,13 @@ export default function ConversationScreen() {
             {/* Input Bar */}
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={90}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
             >
-                <View style={styles.inputBar}>
+                <BlurView
+                    intensity={40}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
+                >
                     {/* Active speaker indicator */}
                     <View style={[styles.speakerDot, { backgroundColor: getTheme(activeSpeaker).bg }]} />
 
@@ -280,26 +300,26 @@ export default function ConversationScreen() {
                     </TouchableOpacity>
 
                     <TextInput
-                        style={styles.textInput}
+                        style={[styles.textInput, isDarkMode && styles.textInputDark]}
                         placeholder={`Type as ${SUPPORTED_LANGUAGES[getLang(activeSpeaker)]}...`}
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
                         value={inputText}
                         onChangeText={setInputText}
                         onSubmitEditing={handleSendMessage}
                     />
 
                     {loading ? (
-                        <ActivityIndicator color="#3B82F6" style={{ marginRight: 10 }} />
+                        <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} style={{ marginRight: 10 }} />
                     ) : (
                         <TouchableOpacity
                             style={[styles.sendBtn, !inputText.trim() && { opacity: 0.3 }]}
                             onPress={handleSendMessage}
                             disabled={!inputText.trim()}
                         >
-                            <Send size={18} color="#3B82F6" />
+                            <Send size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
                         </TouchableOpacity>
                     )}
-                </View>
+                </BlurView>
             </KeyboardAvoidingView>
 
             <BottomNav />
@@ -318,6 +338,7 @@ export default function ConversationScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
+    containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
     /* Header Area */
@@ -329,10 +350,16 @@ const styles = StyleSheet.create({
     /* Mode Toggle */
     toggleRow: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(241,245,249,0.9)',
+        backgroundColor: 'rgba(241,245,249,0.7)',
         borderRadius: 30,
         padding: 4,
         marginBottom: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    toggleRowDark: {
+        backgroundColor: 'rgba(30,41,59,0.7)',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     toggleBtn: {
         flex: 1,
@@ -343,13 +370,17 @@ const styles = StyleSheet.create({
     toggleActive: {
         backgroundColor: '#FFF',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    toggleActiveDark: {
+        backgroundColor: '#334155',
     },
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
+    toggleTextActiveDark: { color: '#F8FAFC' },
 
     /* Speaker Chips */
     speakerRow: {
@@ -365,7 +396,8 @@ const styles = StyleSheet.create({
         paddingVertical: 7,
         borderRadius: 16,
         borderWidth: 1.5,
-        backgroundColor: 'rgba(255,255,255,0.8)',
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderColor: 'rgba(255,255,255,0.3)',
     },
     speakerChipText: {
         fontSize: 12,
@@ -379,21 +411,24 @@ const styles = StyleSheet.create({
 
     /* Chat */
     chatArea: { flex: 1 },
-    chatContent: { padding: 16, paddingBottom: 140 },
+    chatContent: { padding: 16, paddingBottom: 160 },
 
     emptyState: { alignItems: 'center', marginTop: 60 },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     /* Messages */
-    msgRow: { marginBottom: 10, maxWidth: '78%' },
+    msgRow: { marginBottom: 10, maxWidth: '82%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
     msgRight: { alignSelf: 'flex-end' },
 
     bubble: {
         padding: 14,
-        borderRadius: 20,
+        borderRadius: 22,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     bubbleText: {
         fontSize: 15,
@@ -401,7 +436,7 @@ const styles = StyleSheet.create({
     },
     bubbleDivider: {
         height: 1,
-        marginVertical: 6,
+        marginVertical: 8,
     },
     transText: {
         fontSize: 13,
@@ -418,40 +453,51 @@ const styles = StyleSheet.create({
     inputBar: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginHorizontal: 16,
         paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        marginBottom: 80,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-        elevation: 6,
+        paddingVertical: 10,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        borderRadius: 32,
+        marginBottom: 100,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.4)',
+        overflow: 'hidden',
+    },
+    inputBarDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.4)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
     },
     speakerDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginRight: 4,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 6,
     },
     micBtn: {
-        width: 38,
-        height: 38,
-        borderRadius: 19,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 8,
+        marginRight: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+        elevation: 4,
     },
     textInput: {
         flex: 1,
-        fontSize: 14,
+        fontSize: 15,
         color: '#1E293B',
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        backgroundColor: '#F1F5F9',
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        backgroundColor: 'rgba(255,255,255,0.5)',
         borderRadius: 20,
+    },
+    textInputDark: {
+        color: '#F8FAFC',
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
     sendBtn: { padding: 10 },
 });

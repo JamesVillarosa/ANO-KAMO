@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Switch } from 'react-native';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
     User,
     Moon,
@@ -21,7 +22,6 @@ import { useTheme } from '../src/context/ThemeContext';
 export default function SettingsScreen() {
     const { isDarkMode, toggleTheme } = useTheme();
     const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
-    const activeGlassCard = isDarkMode ? darkGlassCard : glassCard;
 
     const [highQualityAudio, setHighQualityAudio] = useState(true);
     const [autoDetectTone, setAutoDetectTone] = useState(true);
@@ -63,7 +63,11 @@ export default function SettingsScreen() {
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
                 {/* Profile Card */}
-                <View style={[styles.profileCard, activeGlassCard]}>
+                <BlurView
+                    intensity={isDarkMode ? 30 : 50}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.profileCard, isDarkMode ? darkGlassCard : glassCard]}
+                >
                     <View style={[styles.avatar, isDarkMode && styles.avatarDark]}>
                         <User size={32} color="#3B82F6" />
                     </View>
@@ -74,11 +78,15 @@ export default function SettingsScreen() {
                     <TouchableOpacity style={[styles.editBtn, isDarkMode && styles.editBtnDark]}>
                         <Text style={styles.editBtnText}>Edit</Text>
                     </TouchableOpacity>
-                </View>
+                </BlurView>
 
                 {/* Preferences */}
                 <Text style={styles.sectionLabel}>PREFERENCES</Text>
-                <View style={[styles.sectionCard, activeGlassCard]}>
+                <BlurView
+                    intensity={isDarkMode ? 30 : 50}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.sectionCard, isDarkMode ? darkGlassCard : glassCard]}
+                >
                     <SettingsItem
                         icon={Moon}
                         title="Dark Mode"
@@ -121,11 +129,15 @@ export default function SettingsScreen() {
                             />
                         }
                     />
-                </View>
+                </BlurView>
 
                 {/* Data */}
                 <Text style={styles.sectionLabel}>ACCOUNT & DATA</Text>
-                <View style={[styles.sectionCard, activeGlassCard]}>
+                <BlurView
+                    intensity={isDarkMode ? 30 : 50}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.sectionCard, isDarkMode ? darkGlassCard : glassCard]}
+                >
                     <SettingsItem
                         icon={Trash2}
                         iconColor="#EF4444"
@@ -140,11 +152,15 @@ export default function SettingsScreen() {
                         subtitle="Download for offline use"
                         onPress={() => { }}
                     />
-                </View>
+                </BlurView>
 
                 {/* About */}
                 <Text style={styles.sectionLabel}>ABOUT</Text>
-                <View style={[styles.sectionCard, activeGlassCard]}>
+                <BlurView
+                    intensity={isDarkMode ? 30 : 50}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.sectionCard, isDarkMode ? darkGlassCard : glassCard]}
+                >
                     <SettingsItem
                         icon={Info}
                         title="Version"
@@ -162,7 +178,7 @@ export default function SettingsScreen() {
                         title="Privacy Policy"
                         onPress={() => { }}
                     />
-                </View>
+                </BlurView>
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Made with</Text>
@@ -186,26 +202,29 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 18,
         marginBottom: 24,
+        overflow: 'hidden',
     },
     avatar: {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: '#EFF6FF',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    avatarDark: { backgroundColor: '#1E293B' },
+    avatarDark: { backgroundColor: 'rgba(59, 130, 246, 0.15)' },
     profileInfo: { flex: 1, marginLeft: 14 },
     profileName: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
     profileEmail: { fontSize: 13, color: '#64748B', marginTop: 2 },
     editBtn: {
-        backgroundColor: '#F1F5F9',
+        backgroundColor: 'rgba(255,255,255,0.4)',
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
     },
-    editBtnDark: { backgroundColor: '#1E293B' },
+    editBtnDark: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' },
     editBtnText: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
 
     /* Section */
@@ -220,6 +239,7 @@ const styles = StyleSheet.create({
     sectionCard: {
         padding: 6,
         marginBottom: 20,
+        overflow: 'hidden',
     },
 
     /* Settings Item */

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Check, X } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 import { SUPPORTED_LANGUAGES } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 
@@ -30,7 +31,11 @@ export default function LanguagePicker({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onDismiss}>
-                <View style={[styles.container, isDarkMode && styles.containerDark]}>
+                <BlurView
+                    intensity={60}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.container, isDarkMode && styles.containerDark]}
+                >
                     <View style={styles.header}>
                         <Text style={[styles.title, isDarkMode && styles.textWhite]}>{title}</Text>
                         <TouchableOpacity onPress={onDismiss}>
@@ -56,7 +61,7 @@ export default function LanguagePicker({
                             {selected === code && <Check size={18} color="#3B82F6" />}
                         </TouchableOpacity>
                     ))}
-                </View>
+                </BlurView>
             </TouchableOpacity>
         </Modal>
     );
@@ -70,14 +75,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     container: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 24,
-        padding: 20,
-        width: '80%',
-        maxWidth: 340,
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderRadius: 32,
+        padding: 24,
+        width: '85%',
+        maxWidth: 360,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
     },
     containerDark: {
-        backgroundColor: '#1E293B',
+        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
     },
     header: {
         flexDirection: 'row',
@@ -97,14 +106,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 14,
         paddingHorizontal: 16,
-        borderRadius: 14,
-        marginBottom: 4,
+        borderRadius: 16,
+        marginBottom: 6,
     },
     optionSelected: {
-        backgroundColor: '#EFF6FF',
+        backgroundColor: 'rgba(59, 130, 246, 0.12)',
     },
     optionSelectedDark: {
-        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
     },
     optionText: {
         fontSize: 16,

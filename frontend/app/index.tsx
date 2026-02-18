@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
   Mic,
   ChevronDown,
@@ -23,10 +24,12 @@ import {
 } from 'lucide-react-native';
 import { translateSingle } from '../src/lib/api';
 import {
-  theme,
-  glassCard,
   gradientColors,
   darkGradientColors,
+  vibrantGradients,
+  glassCard,
+  darkGlassCard,
+  glassPill,
   SUPPORTED_LANGUAGES,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
@@ -131,6 +134,12 @@ export default function HomeScreen() {
     <View style={[styles.container, isDarkMode && styles.containerDark]}>
       <LinearGradient colors={[...activeGradient]} style={styles.bg} />
 
+      {/* Background Blobs for Glass Refraction */}
+      <View style={styles.blobContainer}>
+        <LinearGradient colors={['#FF9A9E', '#FAD0C4']} style={[styles.blob, { top: -100, left: -50, width: 300, height: 300 }]} />
+        <LinearGradient colors={['#A18CD1', '#FBC2EB']} style={[styles.blob, { bottom: 100, right: -100, width: 400, height: 400 }]} />
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -141,27 +150,31 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Mode Toggle */}
-          <View style={styles.toggleRow}>
+          <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
             <TouchableOpacity
-              style={[styles.toggleBtn, mode === '2way' && styles.toggleActive]}
+              style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
               onPress={() => setMode('2way')}
             >
-              <Text style={[styles.toggleText, mode === '2way' && styles.toggleTextActive]}>
+              <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                 2 Way Translate
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.toggleBtn, mode === '3way' && styles.toggleActive]}
+              style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
               onPress={() => setMode('3way')}
             >
-              <Text style={[styles.toggleText, mode === '3way' && styles.toggleTextActive]}>
+              <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                 3 Way Translate
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Main Glass Card */}
-          <View style={styles.card}>
+          <BlurView
+            intensity={isDarkMode ? 30 : 50}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.card, isDarkMode && styles.cardDark]}
+          >
             {/* Source Panel */}
             <View style={styles.panel}>
               <TouchableOpacity
@@ -281,7 +294,7 @@ export default function HomeScreen() {
                 </View>
               </>
             )}
-          </View>
+          </BlurView>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -321,10 +334,16 @@ const styles = StyleSheet.create({
   /* Toggle */
   toggleRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(241,245,249,0.9)',
+    backgroundColor: 'rgba(241,245,249,0.7)',
     borderRadius: 30,
     padding: 4,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  toggleRowDark: {
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   toggleBtn: {
     flex: 1,
@@ -335,68 +354,96 @@ const styles = StyleSheet.create({
   toggleActive: {
     backgroundColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  toggleActiveDark: {
+    backgroundColor: '#334155',
   },
   toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   toggleTextActive: { color: '#1E293B' },
+  toggleTextActiveDark: { color: '#F8FAFC' },
 
   /* Card */
   card: {
     ...glassCard,
     padding: 22,
+    overflow: 'hidden', // Required for BlurView on Android
+  },
+  cardDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.45)', // Override for BlurView transparency
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
 
   /* Panel */
   panel: { width: '100%' },
   langRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   langLabel: { fontSize: 17, fontWeight: '600', color: '#1E293B', marginRight: 6 },
+  textWhite: { color: '#F8FAFC' },
   input: {
     fontSize: 17,
     color: '#1E293B',
-    minHeight: 70,
-    maxHeight: 140,
+    minHeight: 80,
+    maxHeight: 150,
     textAlignVertical: 'top',
     padding: 0,
   },
   outputArea: { minHeight: 60 },
   outputText: { fontSize: 17, color: '#1E293B' },
-  panelFooter: { flexDirection: 'row', marginTop: 10, gap: 8 },
+  panelFooter: { flexDirection: 'row', marginTop: 14, gap: 10 },
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F1F5F9',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
 
   /* Divider */
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 12,
-    height: 36,
+    marginVertical: 18,
+    height: 42,
     position: 'relative',
   },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(0,0,0,0.05)' },
   swapBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'absolute',
     left: '50%',
-    marginLeft: -18,
+    marginLeft: -21,
     zIndex: 1,
     shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+
+  /* Background Blobs */
+  blobContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: -1,
+  },
+  blob: {
+    position: 'absolute',
+    borderRadius: 500,
+    opacity: 0.5,
   },
 });

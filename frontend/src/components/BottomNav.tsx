@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Dimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter, usePathname } from 'expo-router';
+import { BlurView } from 'expo-blur';
 import { Type, Camera, MessageSquare } from 'lucide-react-native';
 
 import { useTheme } from '../context/ThemeContext';
@@ -29,7 +30,11 @@ export default function BottomNav() {
 
     return (
         <View style={styles.container}>
-            <View style={[styles.nav, isDarkMode && styles.navDark]}>
+            <BlurView
+                intensity={isDarkMode ? 40 : 60}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.nav, isDarkMode && styles.navDark]}
+            >
                 {TABS.map((tab) => {
                     const isActive = activeTab === tab.key;
                     const IconComponent = tab.icon;
@@ -48,7 +53,7 @@ export default function BottomNav() {
                         </TouchableOpacity>
                     );
                 })}
-            </View>
+            </BlurView>
         </View>
     );
 }

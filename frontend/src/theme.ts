@@ -44,23 +44,44 @@ export const theme = lightTheme;
 export const gradientColors = ['#E0E7FF', '#F0F4FF', '#FFFFFF'] as const;
 export const darkGradientColors = ['#1E293B', '#0F172A', '#020617'] as const;
 
+// More vibrant iOS-style background gradients
+export const vibrantGradients = {
+    morning: ['#FF9A9E', '#FAD0C4', '#FAD0C4'],
+    deepSea: ['#3B82F6', '#6366F1', '#8B5CF6'],
+    sunset: ['#FF3D68', '#FF8E3C', '#FFD166'],
+    aurora: ['#00C9FF', '#92FE9D', '#00C9FF'],
+    glass: ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0)'],
+};
+
 export const glassCard = {
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    backgroundColor: 'rgba(255, 255, 255, 0.45)', // More translucent for better blur
     borderRadius: 32,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.5)', // Brighter border for "glass" highlight
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
     shadowRadius: 24,
-    elevation: 5,
+    elevation: 8,
 };
 
 export const darkGlassCard = {
     ...glassCard,
-    backgroundColor: 'rgba(30, 41, 59, 0.75)',
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    shadowOpacity: 0.2,
+    backgroundColor: 'rgba(30, 41, 59, 0.55)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowOpacity: 0.25,
+};
+
+export const glassPill = {
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
 };
 
 export const SUPPORTED_LANGUAGES: Record<string, string> = {

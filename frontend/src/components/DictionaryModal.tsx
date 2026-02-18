@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Text } from 'react-native-paper';
 import { X, Volume2 } from 'lucide-react-native';
 import { dictionaryLookup } from '../lib/api';
@@ -65,7 +66,11 @@ export default function DictionaryModal({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <View style={styles.overlay}>
-                <View style={[styles.container, isDarkMode && styles.containerDark]}>
+                <BlurView
+                    intensity={65}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.container, isDarkMode && styles.containerDark]}
+                >
                     {/* Close button */}
                     <TouchableOpacity style={styles.closeBtn} onPress={onDismiss}>
                         <X size={22} color={isDarkMode ? '#64748B' : '#94A3B8'} />
@@ -118,7 +123,7 @@ export default function DictionaryModal({
                             </View>
                         </ScrollView>
                     ) : null}
-                </View>
+                </BlurView>
             </View>
         </Modal>
     );
@@ -133,15 +138,19 @@ const styles = StyleSheet.create({
         padding: 24,
     },
     container: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 28,
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderRadius: 36,
         padding: 28,
         width: '100%',
         maxWidth: 380,
         maxHeight: '75%',
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
     },
     containerDark: {
-        backgroundColor: '#1E293B',
+        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
     },
     closeBtn: {
         position: 'absolute',
@@ -170,12 +179,14 @@ const styles = StyleSheet.create({
     },
     textWhite: { color: '#FFFFFF' },
     speakerBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(59, 130, 246, 0.2)',
     },
     posBadge: {
         alignSelf: 'flex-start',
@@ -185,10 +196,10 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         marginBottom: 8,
     },
-    posBadgeDark: { backgroundColor: 'rgba(148, 163, 184, 0.2)' },
+    posBadgeDark: { backgroundColor: 'rgba(255, 255, 255, 0.1)' },
     posText: {
         fontSize: 13,
-        fontWeight: '600',
+        fontWeight: '700',
         color: '#64748B',
     },
     posTextDark: { color: '#94A3B8' },
@@ -226,20 +237,22 @@ const styles = StyleSheet.create({
         color: '#3B82F6',
     },
     definitionText: {
-        fontSize: 15,
+        fontSize: 16,
         color: '#475569',
         lineHeight: 24,
-        marginBottom: 18,
+        marginBottom: 20,
     },
-    textSecondary: { color: '#CBD5E1' },
+    textSecondary: { color: '#94A3B8' },
     exampleBox: {
-        backgroundColor: 'rgba(100, 116, 139, 0.05)',
-        borderRadius: 14,
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
+        borderRadius: 16,
         padding: 16,
-        borderLeftWidth: 3,
+        borderLeftWidth: 4,
         borderLeftColor: '#3B82F6',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
-    exampleBoxDark: { backgroundColor: 'rgba(148, 163, 184, 0.1)' },
+    exampleBoxDark: { backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)' },
     exampleText: {
         fontSize: 14,
         color: '#64748B',
