@@ -237,8 +237,9 @@ export default function HomeScreen() {
             {/* Target 2 Panel (3-way only) */}
             {mode === '3way' && (
               <>
-                {/* Swap for Target 2 (Moved above label, no line) */}
+                {/* Swap for Target 2 (Moved above label, with line) */}
                 <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
                   <TouchableOpacity style={styles.swapBtn} onPress={swapTarget2}>
                     <Repeat size={18} color="#FFF" />
                   </TouchableOpacity>
