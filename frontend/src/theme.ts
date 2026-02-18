@@ -91,6 +91,13 @@ export const SUPPORTED_LANGUAGES: Record<string, string> = {
     en: 'English',
 };
 
+export const LANGUAGE_PLACEHOLDERS: Record<string, string> = {
+    tl: 'Ilagay ang teksto',
+    ceb: 'Isulod ang teksto',
+    hil: 'Ibutang ang teksto',
+    en: 'Insert the text',
+};
+
 export const TONE_OPTIONS = [
     'neutral', 'formal', 'casual', 'friendly',
     'polite', 'angry', 'joking', 'sarcastic', 'playful',

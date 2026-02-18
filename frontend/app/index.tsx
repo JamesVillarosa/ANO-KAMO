@@ -31,6 +31,7 @@ import {
   darkGlassCard,
   glassPill,
   SUPPORTED_LANGUAGES,
+  LANGUAGE_PLACEHOLDERS,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -188,7 +189,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TextInput
                 style={styles.input}
-                placeholder="Ilagay ang teksto"
+                placeholder={LANGUAGE_PLACEHOLDERS[sourceLang] || "Insert the text"}
                 placeholderTextColor="#94A3B8"
                 multiline
                 value={sourceText}
@@ -225,7 +226,7 @@ export default function HomeScreen() {
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
                   <Text style={[styles.outputText, !translated1 && { color: '#94A3B8' }]}>
-                    {translated1 || 'Isulod ang teksto'}
+                    {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
                   </Text>
                 )}
               </View>
@@ -274,7 +275,7 @@ export default function HomeScreen() {
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                     ) : (
                       <Text style={[styles.outputText, !translated2 && { color: '#94A3B8' }]}>
-                        {translated2 || 'Isulod ang teksto'}
+                        {translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
                       </Text>
                     )}
                   </View>

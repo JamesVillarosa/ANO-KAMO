@@ -30,6 +30,7 @@ import {
     glassCard,
     darkGlassCard,
     SUPPORTED_LANGUAGES,
+    LANGUAGE_PLACEHOLDERS,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -301,7 +302,7 @@ export default function ConversationScreen() {
 
                     <TextInput
                         style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                        placeholder={`Type as ${SUPPORTED_LANGUAGES[getLang(activeSpeaker)]}...`}
+                        placeholder={LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
                         placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
                         value={inputText}
                         onChangeText={setInputText}
