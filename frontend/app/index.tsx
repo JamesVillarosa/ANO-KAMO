@@ -37,9 +37,11 @@ import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import DictionaryModal from '../src/components/DictionaryModal';
+import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
   const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
+  const tts = useTextToSpeech();
 
   // Mode toggle
   const [mode, setMode] = useState<'2way' | '3way'>('2way');
@@ -188,7 +190,7 @@ export default function HomeScreen() {
                 <ChevronDown size={18} color="#3B82F6" />
               </TouchableOpacity>
               <TextInput
-                style={styles.input}
+                style={[styles.input, isDarkMode && { color: '#F8FAFC' }]}
                 placeholder={LANGUAGE_PLACEHOLDERS[sourceLang] || "Insert the text"}
                 placeholderTextColor="#94A3B8"
                 multiline
@@ -232,7 +234,7 @@ export default function HomeScreen() {
               </View>
               {translated1 ? (
                 <View style={styles.panelFooter}>
-                  <TouchableOpacity style={styles.iconCircle}>
+                  <TouchableOpacity style={styles.iconCircle} onPress={() => tts.speak(translated1, targetLang1)}>
                     <Volume2 size={18} color="#3B82F6" />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.iconCircle} onPress={() => copyText(translated1)}>
@@ -281,7 +283,7 @@ export default function HomeScreen() {
                   </View>
                   {translated2 ? (
                     <View style={styles.panelFooter}>
-                      <TouchableOpacity style={styles.iconCircle}>
+                      <TouchableOpacity style={styles.iconCircle} onPress={() => tts.speak(translated2, targetLang2)}>
                         <Volume2 size={18} color="#3B82F6" />
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.iconCircle} onPress={() => copyText(translated2)}>

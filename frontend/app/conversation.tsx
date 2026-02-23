@@ -9,12 +9,14 @@ import {
     TextInput,
     Alert,
     Dimensions,
+    Animated,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
     Mic,
+    MicOff,
     Send,
     Volume2,
     ChevronDown,
@@ -35,6 +37,8 @@ import {
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
+import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
+import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 
 const { width } = Dimensions.get('window');
 
@@ -72,6 +76,7 @@ export default function ConversationScreen() {
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const [activeSpeaker, setActiveSpeaker] = useState(0);
+    const tts = useTextToSpeech();
 
     // Languages
     const [lang0, setLang0] = useState('tl');
@@ -79,6 +84,58 @@ export default function ConversationScreen() {
     const [lang2, setLang2] = useState('hil');
     const [pickerFor, setPickerFor] = useState<number | null>(null);
     const [conversationId, setConversationId] = useState<string | null>(null);
+
+    // Speech Recognition
+    const getActiveLang = () => {
+        if (activeSpeaker === 0) return lang0;
+        if (activeSpeaker === 1) return lang1;
+        return lang2;
+    };
+    const speech = useSpeechRecognition(getActiveLang());
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    // Pulse animation for mic when listening
+    useEffect(() => {
+        if (speech.isListening) {
+            const pulse = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+                    Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+                ])
+            );
+            pulse.start();
+            return () => pulse.stop();
+        } else {
+            pulseAnim.setValue(1);
+        }
+    }, [speech.isListening]);
+
+    // Auto-populate input with live transcript
+    useEffect(() => {
+        const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
+        if (liveText) {
+            setInputText(liveText);
+        }
+    }, [speech.transcript, speech.interimTranscript]);
+
+    // When recognition ends and we have finalized text, auto-send as message
+    useEffect(() => {
+        if (!speech.isListening && speech.transcript.trim()) {
+            // Auto-send the recognized text as a chat message (no translation)
+            const finalText = speech.transcript.trim();
+            const speakerLang = getActiveLang();
+            const msg: Message = {
+                id: Date.now().toString(),
+                text: finalText,
+                translation: '', // No translation for now
+                speaker: activeSpeaker,
+                lang: speakerLang,
+                targetLang: speakerLang,
+            };
+            setMessages(prev => [...prev, msg]);
+            setInputText('');
+        }
+    }, [speech.isListening]);
 
     const scrollRef = useRef<ScrollView>(null);
 
@@ -157,7 +214,23 @@ export default function ConversationScreen() {
     const clearConversation = () => {
         Alert.alert('Clear Conversation', 'Remove all messages?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Clear', style: 'destructive', onPress: () => setMessages([]) },
+            {
+                text: 'Clear', style: 'destructive', onPress: () => {
+                    setMessages([]);
+                    // Reset conversation session
+                    const speakerCount = mode === '3way' ? 3 : 2;
+                    const participants = [
+                        { speaker_label: 'A', preferred_language: lang0 },
+                        { speaker_label: 'B', preferred_language: lang1 },
+                    ];
+                    if (speakerCount === 3) {
+                        participants.push({ speaker_label: 'C', preferred_language: lang2 });
+                    }
+                    createConversation(mode === '2way' ? 'two_way' : 'three_way', participants)
+                        .then(res => setConversationId(res.conversation_id))
+                        .catch(() => setConversationId(null));
+                },
+            },
         ]);
     };
 
@@ -258,27 +331,26 @@ export default function ConversationScreen() {
                                         styles.msgRight,
                             ]}
                         >
-                            <BlurView
-                                intensity={35}
-                                tint={isDarkMode ? 'dark' : 'light'}
+                            <View
                                 style={[styles.bubble, { backgroundColor: t.bg }]}
                             >
                                 <Text style={[styles.bubbleText, { color: t.text }]}>
                                     {msg.text}
                                 </Text>
-                                <View style={[
-                                    styles.bubbleDivider,
-                                    { backgroundColor: t.bg.includes('241, 245, 249') ? '#CBD5E1' : 'rgba(255,255,255,0.2)' },
-                                ]} />
-                                <Text style={[styles.transText, { color: t.trans }]}>
-                                    {msg.translation}
-                                </Text>
+                                {msg.translation ? (
+                                    <>
+                                        <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                                        <Text style={[styles.transText, { color: t.trans }]}>
+                                            {msg.translation}
+                                        </Text>
+                                    </>
+                                ) : null}
                                 <View style={styles.bubbleFooter}>
-                                    <TouchableOpacity>
-                                        <Volume2 size={14} color={t.bg.includes('241, 245, 249') ? '#94A3B8' : 'rgba(255,255,255,0.6)'} />
+                                    <TouchableOpacity onPress={() => tts.speak(msg.text, msg.lang)}>
+                                        <Volume2 size={14} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
                                 </View>
-                            </BlurView>
+                            </View>
                         </View>
                     );
                 })}
@@ -297,14 +369,33 @@ export default function ConversationScreen() {
                     {/* Active speaker indicator */}
                     <View style={[styles.speakerDot, { backgroundColor: getTheme(activeSpeaker).bg }]} />
 
-                    <TouchableOpacity style={[styles.micBtn, { backgroundColor: getTheme(activeSpeaker).bg }]}>
-                        <Mic size={20} color="#FFF" />
+                    <TouchableOpacity
+                        style={[styles.micBtn, { backgroundColor: speech.isListening ? '#EF4444' : getTheme(activeSpeaker).bg }]}
+                        onPress={() => {
+                            if (!speech.isSupported) {
+                                Alert.alert('Not Supported', 'Speech recognition requires Chrome or Edge browser.');
+                                return;
+                            }
+                            if (speech.isListening) {
+                                speech.stopListening();
+                            } else {
+                                speech.startListening();
+                            }
+                        }}
+                    >
+                        <Animated.View style={{ transform: [{ scale: speech.isListening ? pulseAnim : 1 }] }}>
+                            {speech.isListening ? (
+                                <MicOff size={20} color="#FFF" />
+                            ) : (
+                                <Mic size={20} color="#FFF" />
+                            )}
+                        </Animated.View>
                     </TouchableOpacity>
 
                     <TextInput
                         style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                        placeholder={LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
-                        placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
+                        placeholder={speech.isListening ? 'Listening...' : LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
+                        placeholderTextColor={speech.isListening ? '#EF4444' : (isDarkMode ? '#64748B' : '#94A3B8')}
                         value={inputText}
                         onChangeText={setInputText}
                         onSubmitEditing={handleSendMessage}
