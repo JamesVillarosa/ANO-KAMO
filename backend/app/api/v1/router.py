@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     community,
     ocr,
     dictionary,
+    speech,
 )
 
 router = APIRouter()
@@ -22,3 +23,5 @@ router.include_router(history.router, tags=["history"])
 router.include_router(community.router, tags=["community"])
 router.include_router(ocr.router, tags=["ocr"])
 router.include_router(dictionary.router, tags=["dictionary"])
+router.include_router(speech.router, tags=["speech"])
+

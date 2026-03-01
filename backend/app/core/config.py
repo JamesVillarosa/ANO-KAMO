@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # External APIs
     GEMINI_API_KEY: str = ""
     WHISPER_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    AZURE_SPEECH_KEY: str = ""
+    AZURE_SPEECH_REGION: str = "southeastasia"
 
     class Config:
         """Pydantic config"""

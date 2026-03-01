@@ -96,7 +96,7 @@ export default function ConversationScreen() {
 
     // Pulse animation for mic when listening
     useEffect(() => {
-        if (speech.isListening) {
+        if (speech.isListening || speech.isProcessing) {
             const pulse = Animated.loop(
                 Animated.sequence([
                     Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
@@ -108,26 +108,27 @@ export default function ConversationScreen() {
         } else {
             pulseAnim.setValue(1);
         }
-    }, [speech.isListening]);
+    }, [speech.isListening, speech.isProcessing]);
 
     // Auto-populate input with live transcript
     useEffect(() => {
         const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
-        if (liveText) {
+        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...') {
             setInputText(liveText);
+        } else if (speech.isListening || speech.isProcessing) {
+            setInputText('');
         }
     }, [speech.transcript, speech.interimTranscript]);
 
-    // When recognition ends and we have finalized text, auto-send as message
+    // When transcription completes, auto-send as message
     useEffect(() => {
-        if (!speech.isListening && speech.transcript.trim()) {
-            // Auto-send the recognized text as a chat message (no translation)
+        if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
             const finalText = speech.transcript.trim();
             const speakerLang = getActiveLang();
             const msg: Message = {
                 id: Date.now().toString(),
                 text: finalText,
-                translation: '', // No translation for now
+                translation: '',
                 speaker: activeSpeaker,
                 lang: speakerLang,
                 targetLang: speakerLang,
@@ -135,7 +136,7 @@ export default function ConversationScreen() {
             setMessages(prev => [...prev, msg]);
             setInputText('');
         }
-    }, [speech.isListening]);
+    }, [speech.isProcessing, speech.transcript]);
 
     const scrollRef = useRef<ScrollView>(null);
 
@@ -370,22 +371,21 @@ export default function ConversationScreen() {
                     <View style={[styles.speakerDot, { backgroundColor: getTheme(activeSpeaker).bg }]} />
 
                     <TouchableOpacity
-                        style={[styles.micBtn, { backgroundColor: speech.isListening ? '#EF4444' : getTheme(activeSpeaker).bg }]}
+                        style={[styles.micBtn, { backgroundColor: (speech.isListening || speech.isProcessing) ? '#EF4444' : getTheme(activeSpeaker).bg }]}
                         onPress={() => {
-                            if (!speech.isSupported) {
-                                Alert.alert('Not Supported', 'Speech recognition requires Chrome or Edge browser.');
-                                return;
-                            }
                             if (speech.isListening) {
                                 speech.stopListening();
-                            } else {
+                            } else if (!speech.isProcessing) {
                                 speech.startListening();
                             }
                         }}
+                        disabled={speech.isProcessing}
                     >
-                        <Animated.View style={{ transform: [{ scale: speech.isListening ? pulseAnim : 1 }] }}>
+                        <Animated.View style={{ transform: [{ scale: (speech.isListening || speech.isProcessing) ? pulseAnim : 1 }] }}>
                             {speech.isListening ? (
                                 <MicOff size={20} color="#FFF" />
+                            ) : speech.isProcessing ? (
+                                <ActivityIndicator size={16} color="#FFF" />
                             ) : (
                                 <Mic size={20} color="#FFF" />
                             )}
@@ -394,8 +394,8 @@ export default function ConversationScreen() {
 
                     <TextInput
                         style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                        placeholder={speech.isListening ? 'Listening...' : LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
-                        placeholderTextColor={speech.isListening ? '#EF4444' : (isDarkMode ? '#64748B' : '#94A3B8')}
+                        placeholder={speech.isListening ? 'Listening...' : speech.isProcessing ? 'Transcribing...' : LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
+                        placeholderTextColor={(speech.isListening || speech.isProcessing) ? '#EF4444' : (isDarkMode ? '#64748B' : '#94A3B8')}
                         value={inputText}
                         onChangeText={setInputText}
                         onSubmitEditing={handleSendMessage}

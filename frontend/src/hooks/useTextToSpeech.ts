@@ -1,103 +1,76 @@
 /**
- * useTextToSpeech — Custom hook for Web Speech Synthesis API
- * Provides free text-to-speech with Filipino accent preference.
- * Browser-native (Chrome/Edge/Safari).
+ * useTextToSpeech — Plays audio from Azure TTS backend endpoint.
+ * Natural Filipino accent (BlessicaNeural). Works on iPhone, Android, and Web via expo-av.
  */
 import { useCallback, useRef } from 'react';
-import { Platform } from 'react-native';
-
-// Map app language codes to BCP-47 for voice selection
-const LANG_TO_LOCALE: Record<string, string> = {
-    tl: 'fil-PH',
-    en: 'en-US',
-    ceb: 'fil-PH',
-    hil: 'fil-PH',
-};
-
-// Preferred voice name substrings for Filipino accent (ordered by preference)
-const FILIPINO_VOICE_HINTS = ['filipino', 'fil', 'tagalog', 'google filipino', 'microsoft mark'];
-
-function findBestVoice(langCode: string): SpeechSynthesisVoice | null {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-
-    const voices = window.speechSynthesis.getVoices();
-    const locale = LANG_TO_LOCALE[langCode] || 'fil-PH';
-    const langPrefix = locale.split('-')[0]; // 'fil' or 'en'
-
-    // 1. Try exact locale match (e.g. fil-PH)
-    const exactMatch = voices.find(v => v.lang === locale);
-    if (exactMatch) return exactMatch;
-
-    // 2. Try language prefix match (e.g. fil)
-    const prefixMatch = voices.find(v => v.lang.startsWith(langPrefix));
-    if (prefixMatch) return prefixMatch;
-
-    // 3. Try hint-based search for Filipino voices
-    if (langPrefix === 'fil') {
-        for (const hint of FILIPINO_VOICE_HINTS) {
-            const hintMatch = voices.find(v =>
-                v.name.toLowerCase().includes(hint) ||
-                v.lang.toLowerCase().includes(hint)
-            );
-            if (hintMatch) return hintMatch;
-        }
-    }
-
-    // 4. Fallback: default voice
-    return null;
-}
+import { Audio } from 'expo-av';
+import { getTtsUrl } from '../lib/api';
 
 interface TextToSpeechHook {
     speak: (text: string, langCode: string) => void;
     stop: () => void;
-    isSpeaking: boolean;
     isSupported: boolean;
 }
 
 export function useTextToSpeech(): TextToSpeechHook {
-    const isSpeakingRef = useRef(false);
+    const soundRef = useRef<Audio.Sound | null>(null);
 
-    const isSupported =
-        Platform.OS === 'web' &&
-        typeof window !== 'undefined' &&
-        'speechSynthesis' in window;
+    const isSupported = true;
 
-    const speak = useCallback((text: string, langCode: string) => {
-        if (!isSupported || !text.trim()) return;
+    const speak = useCallback(async (text: string, langCode: string) => {
+        if (!text.trim()) return;
 
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
+        try {
+            // Stop any previous audio
+            if (soundRef.current) {
+                try {
+                    await soundRef.current.stopAsync();
+                    await soundRef.current.unloadAsync();
+                } catch { }
+                soundRef.current = null;
+            }
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        const locale = LANG_TO_LOCALE[langCode] || 'fil-PH';
-        utterance.lang = locale;
-        utterance.rate = 0.9;  // Slightly slower for clarity
-        utterance.pitch = 1.0;
+            // Configure audio for playback
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+            });
 
-        // Try to find the best Filipino voice
-        const voice = findBestVoice(langCode);
-        if (voice) {
-            utterance.voice = voice;
+            // Load and play audio from gTTS backend
+            const ttsUrl = getTtsUrl(text, langCode);
+            const { sound } = await Audio.Sound.createAsync(
+                { uri: ttsUrl },
+                { shouldPlay: true }
+            );
+
+            soundRef.current = sound;
+
+            // Cleanup when done
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    sound.unloadAsync();
+                    soundRef.current = null;
+                }
+            });
+
+        } catch (error) {
+            console.error('TTS playback failed:', error);
         }
+    }, []);
 
-        utterance.onstart = () => { isSpeakingRef.current = true; };
-        utterance.onend = () => { isSpeakingRef.current = false; };
-        utterance.onerror = () => { isSpeakingRef.current = false; };
-
-        window.speechSynthesis.speak(utterance);
-    }, [isSupported]);
-
-    const stop = useCallback(() => {
-        if (isSupported) {
-            window.speechSynthesis.cancel();
-            isSpeakingRef.current = false;
+    const stop = useCallback(async () => {
+        if (soundRef.current) {
+            try {
+                await soundRef.current.stopAsync();
+                await soundRef.current.unloadAsync();
+            } catch { }
+            soundRef.current = null;
         }
-    }, [isSupported]);
+    }, []);
 
     return {
         speak,
         stop,
-        isSpeaking: isSpeakingRef.current,
         isSupported,
     };
 }
