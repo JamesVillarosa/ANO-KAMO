@@ -1,7 +1,9 @@
 """
-OCR Endpoints — Image text extraction and translation
+OCR Endpoints — Image text extraction, translation, and scanning
 """
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.crud import create_ocr_request, create_ocr_text
@@ -11,6 +13,43 @@ from app.services.ocr_service import OcrService
 
 router = APIRouter()
 
+
+# ─── Scan (real-time overlay — Tesseract) ───
+
+class OcrScanRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64-encoded image")
+    source_lang: str = Field("tl", description="Source language: tl, en, ceb, hil")
+
+class TextBlockResponse(BaseModel):
+    text: str
+    x: int
+    y: int
+    width: int
+    height: int
+    confidence: float
+
+class OcrScanResponse(BaseModel):
+    blocks: List[TextBlockResponse]
+    image_width: int
+    image_height: int
+    error: Optional[str] = None
+
+
+@router.post("/ocr/scan", response_model=OcrScanResponse)
+async def scan_text_blocks(request: OcrScanRequest):
+    """
+    Scan image for text blocks with bounding boxes.
+    Uses Tesseract OCR — fast, free, returns coordinates for overlay.
+    No translation, no DB save — designed for real-time camera scanning.
+    """
+    result = OcrService.scan_text_blocks(
+        image_base64=request.image_base64,
+        source_lang=request.source_lang,
+    )
+    return result
+
+
+# ─── Extract + Translate (existing — Gemini Vision) ───
 
 @router.post("/ocr/extract", response_model=OcrExtractResponse)
 async def extract_and_translate(request: OcrExtractRequest, db: Session = Depends(get_db)):

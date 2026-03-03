@@ -21,12 +21,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
-    # CORS
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:3000",
-        "http://localhost:19000",
-        "http://10.0.2.2:8000",
-    ]
+    # CORS — allow all origins (dev mode)
+    CORS_ORIGINS: list[str] = ["*"]
 
     # External APIs
     GEMINI_API_KEY: str = ""

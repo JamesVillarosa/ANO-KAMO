@@ -1,10 +1,15 @@
 """
-OCR Service — Text extraction from images via Gemini Vision API
-Extracts text from photos/screenshots and translates using TranslationService.
+OCR Service — Text extraction from images
+- Gemini Vision: full extract + translate (existing)
+- Tesseract: scan for bounding boxes (new, for real-time overlay)
 """
 import logging
 import base64
-from typing import Optional
+import io
+from typing import Optional, List
+
+from PIL import Image
+import pytesseract
 
 import google.generativeai as genai
 from app.core.config import settings
@@ -12,9 +17,111 @@ from app.services.translation_service import TranslationService, SUPPORTED_LANGU
 
 logger = logging.getLogger(__name__)
 
+# Map app language codes to Tesseract language codes
+TESSERACT_LANG_MAP = {
+    "tl": "fil",     # Filipino / Tagalog
+    "en": "eng",     # English
+    "ceb": "fil",    # Cebuano → Filipino (same Latin charset)
+    "hil": "fil",    # Hiligaynon → Filipino (same Latin charset)
+}
+
 
 class OcrService:
-    """OCR using Gemini Vision for text extraction and translation"""
+    """OCR using Gemini Vision for translation and Tesseract for real-time scanning"""
+
+    # ─── Tesseract: scan for bounding boxes (real-time overlay) ───
+
+    @staticmethod
+    def scan_text_blocks(
+        image_base64: str,
+        source_lang: str = "tl",
+    ) -> dict:
+        """
+        Extract text blocks with bounding boxes using Tesseract.
+        Returns image dimensions + list of text blocks with coordinates.
+        Used for the real-time camera overlay feature.
+        """
+        try:
+            # Decode base64 image
+            image_bytes = base64.b64decode(image_base64)
+            image = Image.open(io.BytesIO(image_bytes))
+            img_width, img_height = image.size
+
+            # Get Tesseract language code
+            tess_lang = TESSERACT_LANG_MAP.get(source_lang, "eng+fil")
+
+            # Run Tesseract with detailed output (bounding boxes per word)
+            data = pytesseract.image_to_data(
+                image,
+                lang=tess_lang,
+                output_type=pytesseract.Output.DICT,
+                config="--psm 11",  # Sparse text mode — best for signs/menus
+            )
+
+            # Group words into lines based on block_num + line_num
+            lines: dict = {}
+            n = len(data["text"])
+            for i in range(n):
+                text = data["text"][i].strip()
+                conf = int(data["conf"][i])
+
+                # Skip empty or low-confidence detections
+                if not text or conf < 30:
+                    continue
+
+                # Group by (block, paragraph, line)
+                key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+                if key not in lines:
+                    lines[key] = {
+                        "text": "",
+                        "x": data["left"][i],
+                        "y": data["top"][i],
+                        "x2": data["left"][i] + data["width"][i],
+                        "y2": data["top"][i] + data["height"][i],
+                        "conf": 0,
+                        "count": 0,
+                    }
+
+                line = lines[key]
+                line["text"] += (" " + text) if line["text"] else text
+                line["x"] = min(line["x"], data["left"][i])
+                line["y"] = min(line["y"], data["top"][i])
+                line["x2"] = max(line["x2"], data["left"][i] + data["width"][i])
+                line["y2"] = max(line["y2"], data["top"][i] + data["height"][i])
+                line["conf"] += conf
+                line["count"] += 1
+
+            # Build result blocks
+            blocks = []
+            for line in lines.values():
+                avg_conf = line["conf"] / line["count"] if line["count"] > 0 else 0
+                blocks.append({
+                    "text": line["text"],
+                    "x": line["x"],
+                    "y": line["y"],
+                    "width": line["x2"] - line["x"],
+                    "height": line["y2"] - line["y"],
+                    "confidence": round(avg_conf, 1),
+                })
+
+            logger.info(f"Tesseract scan: {len(blocks)} text blocks found in {img_width}x{img_height} image")
+
+            return {
+                "blocks": blocks,
+                "image_width": img_width,
+                "image_height": img_height,
+            }
+
+        except Exception as e:
+            logger.error(f"Tesseract scan error: {e}")
+            return {
+                "blocks": [],
+                "image_width": 0,
+                "image_height": 0,
+                "error": str(e),
+            }
+
+    # ─── Gemini Vision: full extract + translate (existing) ───
 
     @staticmethod
     def extract_and_translate(
