@@ -9,7 +9,7 @@ import { transcribeAudio } from '../lib/api';
 
 // Silence detection config
 const SILENCE_THRESHOLD = -40;       // dB — below this = silence
-const SILENCE_DURATION_MS = 2000;    // auto-stop after 2s of silence
+const SILENCE_DURATION_MS = 4000;    // auto-stop after 4s of silence
 const METERING_INTERVAL_MS = 300;    // check audio level every 300ms
 
 interface SpeechRecognitionHook {
@@ -55,6 +55,8 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
             if (!uri) {
                 setInterimTranscript('');
                 setIsProcessing(false);
+                // CRITICAL: Reset stopping flag so mic can be used again
+                isStoppingRef.current = false;
                 return;
             }
 
@@ -69,16 +71,22 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
             setInterimTranscript('');
             setIsProcessing(false);
 
+            // CRITICAL: Reset stopping flag so mic can be used again
+            isStoppingRef.current = false;
+
         } catch (error) {
             console.error('Transcription failed:', error);
             setTranscript('');
             setInterimTranscript('');
             setIsProcessing(false);
+            // CRITICAL: Reset stopping flag so mic can be used again
+            isStoppingRef.current = false;
         }
     }, [langCode]);
 
     const startListening = useCallback(async () => {
-        if (isStoppingRef.current) return;
+        // Don't start if already in progress
+        if (isStoppingRef.current || isProcessing || isListening) return;
 
         try {
             // Request permissions
@@ -146,8 +154,9 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
         } catch (error) {
             console.error('Failed to start recording:', error);
             setIsListening(false);
+            isStoppingRef.current = false;
         }
-    }, [processRecording]);
+    }, [processRecording, isProcessing, isListening]);
 
     const stopListening = useCallback(async () => {
         if (isStoppingRef.current || !recordingRef.current) return;

@@ -25,14 +25,14 @@ import {
 import {
     createConversation,
     sendMessage as apiSendMessage,
+    translateSingle,
 } from '../src/lib/api';
 import {
     gradientColors,
     darkGradientColors,
-    glassCard,
-    darkGlassCard,
     SUPPORTED_LANGUAGES,
     LANGUAGE_PLACEHOLDERS,
+    LANGUAGE_COLORS,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -42,32 +42,21 @@ import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 
 const { width } = Dimensions.get('window');
 
-interface Message {
-    id: string;
+interface Translation {
     text: string;
-    translation: string;
-    speaker: number; // 0, 1, or 2
     lang: string;
-    targetLang: string;
 }
 
-// Glass-compatible speaker themes
-const SPEAKER_THEMES = [
-    { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
-    { bg: 'rgba(239, 68, 68, 0.85)', text: '#FFFFFF', trans: '#FECACA', label: 'Speaker 2' },
-];
+interface Message {
+    id: string;
+    text: string;               // original text
+    translations: Translation[]; // one or two translations
+    speaker: number;            // 0, 1, or 2
+    lang: string;               // original language
+}
 
-const SPEAKER_3WAY = [
-    { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', label: 'Speaker 1' },
-    { bg: 'rgba(239, 68, 68, 0.85)', text: '#FFFFFF', trans: '#FECACA', label: 'Speaker 2' },
-    { bg: 'rgba(234, 179, 8, 0.85)', text: '#FFFFFF', trans: '#FEF08A', label: 'Speaker 3' },
-];
-
-const DARK_SPEAKER_THEMES = [
-    { bg: 'rgba(37, 99, 235, 0.75)', text: '#FFFFFF', trans: '#93C5FD', label: 'Speaker 1' },
-    { bg: 'rgba(220, 38, 38, 0.75)', text: '#FFFFFF', trans: '#FCA5A5', label: 'Speaker 2' },
-    { bg: 'rgba(202, 138, 4, 0.75)', text: '#FFFFFF', trans: '#FDE047', label: 'Speaker 3' },
-];
+const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
+const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
 
 export default function ConversationScreen() {
     const { isDarkMode } = useTheme();
@@ -113,28 +102,19 @@ export default function ConversationScreen() {
     // Auto-populate input with live transcript
     useEffect(() => {
         const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
-        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...') {
+        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
             setInputText(liveText);
         } else if (speech.isListening || speech.isProcessing) {
             setInputText('');
         }
     }, [speech.transcript, speech.interimTranscript]);
 
-    // When transcription completes, auto-send as message
+    // When transcription completes, auto-send as message (with translation)
     useEffect(() => {
         if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
             const finalText = speech.transcript.trim();
-            const speakerLang = getActiveLang();
-            const msg: Message = {
-                id: Date.now().toString(),
-                text: finalText,
-                translation: '',
-                speaker: activeSpeaker,
-                lang: speakerLang,
-                targetLang: speakerLang,
-            };
-            setMessages(prev => [...prev, msg]);
-            setInputText('');
+            setInputText(finalText);
+            handleAutoSend(finalText);
         }
     }, [speech.isProcessing, speech.transcript]);
 
@@ -173,43 +153,82 @@ export default function ConversationScreen() {
         else setLang2(code);
     };
 
-    const getTheme = (speaker: number) => {
-        if (mode === '3way') return SPEAKER_3WAY[speaker] || SPEAKER_3WAY[0];
-        const themes = isDarkMode ? DARK_SPEAKER_THEMES : SPEAKER_THEMES;
-        return speaker === 0 ? themes[0] : themes[1];
+    // Get all OTHER speakers' languages (for translation targets)
+    const getTargetLangs = (speaker: number): string[] => {
+        const allLangs = [lang0, lang1];
+        if (mode === '3way') allLangs.push(lang2);
+
+        const srcLang = getLang(speaker);
+        // Return unique target languages that differ from source
+        const targets = allLangs
+            .filter((_, i) => i !== speaker)
+            .filter(l => l !== srcLang);
+
+        // Remove duplicates
+        return [...new Set(targets.length > 0 ? targets : allLangs.filter((_, i) => i !== speaker))];
     };
 
-    const handleSendMessage = async () => {
-        if (!inputText.trim()) return;
+    // Auto-send speech transcript with translation
+    const handleAutoSend = async (text: string) => {
+        if (!text.trim()) return;
         const fromLang = getLang(activeSpeaker);
-        const targetSpeaker = activeSpeaker === 0 ? 1 : 0;
-        const toLang = getLang(targetSpeaker);
+        const targetLangs = getTargetLangs(activeSpeaker);
         const speakerLabel = ['A', 'B', 'C'][activeSpeaker];
 
         setLoading(true);
         try {
-            let translation = '';
-            if (conversationId) {
-                const res = await apiSendMessage(
-                    conversationId, speakerLabel, inputText, fromLang, toLang
-                );
-                translation = res.translated_text || '';
+            const translations: Translation[] = [];
+
+            // Translate to each target language
+            for (const tl of targetLangs) {
+                try {
+                    if (conversationId) {
+                        const res = await apiSendMessage(
+                            conversationId, speakerLabel, text, fromLang, tl
+                        );
+                        translations.push({
+                            text: res.translated_text || '',
+                            lang: tl,
+                        });
+                    } else {
+                        // Fallback: use direct translate API
+                        const res = await translateSingle(text, fromLang, tl);
+                        translations.push({
+                            text: res.output_text || '',
+                            lang: tl,
+                        });
+                    }
+                } catch {
+                    translations.push({ text: `(Translation to ${SUPPORTED_LANGUAGES[tl]} unavailable)`, lang: tl });
+                }
             }
 
             const msg: Message = {
                 id: Date.now().toString(),
-                text: inputText,
-                translation,
+                text,
+                translations,
                 speaker: activeSpeaker,
                 lang: fromLang,
-                targetLang: toLang,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
         } catch {
-            Alert.alert('Error', 'Could not send message');
+            const msg: Message = {
+                id: Date.now().toString(),
+                text,
+                translations: [],
+                speaker: activeSpeaker,
+                lang: fromLang,
+            };
+            setMessages(prev => [...prev, msg]);
+            setInputText('');
         }
         setLoading(false);
+    };
+
+    const handleSendMessage = async () => {
+        if (!inputText.trim()) return;
+        await handleAutoSend(inputText.trim());
     };
 
     const clearConversation = () => {
@@ -218,7 +237,8 @@ export default function ConversationScreen() {
             {
                 text: 'Clear', style: 'destructive', onPress: () => {
                     setMessages([]);
-                    // Reset conversation session
+                    setInputText('');
+                    // Create a fresh conversation session
                     const speakerCount = mode === '3way' ? 3 : 2;
                     const participants = [
                         { speaker_label: 'A', preferred_language: lang0 },
@@ -242,6 +262,8 @@ export default function ConversationScreen() {
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
             <View style={styles.headerArea}>
+                <Text style={[styles.headerTitle, isDarkMode && { color: '#F8FAFC' }]}>ANO-KAMO?</Text>
+
                 {/* Mode Toggle */}
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
@@ -265,25 +287,34 @@ export default function ConversationScreen() {
                 {/* Speaker Language Chips */}
                 <View style={styles.speakerRow}>
                     {Array.from({ length: speakerCount }).map((_, i) => {
-                        const t = getTheme(i);
+                        const langCode = getLang(i);
+                        const langColor = getColorForLang(langCode);
                         const isActive = activeSpeaker === i;
                         return (
                             <TouchableOpacity
                                 key={i}
                                 style={[
                                     styles.speakerChip,
-                                    { borderColor: isActive ? t.bg : 'rgba(0,0,0,0.1)' },
-                                    isActive && { backgroundColor: t.bg },
-                                    isDarkMode && !isActive && { borderColor: 'rgba(255,255,255,0.2)' }
+                                    {
+                                        borderColor: isActive ? langColor.light : 'rgba(0,0,0,0.1)',
+                                        backgroundColor: isActive ? langColor.bg : 'rgba(255,255,255,0.5)',
+                                    },
+                                    isDarkMode && !isActive && { borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(30,41,59,0.5)' }
                                 ]}
-                                onPress={() => setActiveSpeaker(i)}
-                                onLongPress={() => setPickerFor(i)}
+                                onPress={() => {
+                                    if (activeSpeaker === i) {
+                                        setPickerFor(i);
+                                    } else {
+                                        setActiveSpeaker(i);
+                                    }
+                                }}
                             >
+                                <View style={[styles.langDot, { backgroundColor: langColor.light }]} />
                                 <Text style={[
                                     styles.speakerChipText,
                                     { color: isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B') },
                                 ]}>
-                                    {SUPPORTED_LANGUAGES[getLang(i)]}
+                                    {SUPPORTED_LANGUAGES[langCode]}
                                 </Text>
                                 <ChevronDown size={12} color={isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
                             </TouchableOpacity>
@@ -310,13 +341,13 @@ export default function ConversationScreen() {
                             {mode === '2way' ? '2-Way Conversation' : '3-Way Conversation'}
                         </Text>
                         <Text style={styles.emptySubtext}>
-                            Tap a speaker above to set who's talking, then type or use the mic.
+                            Tap a speaker above to set who's talking, then type or use the mic. Tap again to change language.
                         </Text>
                     </View>
                 )}
 
                 {messages.map((msg) => {
-                    const t = getTheme(msg.speaker);
+                    const langColor = getColorForLang(msg.lang);
                     const isLeft = msg.speaker === 0;
                     const isCenter = mode === '3way' && msg.speaker === 1;
                     const isRight = (mode === '2way' && msg.speaker === 1) ||
@@ -332,24 +363,54 @@ export default function ConversationScreen() {
                                         styles.msgRight,
                             ]}
                         >
-                            <View
-                                style={[styles.bubble, { backgroundColor: t.bg }]}
-                            >
-                                <Text style={[styles.bubbleText, { color: t.text }]}>
+                            <View style={[styles.bubble, { backgroundColor: langColor.bg }]}>
+                                {/* Speaker label */}
+                                <Text style={styles.bubbleSpeakerLabel}>
+                                    {SUPPORTED_LANGUAGES[msg.lang]}
+                                </Text>
+
+                                {/* Original text on top */}
+                                <Text style={[styles.bubbleText, { color: langColor.text }]}>
                                     {msg.text}
                                 </Text>
-                                {msg.translation ? (
-                                    <>
-                                        <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-                                        <Text style={[styles.transText, { color: t.trans }]}>
-                                            {msg.translation}
-                                        </Text>
-                                    </>
-                                ) : null}
+
+                                {/* Translation(s) on bottom */}
+                                {msg.translations.map((tr, idx) => {
+                                    const trColor = getColorForLang(tr.lang);
+                                    return (
+                                        <View key={idx}>
+                                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                                            <View style={styles.transRow}>
+                                                <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
+                                                <Text style={styles.transLangLabel}>
+                                                    {SUPPORTED_LANGUAGES[tr.lang]}
+                                                </Text>
+                                            </View>
+                                            <Text style={[styles.transText, { color: langColor.trans }]}>
+                                                {tr.text}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+
+                                {/* Footer with TTS icons */}
                                 <View style={styles.bubbleFooter}>
-                                    <TouchableOpacity onPress={() => tts.speak(msg.text, msg.lang)}>
+                                    <TouchableOpacity
+                                        onPress={() => tts.speak(msg.text, msg.lang)}
+                                        style={styles.footerIcon}
+                                    >
                                         <Volume2 size={14} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
+                                    {msg.translations.map((tr, idx) => (
+                                        <TouchableOpacity
+                                            key={idx}
+                                            onPress={() => tts.speak(tr.text, tr.lang)}
+                                            style={styles.footerIcon}
+                                        >
+                                            <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
+                                            <Volume2 size={14} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                    ))}
                                 </View>
                             </View>
                         </View>
@@ -367,11 +428,14 @@ export default function ConversationScreen() {
                     tint={isDarkMode ? 'dark' : 'light'}
                     style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
                 >
-                    {/* Active speaker indicator */}
-                    <View style={[styles.speakerDot, { backgroundColor: getTheme(activeSpeaker).bg }]} />
+                    <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
 
                     <TouchableOpacity
-                        style={[styles.micBtn, { backgroundColor: (speech.isListening || speech.isProcessing) ? '#EF4444' : getTheme(activeSpeaker).bg }]}
+                        style={[styles.micBtn, {
+                            backgroundColor: (speech.isListening || speech.isProcessing)
+                                ? '#EF4444'
+                                : getColorForLang(getActiveLang()).light
+                        }]}
                         onPress={() => {
                             if (speech.isListening) {
                                 speech.stopListening();
@@ -394,8 +458,16 @@ export default function ConversationScreen() {
 
                     <TextInput
                         style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                        placeholder={speech.isListening ? 'Listening...' : speech.isProcessing ? 'Transcribing...' : LANGUAGE_PLACEHOLDERS[getLang(activeSpeaker)]}
-                        placeholderTextColor={(speech.isListening || speech.isProcessing) ? '#EF4444' : (isDarkMode ? '#64748B' : '#94A3B8')}
+                        placeholder={
+                            speech.isListening ? 'Listening...'
+                                : speech.isProcessing ? 'Transcribing...'
+                                    : LANGUAGE_PLACEHOLDERS[getActiveLang()] || 'Type a message...'
+                        }
+                        placeholderTextColor={
+                            (speech.isListening || speech.isProcessing)
+                                ? '#EF4444'
+                                : (isDarkMode ? '#64748B' : '#94A3B8')
+                        }
                         value={inputText}
                         onChangeText={setInputText}
                         onSubmitEditing={handleSendMessage}
@@ -434,13 +506,19 @@ const styles = StyleSheet.create({
     containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-    /* Header Area */
     headerArea: {
-        paddingTop: 100,
+        paddingTop: 60,
         paddingHorizontal: 20,
     },
+    headerTitle: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: '#1E293B',
+        textAlign: 'center',
+        marginBottom: 12,
+        letterSpacing: 1,
+    },
 
-    /* Mode Toggle */
     toggleRow: {
         flexDirection: 'row',
         backgroundColor: 'rgba(241,245,249,0.7)',
@@ -468,14 +546,11 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    toggleActiveDark: {
-        backgroundColor: '#334155',
-    },
+    toggleActiveDark: { backgroundColor: '#334155' },
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },
 
-    /* Speaker Chips */
     speakerRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -492,6 +567,12 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.5)',
         borderColor: 'rgba(255,255,255,0.3)',
     },
+    langDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
     speakerChipText: {
         fontSize: 12,
         fontWeight: '700',
@@ -502,7 +583,6 @@ const styles = StyleSheet.create({
         padding: 6,
     },
 
-    /* Chat */
     chatArea: { flex: 1 },
     chatContent: { padding: 16, paddingBottom: 160 },
 
@@ -510,7 +590,6 @@ const styles = StyleSheet.create({
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
-    /* Messages */
     msgRow: { marginBottom: 10, maxWidth: '82%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
@@ -523,13 +602,40 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
     },
+    bubbleSpeakerLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.6)',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
     bubbleText: {
         fontSize: 15,
         lineHeight: 21,
+        fontWeight: '600',
     },
     bubbleDivider: {
         height: 1,
         marginVertical: 8,
+    },
+    transRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginBottom: 3,
+    },
+    transLangDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    transLangLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     transText: {
         fontSize: 13,
@@ -540,9 +646,20 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'flex-end',
         marginTop: 6,
+        gap: 10,
+    },
+    footerIcon: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        padding: 2,
+    },
+    ttsLangDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 3,
     },
 
-    /* Input Bar */
     inputBar: {
         flexDirection: 'row',
         alignItems: 'center',
