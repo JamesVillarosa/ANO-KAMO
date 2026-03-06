@@ -1,38 +1,68 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+/**
+ * OCR Screen — Real-time Live Scan + Post-Capture Translation Overlay
+ *
+ * Features:
+ * 1. Language pickers (Source + Target) on the camera HUD
+ * 2. Real-time "Live Scan" — captures a frame every ~2s, sends to
+ *    /ocr/scan-translate, renders translated text in floating boxes
+ * 3. Post-capture / Gallery — sends high-res image to /ocr/process-full,
+ *    renders a full-screen overlay with translated text covering originals
+ */
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     StyleSheet,
     View,
     TouchableOpacity,
-    Alert,
     Dimensions,
-    Image,
+    ScrollView,
+    Image as RNImage,
+    Platform,
+    ActivityIndicator,
+    Modal,
 } from 'react-native';
-import { Text, ActivityIndicator } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
-    Camera as CameraIcon,
-    ImagePlus,
+    Camera,
     Zap,
     ZapOff,
+    ImageIcon,
+    X,
+    ScanLine,
     Pause,
     Play,
+    ChevronDown,
+    Globe,
+    ArrowRight,
+    RotateCcw,
+    Check,
 } from 'lucide-react-native';
-import { gradientColors, darkGradientColors } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
-import BottomNav from '../src/components/BottomNav';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { ocrScan } from '../src/lib/api';
+import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES, LANGUAGE_COLORS } from '../src/theme';
+import { ocrScanTranslate, ocrProcessFull } from '../src/lib/api';
+import LanguagePicker from '../src/components/LanguagePicker';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// How often to scan (ms)
-const SCAN_INTERVAL = 2000;
+// Language options including Auto-Detect for source
+const SOURCE_LANGUAGES: Record<string, string> = {
+    auto: 'Auto-Detect',
+    tl: 'Tagalog',
+    ceb: 'Cebuano',
+    hil: 'Hiligaynon',
+    en: 'English',
+};
+const TARGET_LANGUAGES = SUPPORTED_LANGUAGES; // tl, ceb, hil, en
 
-interface TextBlock {
+// ─────────── Types ───────────
+
+interface TranslatedBlock {
     text: string;
+    translated_text: string;
     x: number;
     y: number;
     width: number;
@@ -40,425 +70,852 @@ interface TextBlock {
     confidence: number;
 }
 
+interface FullOcrBlock {
+    text: string;
+    translated_text: string;
+    box: number[]; // [x, y, w, h]
+    confidence: number;
+}
+
+interface FullOcrResult {
+    blocks: FullOcrBlock[];
+    image_width: number;
+    image_height: number;
+    full_extracted_text: string;
+    full_translated_text: string;
+    error?: string;
+}
+
+// ─────────── Component ───────────
+
 export default function OCRScreen() {
     const { isDarkMode } = useTheme();
+    const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
 
     // Camera
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView>(null);
-
-    // State
     const [flashOn, setFlashOn] = useState(false);
-    const [isPaused, setIsPaused] = useState(false);
-    const [isScanning, setIsScanning] = useState(false);
-    const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
-    const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null);
-    const [galleryImage, setGalleryImage] = useState<string | null>(null);
-    const [sourceLang] = useState('tl');
 
-    // Refs
-    const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const isScanningRef = useRef(false);
+    // Language selectors
+    const [sourceLang, setSourceLang] = useState('auto');
+    const [targetLang, setTargetLang] = useState('en');
+    const [showSourcePicker, setShowSourcePicker] = useState(false);
+    const [showTargetPicker, setShowTargetPicker] = useState(false);
 
-    useEffect(() => {
-        if (!permission || !permission.granted) {
-            requestPermission();
-        }
-    }, [permission]);
+    // Live scan state
+    const [scanning, setScanning] = useState(true);
+    const [liveBlocks, setLiveBlocks] = useState<TranslatedBlock[]>([]);
+    const [liveImageDims, setLiveImageDims] = useState({ w: 0, h: 0 });
+    const [scanBusy, setScanBusy] = useState(false);
 
-    // ─── Auto-scan: capture snapshot → send to backend → overlay ───
-    const runScan = useCallback(async () => {
-        if (isScanningRef.current || isPaused || galleryImage) return;
-        if (!cameraRef.current) return;
+    // Post-capture overlay state
+    const [capturedUri, setCapturedUri] = useState<string | null>(null);
+    const [capturedB64, setCapturedB64] = useState<string | null>(null);
+    const [fullOcr, setFullOcr] = useState<FullOcrResult | null>(null);
+    const [fullOcrLoading, setFullOcrLoading] = useState(false);
+    const [capturedImageDims, setCapturedImageDims] = useState({ w: 0, h: 0 });
 
-        isScanningRef.current = true;
+    // Timer ref for live scan interval
+    const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // ─── ALL HOOKS MUST BE ABOVE ANY EARLY RETURNS ───
+
+    const performLiveScan = useCallback(async () => {
+        if (scanBusy || !cameraRef.current || capturedUri || !permission?.granted) return;
+
+        setScanBusy(true);
         try {
             const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.5,
+                quality: 0.3,
                 base64: true,
                 skipProcessing: true,
             });
 
-            if (photo?.base64) {
-                const result = await ocrScan(photo.base64, sourceLang);
-
-                if (result.image_width > 0) {
-                    setImageSize({ w: result.image_width, h: result.image_height });
-                    setTextBlocks(result.blocks);
-                }
+            if (!photo?.base64) {
+                setScanBusy(false);
+                return;
             }
-        } catch (e) {
-            // Silently handle — camera may be transitioning
-            console.log('Scan skipped:', e);
-        }
-        isScanningRef.current = false;
-    }, [isPaused, galleryImage, sourceLang]);
 
-    // Start/stop scan interval
+            const result = await ocrScanTranslate(
+                photo.base64,
+                sourceLang === 'auto' ? 'tl' : sourceLang,
+                targetLang,
+            );
+
+            if (result && !result.error) {
+                setLiveBlocks(result.blocks || []);
+                setLiveImageDims({ w: result.image_width, h: result.image_height });
+            }
+        } catch (err) {
+            console.warn('Live scan error:', err);
+        } finally {
+            setScanBusy(false);
+        }
+    }, [scanBusy, sourceLang, targetLang, capturedUri, permission]);
+
+    // Start/stop live scan interval
     useEffect(() => {
-        if (permission?.granted && !isPaused && !galleryImage) {
-            setIsScanning(true);
-            scanIntervalRef.current = setInterval(runScan, SCAN_INTERVAL);
-            // First scan after short delay for camera to stabilize
-            setTimeout(runScan, 800);
+        if (scanning && !capturedUri && permission?.granted) {
+            scanTimerRef.current = setInterval(() => {
+                performLiveScan();
+            }, 2000);
 
             return () => {
-                if (scanIntervalRef.current) {
-                    clearInterval(scanIntervalRef.current);
-                    scanIntervalRef.current = null;
-                }
-                setIsScanning(false);
+                if (scanTimerRef.current) clearInterval(scanTimerRef.current);
             };
         } else {
-            if (scanIntervalRef.current) {
-                clearInterval(scanIntervalRef.current);
-                scanIntervalRef.current = null;
+            if (scanTimerRef.current) clearInterval(scanTimerRef.current);
+        }
+    }, [scanning, capturedUri, performLiveScan, permission]);
+
+    // Clear live blocks when language changes
+    useEffect(() => {
+        setLiveBlocks([]);
+    }, [sourceLang, targetLang]);
+
+    // ─── Helper Functions (not hooks) ───
+
+    const processFullOcr = async (b64: string) => {
+        setFullOcrLoading(true);
+        setFullOcr(null);
+
+        try {
+            const result = await ocrProcessFull(
+                b64,
+                targetLang,
+                sourceLang === 'auto' ? undefined : sourceLang,
+            );
+            setFullOcr(result);
+        } catch (err) {
+            console.error('Full OCR error:', err);
+            setFullOcr({
+                blocks: [],
+                image_width: 0,
+                image_height: 0,
+                full_extracted_text: '',
+                full_translated_text: '',
+                error: String(err),
+            });
+        } finally {
+            setFullOcrLoading(false);
+        }
+    };
+
+    const handleCapture = async () => {
+        if (!cameraRef.current) return;
+
+        try {
+            setScanning(false);
+            if (scanTimerRef.current) clearInterval(scanTimerRef.current);
+            setLiveBlocks([]);
+
+            const photo = await cameraRef.current.takePictureAsync({
+                quality: 0.8,
+                base64: true,
+            });
+
+            if (photo?.uri && photo?.base64) {
+                setCapturedUri(photo.uri);
+                setCapturedB64(photo.base64);
+                setCapturedImageDims({ w: photo.width || 0, h: photo.height || 0 });
+                processFullOcr(photo.base64);
             }
-            setIsScanning(false);
+        } catch (err) {
+            console.error('Capture error:', err);
+            setScanning(true);
         }
-    }, [permission?.granted, isPaused, galleryImage, runScan]);
+    };
 
-    // ─── Gallery OCR ───
     const handleGallery = async () => {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) {
-            Alert.alert('Permission needed', 'Gallery access is required');
-            return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-            quality: 0.7,
-            base64: true,
-            mediaTypes: ['images'],
-        });
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                quality: 0.85,
+                base64: true,
+            });
 
-        if (!result.canceled && result.assets?.[0]) {
-            const asset = result.assets[0];
-            setGalleryImage(asset.uri);
-            setIsPaused(true);
+            if (!result.canceled && result.assets?.[0]) {
+                const asset = result.assets[0];
+                const uri = asset.uri;
+                let b64 = asset.base64;
 
-            if (asset.base64) {
-                try {
-                    const scanResult = await ocrScan(asset.base64, sourceLang);
-                    if (scanResult.image_width > 0) {
-                        setImageSize({ w: scanResult.image_width, h: scanResult.image_height });
-                        setTextBlocks(scanResult.blocks);
-                    }
-                } catch (e: any) {
-                    Alert.alert('OCR Error', e?.message || 'Could not process image');
-                }
-            } else {
-                // Read file as base64 if picker didn't include it
-                try {
-                    const b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                if (!b64 && uri) {
+                    b64 = await FileSystem.readAsStringAsync(uri, {
                         encoding: FileSystem.EncodingType.Base64,
                     });
-                    const scanResult = await ocrScan(b64, sourceLang);
-                    if (scanResult.image_width > 0) {
-                        setImageSize({ w: scanResult.image_width, h: scanResult.image_height });
-                        setTextBlocks(scanResult.blocks);
-                    }
-                } catch (e: any) {
-                    Alert.alert('OCR Error', e?.message || 'Could not process image');
+                }
+
+                if (b64) {
+                    setScanning(false);
+                    if (scanTimerRef.current) clearInterval(scanTimerRef.current);
+                    setLiveBlocks([]);
+
+                    setCapturedUri(uri);
+                    setCapturedB64(b64);
+                    setCapturedImageDims({ w: asset.width || 0, h: asset.height || 0 });
+                    processFullOcr(b64);
                 }
             }
+        } catch (err) {
+            console.error('Gallery error:', err);
         }
     };
 
-    // ─── Pause / Resume ───
-    const togglePause = () => {
-        if (galleryImage) {
-            setGalleryImage(null);
-            setTextBlocks([]);
-            setIsPaused(false);
+    const handleRetranslate = () => {
+        if (capturedB64) processFullOcr(capturedB64);
+    };
+
+    const handleCloseCapture = () => {
+        setCapturedUri(null);
+        setCapturedB64(null);
+        setFullOcr(null);
+        setFullOcrLoading(false);
+        setScanning(true);
+    };
+
+    const handleTargetChange = (lang: string) => {
+        setTargetLang(lang);
+        if (capturedB64) {
+            setFullOcrLoading(true);
+            setFullOcr(null);
+            ocrProcessFull(
+                capturedB64,
+                lang,
+                sourceLang === 'auto' ? undefined : sourceLang,
+            ).then(r => { setFullOcr(r); setFullOcrLoading(false); })
+                .catch(() => setFullOcrLoading(false));
+        }
+    };
+
+    // ─── Permission screens (after all hooks) ───
+
+    if (!permission) {
+        return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+    }
+
+    if (!permission.granted) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <LinearGradient colors={[...activeGradient]} style={styles.bg} />
+                <Camera size={64} color="#94A3B8" />
+                <Text style={{ color: '#64748B', marginTop: 16, fontSize: 16 }}>
+                    Camera permission is required for OCR
+                </Text>
+                <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+                    <Text style={styles.permissionBtnText}>Grant Permission</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
+    // ─── Render: Post-Capture Overlay ───
+
+    if (capturedUri) {
+        // Calculate display dimensions to fit the image on screen
+        const imgAspect = capturedImageDims.w / (capturedImageDims.h || 1);
+        const screenAspect = SCREEN_W / SCREEN_H;
+
+        let displayW: number, displayH: number, offsetX = 0, offsetY = 0;
+        if (imgAspect > screenAspect) {
+            displayW = SCREEN_W;
+            displayH = SCREEN_W / imgAspect;
+            offsetY = (SCREEN_H - displayH) / 2;
         } else {
-            setIsPaused(!isPaused);
+            displayH = SCREEN_H;
+            displayW = SCREEN_H * imgAspect;
+            offsetX = (SCREEN_W - displayW) / 2;
         }
-    };
 
-    // ─── Overlay rendering ───
-    const getOverlayStyle = (block: TextBlock) => {
-        if (!imageSize) return { top: 0, left: 0, width: 0, height: 0 };
+        const scaleX = displayW / (capturedImageDims.w || 1);
+        const scaleY = displayH / (capturedImageDims.h || 1);
+        const langColor = LANGUAGE_COLORS[targetLang] || LANGUAGE_COLORS['en'];
 
-        const viewW = SCREEN_WIDTH;
-        const viewH = SCREEN_HEIGHT;
+        return (
+            <View style={styles.capturedContainer}>
+                {/* Background image */}
+                <RNImage
+                    source={{ uri: capturedUri }}
+                    style={[styles.capturedImage, { width: displayW, height: displayH, marginLeft: offsetX, marginTop: offsetY }]}
+                    resizeMode="contain"
+                />
 
-        const scaleX = viewW / imageSize.w;
-        const scaleY = viewH / imageSize.h;
+                {/* Translation overlay boxes */}
+                {fullOcr && fullOcr.blocks.length > 0 && (
+                    <View
+                        style={[
+                            styles.capturedOverlayContainer,
+                            { width: displayW, height: displayH, left: offsetX, top: offsetY },
+                        ]}
+                        pointerEvents="none"
+                    >
+                        {fullOcr.blocks.map((block, idx) => {
+                            const [bx, by, bw, bh] = block.box;
+                            if (!block.translated_text) return null;
 
-        return {
-            position: 'absolute' as const,
-            left: block.x * scaleX,
-            top: block.y * scaleY,
-            width: block.width * scaleX,
-            height: block.height * scaleY,
-        };
-    };
+                            return (
+                                <View
+                                    key={`full-${idx}`}
+                                    style={[
+                                        styles.capturedBox,
+                                        {
+                                            left: bx * scaleX,
+                                            top: by * scaleY,
+                                            width: Math.max(bw * scaleX, 30),
+                                            minHeight: bh * scaleY,
+                                            backgroundColor: langColor.bg,
+                                            borderColor: langColor.light,
+                                        },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[styles.capturedBoxText, { color: langColor.text }]}
+                                        adjustsFontSizeToFit
+                                        numberOfLines={4}
+                                    >
+                                        {block.translated_text}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
 
-    const renderOverlayBlocks = () => {
-        if (textBlocks.length === 0) return null;
+                {/* Loading spinner */}
+                {fullOcrLoading && (
+                    <View style={styles.loadingOverlay}>
+                        <BlurView intensity={30} tint="dark" style={styles.loadingBox}>
+                            <ActivityIndicator size="large" color="#3B82F6" />
+                            <Text style={styles.loadingText}>Extracting & Translating…</Text>
+                        </BlurView>
+                    </View>
+                )}
 
-        return textBlocks.map((block, idx) => {
-            const boxStyle = getOverlayStyle(block);
-            // Vary opacity by confidence
-            const opacity = Math.max(0.4, Math.min(0.8, block.confidence / 100));
+                {/* Top bar */}
+                <View style={styles.capturedTopBar}>
+                    <TouchableOpacity style={styles.capturedCloseBtn} onPress={handleCloseCapture}>
+                        <X size={22} color="#FFF" />
+                    </TouchableOpacity>
 
-            return (
-                <View
-                    key={idx}
-                    style={[
-                        styles.overlayBox,
-                        boxStyle,
-                        { backgroundColor: `rgba(59, 130, 246, ${opacity})` },
-                    ]}
-                >
-                    <Text style={styles.overlayText} numberOfLines={0}>
-                        {block.text}
-                    </Text>
+                    <TouchableOpacity style={styles.capturedLangBtn} onPress={() => setShowTargetPicker(true)}>
+                        <Globe size={14} color="#10B981" />
+                        <Text style={styles.capturedLangText}>
+                            {TARGET_LANGUAGES[targetLang] || targetLang}
+                        </Text>
+                        <ChevronDown size={12} color="#FFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.capturedRetranslateBtn} onPress={handleRetranslate}>
+                        <RotateCcw size={18} color="#FFF" />
+                    </TouchableOpacity>
                 </View>
-            );
-        });
-    };
+
+                {/* Bottom panel: Full text */}
+                {fullOcr && !fullOcrLoading && (fullOcr.full_extracted_text || fullOcr.full_translated_text) && (
+                    <View style={styles.capturedBottomPanel}>
+                        <BlurView intensity={60} tint="dark" style={styles.capturedBottomBlur}>
+                            <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={false}>
+                                {fullOcr.full_extracted_text ? (
+                                    <View style={{ marginBottom: 12 }}>
+                                        <Text style={styles.capturedPanelLabel}>Original</Text>
+                                        <Text style={styles.capturedPanelText}>{fullOcr.full_extracted_text}</Text>
+                                    </View>
+                                ) : null}
+                                {fullOcr.full_translated_text ? (
+                                    <View>
+                                        <Text style={[styles.capturedPanelLabel, { color: '#10B981' }]}>
+                                            Translated ({TARGET_LANGUAGES[targetLang] || targetLang})
+                                        </Text>
+                                        <Text style={[styles.capturedPanelText, { color: '#E2E8F0' }]}>
+                                            {fullOcr.full_translated_text}
+                                        </Text>
+                                    </View>
+                                ) : null}
+                                {fullOcr.error ? (
+                                    <Text style={[styles.capturedPanelText, { color: '#F87171' }]}>
+                                        Error: {fullOcr.error}
+                                    </Text>
+                                ) : null}
+                            </ScrollView>
+                        </BlurView>
+                    </View>
+                )}
+
+                {/* Target Language Picker */}
+                <LanguagePicker
+                    visible={showTargetPicker}
+                    onDismiss={() => setShowTargetPicker(false)}
+                    onSelect={handleTargetChange}
+                    selected={targetLang}
+                    title="Translate To"
+                />
+            </View>
+        );
+    }
+
+    // ─── Render: Camera + Live Scan ───
+
+    const langColor = LANGUAGE_COLORS[targetLang] || LANGUAGE_COLORS['en'];
 
     return (
-        <View style={[styles.container, isDarkMode && styles.containerDark]}>
-            <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+        <View style={styles.container}>
+            {/* Camera Feed */}
+            <CameraView
+                ref={cameraRef}
+                style={styles.camera}
+                facing="back"
+                flash={flashOn ? 'on' : 'off'}
+            >
+                {/* Live Scan Overlay Boxes */}
+                {liveBlocks.length > 0 && liveImageDims.w > 0 && (
+                    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                        {liveBlocks.map((block, idx) => {
+                            const scaleX = SCREEN_W / liveImageDims.w;
+                            const scaleY = SCREEN_H / liveImageDims.h;
+                            const left = block.x * scaleX;
+                            const top = block.y * scaleY;
+                            const width = block.width * scaleX;
+                            const height = block.height * scaleY;
 
-            {/* Camera / Image Viewfinder */}
-            <View style={styles.viewfinder}>
-                {galleryImage ? (
-                    <Image source={{ uri: galleryImage }} style={styles.cameraFeed} resizeMode="cover" />
-                ) : (permission && permission.granted) ? (
-                    <CameraView
-                        ref={cameraRef}
-                        style={styles.cameraFeed}
-                        enableTorch={flashOn}
-                        facing="back"
-                    />
-                ) : (
-                    <View style={styles.cameraEmpty}>
-                        <CameraIcon size={50} color="#475569" />
-                        <Text style={styles.cameraHint}>
-                            {permission?.status === 'denied'
-                                ? 'Camera permission denied'
-                                : 'Requesting camera permission...'}
-                        </Text>
+                            if (!block.translated_text && !block.text) return null;
+                            if (width < 10 || height < 5) return null;
+
+                            const displayText = block.translated_text || block.text;
+                            const opacity = Math.min(1, Math.max(0.5, (block.confidence || 50) / 100));
+
+                            return (
+                                <View
+                                    key={`live-${idx}`}
+                                    style={[
+                                        styles.overlayBox,
+                                        {
+                                            left,
+                                            top,
+                                            width: Math.max(width, 40),
+                                            minHeight: height,
+                                            backgroundColor: langColor.bg,
+                                            borderColor: langColor.light,
+                                            opacity,
+                                        },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[styles.overlayText, { color: langColor.text }]}
+                                        numberOfLines={3}
+                                    >
+                                        {displayText}
+                                    </Text>
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
-
-                {/* Text Overlay */}
-                <View style={styles.overlayContainer} pointerEvents="none">
-                    {renderOverlayBlocks()}
-                </View>
 
                 {/* Scanning indicator */}
-                {isScanning && !isPaused && (
+                {scanning && (
                     <View style={styles.scanIndicator}>
-                        <View style={styles.scanDot} />
-                        <Text style={styles.scanText}>Scanning...</Text>
-                    </View>
-                )}
-
-                {/* Paused indicator */}
-                {isPaused && (
-                    <View style={styles.pauseIndicator}>
-                        <Pause size={16} color="#FFF" />
-                        <Text style={styles.pauseText}>
-                            {galleryImage ? 'Gallery Image' : 'Paused'}
+                        <ScanLine size={18} color="#10B981" />
+                        <Text style={styles.scanIndicatorText}>
+                            {scanBusy ? 'Translating…' : 'Scanning'}
                         </Text>
                     </View>
                 )}
+            </CameraView>
 
-                {/* Text block count */}
-                {textBlocks.length > 0 && (
-                    <View style={styles.countBadge}>
-                        <Text style={styles.countText}>
-                            {textBlocks.length} text {textBlocks.length === 1 ? 'block' : 'blocks'}
+            {/* Language selector bar at top */}
+            <View style={styles.langBar}>
+                <BlurView intensity={50} tint={isDarkMode ? 'dark' : 'light'} style={styles.langBarInner}>
+                    <TouchableOpacity style={styles.langBtn} onPress={() => setShowSourcePicker(true)}>
+                        <Globe size={14} color="#3B82F6" />
+                        <Text style={styles.langBtnText}>
+                            {SOURCE_LANGUAGES[sourceLang] || sourceLang}
                         </Text>
-                    </View>
-                )}
+                        <ChevronDown size={12} color="#94A3B8" />
+                    </TouchableOpacity>
 
-                {/* Bottom Controls */}
-                <View style={styles.bottomArea}>
-                    <BlurView intensity={40} tint="dark" style={styles.bottomControls}>
-                        {/* Gallery */}
-                        <TouchableOpacity style={styles.sideBtn} onPress={handleGallery}>
-                            <ImagePlus size={22} color="#FFF" />
-                        </TouchableOpacity>
+                    <ArrowRight size={16} color="#64748B" />
 
-                        {/* Shutter = Pause/Resume */}
-                        <TouchableOpacity style={styles.shutterBtn} onPress={togglePause}>
-                            {isPaused ? (
-                                <Play size={28} color="#FFF" fill="#FFF" />
-                            ) : (
-                                <Pause size={28} color="#FFF" fill="#FFF" />
-                            )}
-                        </TouchableOpacity>
-
-                        {/* Flash */}
-                        <TouchableOpacity style={styles.sideBtn} onPress={() => setFlashOn(!flashOn)}>
-                            {flashOn ? (
-                                <Zap size={22} color="#F59E0B" />
-                            ) : (
-                                <ZapOff size={22} color="#FFF" />
-                            )}
-                        </TouchableOpacity>
-                    </BlurView>
-                </View>
+                    <TouchableOpacity style={styles.langBtn} onPress={() => setShowTargetPicker(true)}>
+                        <Globe size={14} color="#10B981" />
+                        <Text style={styles.langBtnText}>
+                            {TARGET_LANGUAGES[targetLang] || targetLang}
+                        </Text>
+                        <ChevronDown size={12} color="#94A3B8" />
+                    </TouchableOpacity>
+                </BlurView>
             </View>
 
-            <BottomNav />
+            {/* Bottom Controls */}
+            <View style={styles.controls}>
+                <BlurView intensity={40} tint="dark" style={styles.controlsBlur}>
+                    <TouchableOpacity style={styles.controlBtn} onPress={() => setFlashOn(f => !f)}>
+                        {flashOn
+                            ? <Zap size={22} color="#FCD34D" fill="#FCD34D" />
+                            : <ZapOff size={22} color="#FFFFFF" />
+                        }
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.shutterBtn} onPress={handleCapture}>
+                        <View style={styles.shutterInner} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.controlBtn} onPress={handleGallery}>
+                        <ImageIcon size={22} color="#FFFFFF" />
+                    </TouchableOpacity>
+                </BlurView>
+
+                <TouchableOpacity style={styles.scanToggle} onPress={() => setScanning(s => !s)}>
+                    <BlurView intensity={50} tint="dark" style={styles.scanToggleInner}>
+                        {scanning
+                            ? <><Pause size={14} color="#FFF" /><Text style={styles.scanToggleText}>Pause</Text></>
+                            : <><Play size={14} color="#FFF" /><Text style={styles.scanToggleText}>Resume</Text></>
+                        }
+                    </BlurView>
+                </TouchableOpacity>
+            </View>
+
+            {/* Source Language Picker */}
+            <SourceLanguagePicker
+                visible={showSourcePicker}
+                onDismiss={() => setShowSourcePicker(false)}
+                onSelect={setSourceLang}
+                selected={sourceLang}
+                isDarkMode={isDarkMode}
+            />
+
+            {/* Target Language Picker */}
+            <LanguagePicker
+                visible={showTargetPicker}
+                onDismiss={() => setShowTargetPicker(false)}
+                onSelect={setTargetLang}
+                selected={targetLang}
+                title="Translate To"
+            />
         </View>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#FFF' },
-    containerDark: { backgroundColor: '#0F172A' },
-    bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+// ─────────── Source Language Picker (with Auto-Detect) ───────────
 
-    /* Camera full screen */
-    viewfinder: {
+function SourceLanguagePicker({
+    visible,
+    onDismiss,
+    onSelect,
+    selected,
+    isDarkMode,
+}: {
+    visible: boolean;
+    onDismiss: () => void;
+    onSelect: (code: string) => void;
+    selected: string;
+    isDarkMode: boolean;
+}) {
+    return (
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+            <TouchableOpacity style={srcStyles.overlay} activeOpacity={1} onPress={onDismiss}>
+                <BlurView
+                    intensity={60}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[srcStyles.container, isDarkMode && srcStyles.containerDark]}
+                >
+                    <View style={srcStyles.header}>
+                        <Text style={[srcStyles.title, isDarkMode && { color: '#FFF' }]}>
+                            Source Language
+                        </Text>
+                        <TouchableOpacity onPress={onDismiss}>
+                            <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {Object.entries(SOURCE_LANGUAGES).map(([code, name]) => (
+                        <TouchableOpacity
+                            key={code}
+                            style={[
+                                srcStyles.option,
+                                selected === code && (isDarkMode ? srcStyles.optionSelectedDark : srcStyles.optionSelected),
+                            ]}
+                            onPress={() => { onSelect(code); onDismiss(); }}
+                        >
+                            <Text
+                                style={[
+                                    srcStyles.optionText,
+                                    isDarkMode && { color: '#94A3B8' },
+                                    selected === code && (isDarkMode
+                                        ? { color: '#60A5FA', fontWeight: '600' as const }
+                                        : { color: '#3B82F6', fontWeight: '600' as const }),
+                                ]}
+                            >
+                                {name}
+                            </Text>
+                            {selected === code && <Check size={18} color="#3B82F6" />}
+                        </TouchableOpacity>
+                    ))}
+                </BlurView>
+            </TouchableOpacity>
+        </Modal>
+    );
+}
+
+const srcStyles = StyleSheet.create({
+    overlay: {
         flex: 1,
-        backgroundColor: '#0F172A',
-    },
-    cameraFeed: {
-        flex: 1,
-    },
-    cameraEmpty: {
-        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    cameraHint: {
-        color: '#64748B',
-        fontSize: 14,
-        marginTop: 10,
-    },
-
-    /* Text overlay */
-    overlayContainer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-    },
-    overlayBox: {
-        borderWidth: 1.5,
-        borderColor: 'rgba(96, 165, 250, 0.8)',
-        borderRadius: 4,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 2,
+    container: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderRadius: 32,
+        padding: 24,
+        width: '85%',
+        maxWidth: 360,
         overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    containerDark: {
+        backgroundColor: 'rgba(30,41,59,0.7)',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    title: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
+    option: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        marginBottom: 6,
+    },
+    optionSelected: { backgroundColor: 'rgba(59,130,246,0.12)' },
+    optionSelectedDark: { backgroundColor: 'rgba(59,130,246,0.2)' },
+    optionText: { fontSize: 16, color: '#475569' },
+});
+
+// ─────────── Styles ───────────
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#000' },
+    bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    camera: { flex: 1 },
+
+    langBar: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 60 : 44,
+        left: 16,
+        right: 16,
+        zIndex: 10,
+    },
+    langBarInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 28,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+    },
+    langBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.25)',
+    },
+    langBtnText: { color: '#F8FAFC', fontSize: 13, fontWeight: '600' },
+
+    scanIndicator: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 120 : 100,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    scanIndicatorText: { color: '#10B981', fontSize: 12, fontWeight: '600' },
+
+    overlayBox: {
+        position: 'absolute',
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+        borderWidth: 1.5,
+        justifyContent: 'center',
     },
     overlayText: {
-        color: '#FFFFFF',
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '700',
-        textAlign: 'center',
-        textShadowColor: 'rgba(0, 0, 0, 0.8)',
+        textShadowColor: 'rgba(0,0,0,0.5)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 3,
     },
 
-    /* Scanning indicator */
-    scanIndicator: {
+    controls: {
         position: 'absolute',
-        top: 60,
-        alignSelf: 'center',
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 14,
-        paddingVertical: 7,
-        borderRadius: 20,
-        gap: 8,
-    },
-    scanDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#22C55E',
-    },
-    scanText: {
-        color: '#FFF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-
-    /* Paused indicator */
-    pauseIndicator: {
-        position: 'absolute',
-        top: 60,
-        alignSelf: 'center',
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(239, 68, 68, 0.7)',
-        paddingHorizontal: 14,
-        paddingVertical: 7,
-        borderRadius: 20,
-        gap: 8,
-    },
-    pauseText: {
-        color: '#FFF',
-        fontSize: 13,
-        fontWeight: '600',
-    },
-
-    /* Text count badge */
-    countBadge: {
-        position: 'absolute',
-        top: 100,
-        alignSelf: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 12,
-        paddingVertical: 5,
-        borderRadius: 12,
-    },
-    countText: {
-        color: '#FFF',
-        fontSize: 12,
-        fontWeight: '500',
-    },
-
-    /* Bottom controls */
-    bottomArea: {
-        position: 'absolute',
-        bottom: 110,
+        bottom: 0,
         left: 0,
         right: 0,
         alignItems: 'center',
+        paddingBottom: Platform.OS === 'ios' ? 40 : 30,
     },
-    bottomControls: {
+    controlsBlur: {
         flexDirection: 'row',
-        justifyContent: 'center',
         alignItems: 'center',
         gap: 32,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingVertical: 18,
         paddingHorizontal: 32,
-        paddingVertical: 20,
-        borderRadius: 100,
+        borderRadius: 40,
+        overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
-        overflow: 'hidden',
     },
-    sideBtn: {
+    controlBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+    shutterBtn: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        borderWidth: 4,
+        borderColor: '#FFFFFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    shutterInner: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        backgroundColor: '#FFFFFF',
+    },
+    scanToggle: { marginTop: 12 },
+    scanToggleInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    scanToggleText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+
+    permissionBtn: {
+        marginTop: 24,
+        backgroundColor: '#3B82F6',
+        paddingVertical: 14,
+        paddingHorizontal: 32,
+        borderRadius: 24,
+    },
+    permissionBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+    capturedContainer: { flex: 1, backgroundColor: '#000' },
+    capturedImage: { position: 'absolute' },
+    capturedOverlayContainer: { position: 'absolute' },
+    capturedBox: {
+        position: 'absolute',
+        borderRadius: 4,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        borderWidth: 1.5,
+        justifyContent: 'center',
+    },
+    capturedBoxText: {
+        fontSize: 10,
+        fontWeight: '700',
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+    },
+    capturedTopBar: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 56 : 36,
+        left: 16,
+        right: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    capturedCloseBtn: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    shutterBtn: {
-        width: 76,
-        height: 76,
-        borderRadius: 38,
-        backgroundColor: 'rgba(255,255,255,0.25)',
+    capturedLangBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    capturedLangText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+    capturedRetranslateBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 3,
-        borderColor: '#FFF',
     },
+    capturedBottomPanel: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+    },
+    capturedBottomBlur: {
+        padding: 20,
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        overflow: 'hidden',
+    },
+    capturedPanelLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#94A3B8',
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
+        marginBottom: 6,
+    },
+    capturedPanelText: { fontSize: 14, color: '#CBD5E1', lineHeight: 20 },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    loadingBox: {
+        alignItems: 'center',
+        padding: 28,
+        borderRadius: 24,
+        overflow: 'hidden',
+    },
+    loadingText: { color: '#CBD5E1', fontSize: 14, fontWeight: '600', marginTop: 12 },
 });

@@ -1,11 +1,13 @@
 """
 OCR Service — Text extraction from images
-- Gemini Vision: full extract + translate (existing)
-- Tesseract: scan for bounding boxes (new, for real-time overlay)
+- Tesseract: scan for bounding boxes (real-time overlay)
+- Gemini Vision: full extract + translate (post-capture)
+- Translation integration: translate extracted blocks via Gemini
 """
 import logging
 import base64
 import io
+import re
 from typing import Optional, List
 
 from PIL import Image
@@ -26,6 +28,26 @@ TESSERACT_LANG_MAP = {
 }
 
 
+def _fix_base64_padding(b64_string: str) -> str:
+    """Fix base64 padding to prevent 'Incorrect padding' errors."""
+    # Remove any data URI prefix (e.g., "data:image/jpeg;base64,")
+    if "," in b64_string:
+        b64_string = b64_string.split(",", 1)[1]
+
+    # Strip whitespace
+    b64_string = b64_string.strip()
+
+    # Remove any non-base64 characters
+    b64_string = re.sub(r'[^A-Za-z0-9+/=]', '', b64_string)
+
+    # Add padding if needed
+    missing_padding = len(b64_string) % 4
+    if missing_padding:
+        b64_string += "=" * (4 - missing_padding)
+
+    return b64_string
+
+
 class OcrService:
     """OCR using Gemini Vision for translation and Tesseract for real-time scanning"""
 
@@ -42,8 +64,9 @@ class OcrService:
         Used for the real-time camera overlay feature.
         """
         try:
-            # Decode base64 image
-            image_bytes = base64.b64decode(image_base64)
+            # Fix and decode base64 image
+            fixed_b64 = _fix_base64_padding(image_base64)
+            image_bytes = base64.b64decode(fixed_b64)
             image = Image.open(io.BytesIO(image_bytes))
             img_width, img_height = image.size
 
@@ -121,6 +144,267 @@ class OcrService:
                 "error": str(e),
             }
 
+    # ─── Tesseract + Translation: scan + translate each block ───
+
+    @staticmethod
+    def scan_and_translate(
+        image_base64: str,
+        source_lang: str = "tl",
+        target_lang: str = "en",
+    ) -> dict:
+        """
+        Extract text blocks with Tesseract, then translate each block
+        using Gemini. For real-time camera overlay with translation.
+        """
+        # First, get the raw scan blocks
+        scan_result = OcrService.scan_text_blocks(image_base64, source_lang)
+
+        if scan_result.get("error") or not scan_result.get("blocks"):
+            return {
+                "blocks": [],
+                "image_width": scan_result.get("image_width", 0),
+                "image_height": scan_result.get("image_height", 0),
+                "error": scan_result.get("error"),
+            }
+
+        # Batch-translate all block texts for efficiency
+        blocks = scan_result["blocks"]
+        all_texts = [b["text"] for b in blocks]
+
+        try:
+            translated_texts = OcrService._batch_translate(
+                texts=all_texts,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                context="signage, menu, or label",
+            )
+        except Exception as e:
+            logger.error(f"Batch translation error: {e}")
+            translated_texts = ["" for _ in all_texts]
+
+        # Merge translations into blocks
+        result_blocks = []
+        for i, block in enumerate(blocks):
+            result_blocks.append({
+                "text": block["text"],
+                "translated_text": translated_texts[i] if i < len(translated_texts) else "",
+                "x": block["x"],
+                "y": block["y"],
+                "width": block["width"],
+                "height": block["height"],
+                "confidence": block.get("confidence", 0),
+            })
+
+        return {
+            "blocks": result_blocks,
+            "image_width": scan_result["image_width"],
+            "image_height": scan_result["image_height"],
+        }
+
+    # ─── Full OCR: high-res image → extract + translate + coordinates ───
+
+    @staticmethod
+    def process_full_ocr(
+        image_base64: str,
+        source_lang: Optional[str] = None,
+        target_lang: str = "en",
+    ) -> dict:
+        """
+        Full OCR processing for captured/gallery images.
+        Uses Tesseract for bounding boxes + Gemini for translation.
+        Returns blocks with original text, translated text, and coordinates.
+        """
+        try:
+            # Fix and decode base64
+            fixed_b64 = _fix_base64_padding(image_base64)
+            image_bytes = base64.b64decode(fixed_b64)
+            image = Image.open(io.BytesIO(image_bytes))
+            img_width, img_height = image.size
+
+            # Use higher accuracy PSM for captured images
+            tess_lang = TESSERACT_LANG_MAP.get(source_lang or "tl", "eng+fil")
+            data = pytesseract.image_to_data(
+                image,
+                lang=tess_lang,
+                output_type=pytesseract.Output.DICT,
+                config="--psm 6",  # Assume uniform block — better for photos
+            )
+
+            # Group words into lines
+            lines: dict = {}
+            n = len(data["text"])
+            for i in range(n):
+                text = data["text"][i].strip()
+                conf = int(data["conf"][i])
+                if not text or conf < 20:
+                    continue
+
+                key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+                if key not in lines:
+                    lines[key] = {
+                        "text": "",
+                        "x": data["left"][i],
+                        "y": data["top"][i],
+                        "x2": data["left"][i] + data["width"][i],
+                        "y2": data["top"][i] + data["height"][i],
+                        "conf": 0,
+                        "count": 0,
+                    }
+
+                line = lines[key]
+                line["text"] += (" " + text) if line["text"] else text
+                line["x"] = min(line["x"], data["left"][i])
+                line["y"] = min(line["y"], data["top"][i])
+                line["x2"] = max(line["x2"], data["left"][i] + data["width"][i])
+                line["y2"] = max(line["y2"], data["top"][i] + data["height"][i])
+                line["conf"] += conf
+                line["count"] += 1
+
+            # Build text array and bounding boxes
+            raw_blocks = []
+            all_texts = []
+            for line in lines.values():
+                avg_conf = line["conf"] / line["count"] if line["count"] > 0 else 0
+                raw_blocks.append({
+                    "text": line["text"],
+                    "x": line["x"],
+                    "y": line["y"],
+                    "width": line["x2"] - line["x"],
+                    "height": line["y2"] - line["y"],
+                    "confidence": round(avg_conf, 1),
+                })
+                all_texts.append(line["text"])
+
+            # Full extracted text for display
+            full_text = "\n".join(all_texts)
+
+            # Batch translate all blocks
+            if all_texts:
+                try:
+                    translated_texts = OcrService._batch_translate(
+                        texts=all_texts,
+                        source_lang=source_lang or "tl",
+                        target_lang=target_lang,
+                        context="signage, menu, label, or document",
+                    )
+                except Exception as e:
+                    logger.error(f"Full OCR translation error: {e}")
+                    translated_texts = ["" for _ in all_texts]
+            else:
+                translated_texts = []
+
+            # Full translated text
+            full_translated = "\n".join(translated_texts) if translated_texts else ""
+
+            # Build response blocks
+            result_blocks = []
+            for i, block in enumerate(raw_blocks):
+                result_blocks.append({
+                    "text": block["text"],
+                    "translated_text": translated_texts[i] if i < len(translated_texts) else "",
+                    "box": [block["x"], block["y"], block["width"], block["height"]],
+                    "confidence": block["confidence"],
+                })
+
+            logger.info(f"Full OCR: {len(result_blocks)} blocks from {img_width}x{img_height}")
+
+            return {
+                "blocks": result_blocks,
+                "image_width": img_width,
+                "image_height": img_height,
+                "full_extracted_text": full_text,
+                "full_translated_text": full_translated,
+            }
+
+        except Exception as e:
+            logger.error(f"Full OCR processing error: {e}")
+            return {
+                "blocks": [],
+                "image_width": 0,
+                "image_height": 0,
+                "full_extracted_text": "",
+                "full_translated_text": "",
+                "error": str(e),
+            }
+
+    # ─── Batch Translation via Gemini ───
+
+    @staticmethod
+    def _batch_translate(
+        texts: List[str],
+        source_lang: str,
+        target_lang: str,
+        context: str = "signage or menu",
+    ) -> List[str]:
+        """
+        Translate multiple text blocks in a single Gemini call for efficiency.
+        Returns a list of translated texts matching the input order.
+        """
+        if not texts:
+            return []
+
+        if not settings.GEMINI_API_KEY:
+            # Fallback: use TranslationService one-by-one
+            results = []
+            for text in texts:
+                try:
+                    r = TranslationService.translate_text(text, source_lang, target_lang)
+                    results.append(r.get("output_text", text))
+                except Exception:
+                    results.append(text)
+            return results
+
+        src_name = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
+        tgt_name = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
+
+        # Build a numbered list for batch translation
+        numbered_lines = "\n".join(
+            f"{i+1}. {text}" for i, text in enumerate(texts)
+        )
+
+        prompt = (
+            f"Translate the following {src_name} text lines to {tgt_name}. "
+            f"These are from a {context} context. Keep translations concise and natural. "
+            f"Return ONLY the translations as a numbered list matching the input order. "
+            f"Do not add explanations.\n\n{numbered_lines}"
+        )
+
+        try:
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            model = genai.GenerativeModel("gemini-2.0-flash-lite")
+            response = model.generate_content(prompt)
+            response_text = response.text.strip()
+
+            # Parse numbered lines from response
+            translated = OcrService._parse_numbered_response(response_text, len(texts))
+            return translated
+
+        except Exception as e:
+            logger.error(f"Gemini batch translate error: {e}")
+            # Fallback: return originals
+            return texts
+
+    @staticmethod
+    def _parse_numbered_response(response_text: str, expected_count: int) -> List[str]:
+        """Parse a numbered list response from Gemini into individual translations."""
+        lines = response_text.strip().split("\n")
+        results = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Remove numbered prefix like "1. ", "2. ", "1) ", etc.
+            cleaned = re.sub(r"^\d+[\.\)\-]\s*", "", line)
+            if cleaned:
+                results.append(cleaned)
+
+        # Pad with empty strings if we got fewer results
+        while len(results) < expected_count:
+            results.append("")
+
+        return results[:expected_count]
+
     # ─── Gemini Vision: full extract + translate (existing) ───
 
     @staticmethod
@@ -133,7 +417,8 @@ class OcrService:
         Extract text from a base64-encoded image and translate it.
         Uses Gemini Vision API for OCR.
         """
-        extracted_text = OcrService._extract_text(image_base64, source_lang)
+        fixed_b64 = _fix_base64_padding(image_base64)
+        extracted_text = OcrService._extract_text(fixed_b64, source_lang)
         detected_language = source_lang or "tl"
 
         if not extracted_text or extracted_text.startswith("["):
