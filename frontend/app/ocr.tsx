@@ -3,7 +3,7 @@
  *
  * Features:
  * 1. Language pickers (Source + Target) on the camera HUD
- * 2. Real-time "Live Scan" — captures a frame every ~2s, sends to
+ * 2. Real-time "Live Scan" — captures a frame every ~2.5s, sends to
  *    /ocr/scan-translate, renders translated text in floating boxes
  * 3. Post-capture / Gallery — sends high-res image to /ocr/process-full,
  *    renders a full-screen overlay with translated text covering originals
@@ -48,15 +48,14 @@ import LanguagePicker from '../src/components/LanguagePicker';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// Language options including Auto-Detect for source
+// Source languages (no auto-detect)
 const SOURCE_LANGUAGES: Record<string, string> = {
-    auto: 'Auto-Detect',
     tl: 'Tagalog',
     ceb: 'Cebuano',
     hil: 'Hiligaynon',
     en: 'English',
 };
-const TARGET_LANGUAGES = SUPPORTED_LANGUAGES; // tl, ceb, hil, en
+const TARGET_LANGUAGES = SUPPORTED_LANGUAGES;
 
 // ─────────── Types ───────────
 
@@ -73,7 +72,7 @@ interface TranslatedBlock {
 interface FullOcrBlock {
     text: string;
     translated_text: string;
-    box: number[]; // [x, y, w, h]
+    box: number[];
     confidence: number;
 }
 
@@ -95,10 +94,10 @@ export default function OCRScreen() {
     // Camera
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView>(null);
-    const [flashOn, setFlashOn] = useState(false);
+    const [torchOn, setTorchOn] = useState(false);
 
     // Language selectors
-    const [sourceLang, setSourceLang] = useState('auto');
+    const [sourceLang, setSourceLang] = useState('tl');
     const [targetLang, setTargetLang] = useState('en');
     const [showSourcePicker, setShowSourcePicker] = useState(false);
     const [showTargetPicker, setShowTargetPicker] = useState(false);
@@ -119,7 +118,7 @@ export default function OCRScreen() {
     // Timer ref for live scan interval
     const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // ─── ALL HOOKS MUST BE ABOVE ANY EARLY RETURNS ───
+    // ─── ALL HOOKS ABOVE EARLY RETURNS ───
 
     const performLiveScan = useCallback(async () => {
         if (scanBusy || !cameraRef.current || capturedUri || !permission?.granted) return;
@@ -139,7 +138,7 @@ export default function OCRScreen() {
 
             const result = await ocrScanTranslate(
                 photo.base64,
-                sourceLang === 'auto' ? 'tl' : sourceLang,
+                sourceLang,
                 targetLang,
             );
 
@@ -159,7 +158,7 @@ export default function OCRScreen() {
         if (scanning && !capturedUri && permission?.granted) {
             scanTimerRef.current = setInterval(() => {
                 performLiveScan();
-            }, 2000);
+            }, 2500);
 
             return () => {
                 if (scanTimerRef.current) clearInterval(scanTimerRef.current);
@@ -176,15 +175,15 @@ export default function OCRScreen() {
 
     // ─── Helper Functions (not hooks) ───
 
-    const processFullOcr = async (b64: string) => {
+    const processFullOcr = async (b64: string, tgtLang?: string) => {
         setFullOcrLoading(true);
         setFullOcr(null);
 
         try {
             const result = await ocrProcessFull(
                 b64,
-                targetLang,
-                sourceLang === 'auto' ? undefined : sourceLang,
+                tgtLang || targetLang,
+                sourceLang,
             );
             setFullOcr(result);
         } catch (err) {
@@ -277,14 +276,7 @@ export default function OCRScreen() {
     const handleTargetChange = (lang: string) => {
         setTargetLang(lang);
         if (capturedB64) {
-            setFullOcrLoading(true);
-            setFullOcr(null);
-            ocrProcessFull(
-                capturedB64,
-                lang,
-                sourceLang === 'auto' ? undefined : sourceLang,
-            ).then(r => { setFullOcr(r); setFullOcrLoading(false); })
-                .catch(() => setFullOcrLoading(false));
+            processFullOcr(capturedB64, lang);
         }
     };
 
@@ -312,7 +304,6 @@ export default function OCRScreen() {
     // ─── Render: Post-Capture Overlay ───
 
     if (capturedUri) {
-        // Calculate display dimensions to fit the image on screen
         const imgAspect = capturedImageDims.w / (capturedImageDims.h || 1);
         const screenAspect = SCREEN_W / SCREEN_H;
 
@@ -333,7 +324,6 @@ export default function OCRScreen() {
 
         return (
             <View style={styles.capturedContainer}>
-                {/* Background image */}
                 <RNImage
                     source={{ uri: capturedUri }}
                     style={[styles.capturedImage, { width: displayW, height: displayH, marginLeft: offsetX, marginTop: offsetY }]}
@@ -459,12 +449,12 @@ export default function OCRScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Camera Feed */}
+            {/* Camera Feed — using enableTorch for steady light (not flash which blinks) */}
             <CameraView
                 ref={cameraRef}
                 style={styles.camera}
                 facing="back"
-                flash={flashOn ? 'on' : 'off'}
+                enableTorch={torchOn}
             >
                 {/* Live Scan Overlay Boxes */}
                 {liveBlocks.length > 0 && liveImageDims.w > 0 && (
@@ -478,10 +468,9 @@ export default function OCRScreen() {
                             const height = block.height * scaleY;
 
                             if (!block.translated_text && !block.text) return null;
-                            if (width < 10 || height < 5) return null;
+                            if (width < 20 || height < 10) return null;
 
                             const displayText = block.translated_text || block.text;
-                            const opacity = Math.min(1, Math.max(0.5, (block.confidence || 50) / 100));
 
                             return (
                                 <View
@@ -491,11 +480,10 @@ export default function OCRScreen() {
                                         {
                                             left,
                                             top,
-                                            width: Math.max(width, 40),
+                                            width: Math.max(width, 50),
                                             minHeight: height,
                                             backgroundColor: langColor.bg,
                                             borderColor: langColor.light,
-                                            opacity,
                                         },
                                     ]}
                                 >
@@ -511,7 +499,7 @@ export default function OCRScreen() {
                     </View>
                 )}
 
-                {/* Scanning indicator */}
+                {/* Scanning indicator — positioned below the language bar */}
                 {scanning && (
                     <View style={styles.scanIndicator}>
                         <ScanLine size={18} color="#10B981" />
@@ -522,7 +510,7 @@ export default function OCRScreen() {
                 )}
             </CameraView>
 
-            {/* Language selector bar at top */}
+            {/* Language selector bar — positioned below the navigation header */}
             <View style={styles.langBar}>
                 <BlurView intensity={50} tint={isDarkMode ? 'dark' : 'light'} style={styles.langBarInner}>
                     <TouchableOpacity style={styles.langBtn} onPress={() => setShowSourcePicker(true)}>
@@ -548,8 +536,9 @@ export default function OCRScreen() {
             {/* Bottom Controls */}
             <View style={styles.controls}>
                 <BlurView intensity={40} tint="dark" style={styles.controlsBlur}>
-                    <TouchableOpacity style={styles.controlBtn} onPress={() => setFlashOn(f => !f)}>
-                        {flashOn
+                    {/* Torch Toggle — steady on/off, not flash */}
+                    <TouchableOpacity style={styles.controlBtn} onPress={() => setTorchOn(t => !t)}>
+                        {torchOn
                             ? <Zap size={22} color="#FCD34D" fill="#FCD34D" />
                             : <ZapOff size={22} color="#FFFFFF" />
                         }
@@ -595,7 +584,7 @@ export default function OCRScreen() {
     );
 }
 
-// ─────────── Source Language Picker (with Auto-Detect) ───────────
+// ─────────── Source Language Picker ───────────
 
 function SourceLanguagePicker({
     visible,
@@ -613,9 +602,7 @@ function SourceLanguagePicker({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <TouchableOpacity style={srcStyles.overlay} activeOpacity={1} onPress={onDismiss}>
-                <BlurView
-                    intensity={60}
-                    tint={isDarkMode ? 'dark' : 'light'}
+                <View
                     style={[srcStyles.container, isDarkMode && srcStyles.containerDark]}
                 >
                     <View style={srcStyles.header}>
@@ -650,7 +637,7 @@ function SourceLanguagePicker({
                             {selected === code && <Check size={18} color="#3B82F6" />}
                         </TouchableOpacity>
                     ))}
-                </BlurView>
+                </View>
             </TouchableOpacity>
         </Modal>
     );
@@ -659,22 +646,21 @@ function SourceLanguagePicker({
 const srcStyles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     container: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        borderRadius: 32,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
         padding: 24,
         width: '85%',
         maxWidth: 360,
-        overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
+        borderColor: 'rgba(0,0,0,0.1)',
     },
     containerDark: {
-        backgroundColor: 'rgba(30,41,59,0.7)',
+        backgroundColor: '#1E293B',
         borderColor: 'rgba(255,255,255,0.1)',
     },
     header: {
@@ -705,9 +691,10 @@ const styles = StyleSheet.create({
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     camera: { flex: 1 },
 
+    // Language bar — pushed down below navigation header
     langBar: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 60 : 44,
+        top: Platform.OS === 'ios' ? 110 : 90,
         left: 16,
         right: 16,
         zIndex: 10,
@@ -735,9 +722,10 @@ const styles = StyleSheet.create({
     },
     langBtnText: { color: '#F8FAFC', fontSize: 13, fontWeight: '600' },
 
+    // Scan indicator — below language bar
     scanIndicator: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 120 : 100,
+        top: Platform.OS === 'ios' ? 170 : 150,
         alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
@@ -758,7 +746,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     overlayText: {
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: '700',
         textShadowColor: 'rgba(0,0,0,0.5)',
         textShadowOffset: { width: 0, height: 1 },
@@ -842,7 +830,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     capturedBoxText: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '700',
         textShadowColor: 'rgba(0,0,0,0.6)',
         textShadowOffset: { width: 0, height: 1 },
@@ -850,7 +838,7 @@ const styles = StyleSheet.create({
     },
     capturedTopBar: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 56 : 36,
+        top: Platform.OS === 'ios' ? 60 : 40,
         left: 16,
         right: 16,
         flexDirection: 'row',

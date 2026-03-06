@@ -27,25 +27,46 @@ TESSERACT_LANG_MAP = {
     "hil": "fil",    # Hiligaynon → Filipino (same Latin charset)
 }
 
+# Minimum confidence threshold for Tesseract text detection
+MIN_CONFIDENCE_SCAN = 50      # For live scan (stricter to avoid noise)
+MIN_CONFIDENCE_FULL = 40      # For full OCR (slightly relaxed)
+
+# Minimum character length for a valid text block
+MIN_TEXT_LENGTH = 2
+
 
 def _fix_base64_padding(b64_string: str) -> str:
     """Fix base64 padding to prevent 'Incorrect padding' errors."""
-    # Remove any data URI prefix (e.g., "data:image/jpeg;base64,")
     if "," in b64_string:
         b64_string = b64_string.split(",", 1)[1]
-
-    # Strip whitespace
     b64_string = b64_string.strip()
-
-    # Remove any non-base64 characters
     b64_string = re.sub(r'[^A-Za-z0-9+/=]', '', b64_string)
-
-    # Add padding if needed
     missing_padding = len(b64_string) % 4
     if missing_padding:
         b64_string += "=" * (4 - missing_padding)
-
     return b64_string
+
+
+def _is_real_text(text: str) -> bool:
+    """
+    Filter out noise: single chars, pure symbols, pure numbers, etc.
+    Returns True only if the text looks like a real word/phrase.
+    """
+    if len(text) < MIN_TEXT_LENGTH:
+        return False
+
+    # Count actual letters (any alphabet)
+    letter_count = sum(1 for c in text if c.isalpha())
+
+    # Must have at least 2 letters
+    if letter_count < 2:
+        return False
+
+    # Reject if less than 40% letters (i.e., mostly symbols/numbers)
+    if letter_count / len(text) < 0.4:
+        return False
+
+    return True
 
 
 class OcrService:
@@ -61,19 +82,15 @@ class OcrService:
         """
         Extract text blocks with bounding boxes using Tesseract.
         Returns image dimensions + list of text blocks with coordinates.
-        Used for the real-time camera overlay feature.
         """
         try:
-            # Fix and decode base64 image
             fixed_b64 = _fix_base64_padding(image_base64)
             image_bytes = base64.b64decode(fixed_b64)
             image = Image.open(io.BytesIO(image_bytes))
             img_width, img_height = image.size
 
-            # Get Tesseract language code
             tess_lang = TESSERACT_LANG_MAP.get(source_lang, "eng+fil")
 
-            # Run Tesseract with detailed output (bounding boxes per word)
             data = pytesseract.image_to_data(
                 image,
                 lang=tess_lang,
@@ -89,10 +106,9 @@ class OcrService:
                 conf = int(data["conf"][i])
 
                 # Skip empty or low-confidence detections
-                if not text or conf < 30:
+                if not text or conf < MIN_CONFIDENCE_SCAN:
                     continue
 
-                # Group by (block, paragraph, line)
                 key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
                 if key not in lines:
                     lines[key] = {
@@ -114,12 +130,18 @@ class OcrService:
                 line["conf"] += conf
                 line["count"] += 1
 
-            # Build result blocks
+            # Build result blocks — filter out noise
             blocks = []
             for line in lines.values():
                 avg_conf = line["conf"] / line["count"] if line["count"] > 0 else 0
+                text = line["text"].strip()
+
+                # Skip non-real text (noise, single chars, symbols)
+                if not _is_real_text(text):
+                    continue
+
                 blocks.append({
-                    "text": line["text"],
+                    "text": text,
                     "x": line["x"],
                     "y": line["y"],
                     "width": line["x2"] - line["x"],
@@ -156,7 +178,6 @@ class OcrService:
         Extract text blocks with Tesseract, then translate each block
         using Gemini. For real-time camera overlay with translation.
         """
-        # First, get the raw scan blocks
         scan_result = OcrService.scan_text_blocks(image_base64, source_lang)
 
         if scan_result.get("error") or not scan_result.get("blocks"):
@@ -167,9 +188,23 @@ class OcrService:
                 "error": scan_result.get("error"),
             }
 
-        # Batch-translate all block texts for efficiency
         blocks = scan_result["blocks"]
         all_texts = [b["text"] for b in blocks]
+
+        # If source and target are the same, no translation needed
+        if source_lang == target_lang:
+            result_blocks = []
+            for block in blocks:
+                result_blocks.append({
+                    "text": block["text"],
+                    "translated_text": block["text"],
+                    **{k: block[k] for k in ("x", "y", "width", "height", "confidence")},
+                })
+            return {
+                "blocks": result_blocks,
+                "image_width": scan_result["image_width"],
+                "image_height": scan_result["image_height"],
+            }
 
         try:
             translated_texts = OcrService._batch_translate(
@@ -182,7 +217,6 @@ class OcrService:
             logger.error(f"Batch translation error: {e}")
             translated_texts = ["" for _ in all_texts]
 
-        # Merge translations into blocks
         result_blocks = []
         for i, block in enumerate(blocks):
             result_blocks.append({
@@ -212,16 +246,13 @@ class OcrService:
         """
         Full OCR processing for captured/gallery images.
         Uses Tesseract for bounding boxes + Gemini for translation.
-        Returns blocks with original text, translated text, and coordinates.
         """
         try:
-            # Fix and decode base64
             fixed_b64 = _fix_base64_padding(image_base64)
             image_bytes = base64.b64decode(fixed_b64)
             image = Image.open(io.BytesIO(image_bytes))
             img_width, img_height = image.size
 
-            # Use higher accuracy PSM for captured images
             tess_lang = TESSERACT_LANG_MAP.get(source_lang or "tl", "eng+fil")
             data = pytesseract.image_to_data(
                 image,
@@ -236,7 +267,7 @@ class OcrService:
             for i in range(n):
                 text = data["text"][i].strip()
                 conf = int(data["conf"][i])
-                if not text or conf < 20:
+                if not text or conf < MIN_CONFIDENCE_FULL:
                     continue
 
                 key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
@@ -260,26 +291,31 @@ class OcrService:
                 line["conf"] += conf
                 line["count"] += 1
 
-            # Build text array and bounding boxes
+            # Build text blocks — filter noise
             raw_blocks = []
             all_texts = []
             for line in lines.values():
                 avg_conf = line["conf"] / line["count"] if line["count"] > 0 else 0
+                text = line["text"].strip()
+
+                # Filter noise
+                if not _is_real_text(text):
+                    continue
+
                 raw_blocks.append({
-                    "text": line["text"],
+                    "text": text,
                     "x": line["x"],
                     "y": line["y"],
                     "width": line["x2"] - line["x"],
                     "height": line["y2"] - line["y"],
                     "confidence": round(avg_conf, 1),
                 })
-                all_texts.append(line["text"])
+                all_texts.append(text)
 
-            # Full extracted text for display
             full_text = "\n".join(all_texts)
 
             # Batch translate all blocks
-            if all_texts:
+            if all_texts and source_lang != target_lang:
                 try:
                     translated_texts = OcrService._batch_translate(
                         texts=all_texts,
@@ -289,14 +325,15 @@ class OcrService:
                     )
                 except Exception as e:
                     logger.error(f"Full OCR translation error: {e}")
-                    translated_texts = ["" for _ in all_texts]
+                    translated_texts = all_texts[:]
+            elif all_texts:
+                # Same language → no translation needed
+                translated_texts = all_texts[:]
             else:
                 translated_texts = []
 
-            # Full translated text
             full_translated = "\n".join(translated_texts) if translated_texts else ""
 
-            # Build response blocks
             result_blocks = []
             for i, block in enumerate(raw_blocks):
                 result_blocks.append({
@@ -338,10 +375,13 @@ class OcrService:
     ) -> List[str]:
         """
         Translate multiple text blocks in a single Gemini call for efficiency.
-        Returns a list of translated texts matching the input order.
         """
         if not texts:
             return []
+
+        # If source == target, return as-is
+        if source_lang == target_lang:
+            return texts[:]
 
         if not settings.GEMINI_API_KEY:
             # Fallback: use TranslationService one-by-one
@@ -357,7 +397,6 @@ class OcrService:
         src_name = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
         tgt_name = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
-        # Build a numbered list for batch translation
         numbered_lines = "\n".join(
             f"{i+1}. {text}" for i, text in enumerate(texts)
         )
@@ -366,7 +405,7 @@ class OcrService:
             f"Translate the following {src_name} text lines to {tgt_name}. "
             f"These are from a {context} context. Keep translations concise and natural. "
             f"Return ONLY the translations as a numbered list matching the input order. "
-            f"Do not add explanations.\n\n{numbered_lines}"
+            f"Do not add explanations or notes.\n\n{numbered_lines}"
         )
 
         try:
@@ -375,14 +414,14 @@ class OcrService:
             response = model.generate_content(prompt)
             response_text = response.text.strip()
 
-            # Parse numbered lines from response
             translated = OcrService._parse_numbered_response(response_text, len(texts))
+
+            logger.info(f"Batch translated {len(texts)} texts: {src_name} → {tgt_name}")
             return translated
 
         except Exception as e:
             logger.error(f"Gemini batch translate error: {e}")
-            # Fallback: return originals
-            return texts
+            return texts[:]
 
     @staticmethod
     def _parse_numbered_response(response_text: str, expected_count: int) -> List[str]:
@@ -394,12 +433,10 @@ class OcrService:
             line = line.strip()
             if not line:
                 continue
-            # Remove numbered prefix like "1. ", "2. ", "1) ", etc.
             cleaned = re.sub(r"^\d+[\.\)\-]\s*", "", line)
             if cleaned:
                 results.append(cleaned)
 
-        # Pad with empty strings if we got fewer results
         while len(results) < expected_count:
             results.append("")
 
@@ -428,7 +465,6 @@ class OcrService:
                 "detected_language": detected_language,
             }
 
-        # Translate extracted text
         result = TranslationService.translate_text(
             text=extracted_text,
             source_lang=detected_language,
@@ -451,7 +487,6 @@ class OcrService:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             model = genai.GenerativeModel("gemini-1.5-flash")
 
-            # Decode base64
             image_bytes = base64.b64decode(image_base64)
 
             lang_hint = ""
