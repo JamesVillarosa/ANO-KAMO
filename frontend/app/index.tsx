@@ -36,7 +36,8 @@ import {
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
-import DictionaryModal from '../src/components/DictionaryModal';
+import WordCardModal from '../src/components/WordCardModal';
+import SelectableWord from '../src/components/SelectableWord';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
@@ -227,9 +228,13 @@ export default function HomeScreen() {
                 {loading1 ? (
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
-                  <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}>
-                    {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
-                  </Text>
+                  <SelectableWord
+                    text={translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
+                    sourceLang={targetLang1}
+                    targetLang={sourceLang}
+                    style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}
+                    isDarkMode={isDarkMode}
+                  />
                 )}
               </View>
               {translated1 ? (
@@ -276,9 +281,13 @@ export default function HomeScreen() {
                     {loading2 ? (
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                     ) : (
-                      <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}>
-                        {translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
-                      </Text>
+                      <SelectableWord
+                        text={translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
+                        sourceLang={targetLang2}
+                        targetLang={sourceLang}
+                        style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}
+                        isDarkMode={isDarkMode}
+                      />
                     )}
                   </View>
                   {translated2 ? (
@@ -315,8 +324,8 @@ export default function HomeScreen() {
         }
       />
 
-      {/* Dictionary Modal */}
-      <DictionaryModal
+      {/* Word Card Modal */}
+      <WordCardModal
         visible={dictVisible}
         onDismiss={() => setDictVisible(false)}
         word={dictWord}

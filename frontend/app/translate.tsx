@@ -34,6 +34,7 @@ import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
+import SelectableWord from '../src/components/SelectableWord';
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
@@ -280,9 +281,13 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                    {translated1}
-                                </Text>
+                                <SelectableWord
+                                    text={translated1}
+                                    sourceLang={targetLang1}
+                                    targetLang={sourceLang}
+                                    style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
+                                    isDarkMode={isDarkMode}
+                                />
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated1, targetLang1)}>
                                         <Volume2 size={18} color={tgt1Color.light} />
@@ -310,9 +315,13 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                    {translated2}
-                                </Text>
+                                <SelectableWord
+                                    text={translated2}
+                                    sourceLang={targetLang2}
+                                    targetLang={sourceLang}
+                                    style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
+                                    isDarkMode={isDarkMode}
+                                />
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated2, targetLang2)}>
                                         <Volume2 size={18} color={tgt2Color.light} />

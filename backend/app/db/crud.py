@@ -215,6 +215,9 @@ def create_dictionary_entry(
     definition: str = None,
     example_sentence: str = None,
     pronunciation: str = None,
+    part_of_speech: str = None,
+    synonyms: str = None,
+    root: str = None,
 ) -> DictionaryEntry:
     entry = DictionaryEntry(
         word=word,
@@ -222,6 +225,9 @@ def create_dictionary_entry(
         definition=definition,
         example_sentence=example_sentence,
         pronunciation=pronunciation,
+        part_of_speech=part_of_speech,
+        synonyms=synonyms,
+        root=root,
     )
     db.add(entry)
     db.commit()

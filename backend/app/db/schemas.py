@@ -134,6 +134,7 @@ class DictionaryEntryResponse(BaseModel):
     example_sentence: Optional[str]
     part_of_speech: Optional[str] = None
     synonyms: Optional[List[str]] = None
+    root: Optional[str] = None
     class Config:
         from_attributes = True
 

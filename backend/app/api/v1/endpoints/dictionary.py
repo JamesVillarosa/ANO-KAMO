@@ -17,7 +17,7 @@ async def lookup_word(request: DictionaryLookupRequest, db: Session = Depends(ge
     """
     Look up a word in the dictionary.
     Checks cache first, then queries Gemini for pronunciation, definition,
-    part of speech, synonyms, and example sentences.
+    part of speech, synonyms, root, and example sentences.
     """
     result = DictionaryService.lookup(
         db,
@@ -44,4 +44,5 @@ async def lookup_word(request: DictionaryLookupRequest, db: Session = Depends(ge
         "example_sentence": result.get("example_sentence", ""),
         "part_of_speech": result.get("part_of_speech", ""),
         "synonyms": result.get("synonyms", []),
+        "root": result.get("root", result["word"]),
     }
