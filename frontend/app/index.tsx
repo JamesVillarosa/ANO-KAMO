@@ -9,6 +9,7 @@ import {
   Platform,
   Clipboard,
   Alert,
+  ToastAndroid,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,7 +38,9 @@ import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import WordCardModal from '../src/components/WordCardModal';
-import SelectableWord from '../src/components/SelectableWord';
+import TappableWord from '../src/components/TappableWord';
+import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
+import CoachmarkManager from '../src/components/CoachmarkManager';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
@@ -65,6 +68,7 @@ export default function HomeScreen() {
   // Dictionary
   const [dictVisible, setDictVisible] = useState(false);
   const [dictWord, setDictWord] = useState('');
+  const [breakdownVisible, setBreakdownVisible] = useState(false);
 
   const translate = useCallback(async (text: string, from: string, to: string): Promise<string> => {
     try {
@@ -127,10 +131,19 @@ export default function HomeScreen() {
   };
 
   const openDictionary = (text: string) => {
-    const firstWord = text.trim().split(/\s+/)[0];
-    if (firstWord) {
-      setDictWord(firstWord);
-      setDictVisible(true);
+    if (!text.trim()) {
+      showToast("Generate a translation first to use the dictionary.");
+      return;
+    }
+    setDictWord(text); // For breakdown sheet or direct word if needed
+    setBreakdownVisible(true);
+  };
+
+  const showToast = (message: string) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('', message);
     }
   };
 
@@ -228,13 +241,16 @@ export default function HomeScreen() {
                 {loading1 ? (
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
-                  <SelectableWord
-                    text={translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
-                    sourceLang={targetLang1}
-                    targetLang={sourceLang}
-                    style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}
-                    isDarkMode={isDarkMode}
-                  />
+                  <CoachmarkManager visible={!!translated1}>
+                    <TappableWord
+                      text={translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
+                      sourceLang={targetLang1}
+                      targetLang={sourceLang}
+                      style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}
+                      isDarkMode={isDarkMode}
+                      disabled={!translated1}
+                    />
+                  </CoachmarkManager>
                 )}
               </View>
               {translated1 ? (
@@ -281,12 +297,13 @@ export default function HomeScreen() {
                     {loading2 ? (
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                     ) : (
-                      <SelectableWord
+                      <TappableWord
                         text={translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
                         sourceLang={targetLang2}
                         targetLang={sourceLang}
                         style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}
                         isDarkMode={isDarkMode}
+                        disabled={!translated2}
                       />
                     )}
                   </View>
@@ -331,6 +348,17 @@ export default function HomeScreen() {
         word={dictWord}
         sourceLang={sourceLang}
         targetLang={targetLang1}
+      />
+
+      {/* Sentence Breakdown Sheet */}
+      <SentenceBreakdownSheet
+        visible={breakdownVisible}
+        onClose={() => setBreakdownVisible(false)}
+        text={dictWord}
+        onWordPress={(word) => {
+          setDictWord(word);
+          setDictVisible(true);
+        }}
       />
     </View>
   );

@@ -20,8 +20,12 @@ MODEL = "gemini-2.5-flash-lite"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 SYSTEM_INSTRUCTION = (
-    "You are a Filipino-language dictionary expert specializing in Tagalog, Cebuano, "
-    "Hiligaynon, and English. You provide accurate, rich dictionary entries."
+    "You are an expert bilingual Filipino-language dictionary. "
+    "You specialize in Tagalog, Cebuano, Hiligaynon, and English. "
+    "When the user taps a translated word, you explain that word's meaning "
+    "in the language the user already speaks (the source language) so they "
+    "can understand the translation. Always include regional slang notes "
+    "when applicable."
 )
 
 
@@ -81,17 +85,23 @@ class DictionaryService:
             src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
             tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
+            # Bilingual Adaptive Prompt:
+            # The word tapped is in the TARGET language (what appeared on screen).
+            # The definition must be in the SOURCE language (what the user speaks).
             prompt = (
-                f'Provide a detailed dictionary entry for the {src} word "{word}".\n'
-                f"The definition should be written in {tgt}.\n\n"
+                f'The user is translating from {src} to {tgt}.\n'
+                f'They tapped the word "{word}" which appears in the {tgt} translation output.\n'
+                f'Provide a detailed dictionary entry for "{word}" (a {tgt} word).\n'
+                f'Write the definition and explanation in {src} so the user understands the {tgt} term.\n'
+                f'Synonyms should be in {tgt} (same language as the word).\n\n'
                 f"Return a JSON object with EXACTLY these keys:\n"
                 f'{{"word": "{word}", '
                 f'"root": "the root/base word if applicable, otherwise same as word", '
                 f'"pronunciation": "syllable-separated with interpuncts e.g. sho · kot", '
                 f'"part_of_speech": "e.g. Adjective (Slang/Colloquial) or Noun or Verb etc.", '
-                f'"definition": "full numbered definition in {tgt}, can be multi-sentence", '
-                f'"synonyms": ["synonym1", "synonym2"], '
-                f'"example_sentence": "a natural example sentence using the word in {src}"}}\n\n'
+                f'"definition": "full definition in {src}, include regional slang notes if applicable", '
+                f'"synonyms": ["synonym1_in_{target_lang}", "synonym2_in_{target_lang}"], '
+                f'"example_sentence": "a natural example sentence using the word in {tgt}"}}\n\n'
                 f"Return ONLY the JSON, no markdown, no explanation."
             )
 

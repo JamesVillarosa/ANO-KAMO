@@ -8,6 +8,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     Animated,
+    Dimensions, // Added
+    ToastAndroid, // Added
+    Alert, // Added
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +23,7 @@ import {
     ChevronDown,
     Mic,
     MicOff,
+    BookOpen, // Added
 } from 'lucide-react-native';
 import { translateSingle, translateMulti } from '../src/lib/api';
 import {
@@ -34,7 +38,10 @@ import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
-import SelectableWord from '../src/components/SelectableWord';
+import TappableWord from '../src/components/TappableWord';
+import WordCardModal from '../src/components/WordCardModal';
+import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
+import CoachmarkManager from '../src/components/CoachmarkManager';
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
@@ -53,6 +60,7 @@ export default function TranslateScreen() {
     const [translated2, setTranslated2] = useState('');
     const [loading1, setLoading1] = useState(false);
     const [loading2, setLoading2] = useState(false);
+    const [breakdownVisible, setBreakdownVisible] = useState(false);
 
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target1' | 'target2' | null>(null);
 
@@ -121,6 +129,26 @@ export default function TranslateScreen() {
         }, 800);
         return () => clearTimeout(timer);
     }, [sourceText, sourceLang, targetLang1, targetLang2, mode]);
+
+    const openDictionary = (text: string, src: string, tgt: string) => {
+        if (!text.trim()) {
+            if (Platform.OS === 'android') {
+                ToastAndroid.show("Generate a translation first to use the dictionary.", ToastAndroid.SHORT);
+            } else {
+                Alert.alert('', "Generate a translation first to use the dictionary.");
+            }
+            return;
+        }
+        setDictWord(text);
+        setSourceLangLookup(src);
+        setTargetLangLookup(tgt);
+        setBreakdownVisible(true);
+    };
+
+    const [dictWord, setDictWord] = useState('');
+    const [sourceLangLookup, setSourceLangLookup] = useState('');
+    const [targetLangLookup, setTargetLangLookup] = useState('');
+    const [dictVisible, setDictVisible] = useState(false);
 
     const swapLanguages = () => {
         const oldSource = sourceLang;
@@ -281,16 +309,22 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <SelectableWord
-                                    text={translated1}
-                                    sourceLang={targetLang1}
-                                    targetLang={sourceLang}
-                                    style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
-                                    isDarkMode={isDarkMode}
-                                />
+                                <CoachmarkManager visible={!!translated1}>
+                                    <TappableWord
+                                        text={translated1}
+                                        sourceLang={targetLang1}
+                                        targetLang={sourceLang}
+                                        style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
+                                        isDarkMode={isDarkMode}
+                                        disabled={!translated1}
+                                    />
+                                </CoachmarkManager>
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated1, targetLang1)}>
                                         <Volume2 size={18} color={tgt1Color.light} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => openDictionary(translated1, targetLang1, sourceLang)}>
+                                        <BookOpen size={18} color={tgt1Color.light} />
                                     </TouchableOpacity>
                                 </View>
                             </>
@@ -315,16 +349,20 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <SelectableWord
+                                <TappableWord
                                     text={translated2}
                                     sourceLang={targetLang2}
                                     targetLang={sourceLang}
                                     style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
                                     isDarkMode={isDarkMode}
+                                    disabled={!translated2}
                                 />
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated2, targetLang2)}>
                                         <Volume2 size={18} color={tgt2Color.light} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => openDictionary(translated2, targetLang2, sourceLang)}>
+                                        <BookOpen size={18} color={tgt2Color.light} />
                                     </TouchableOpacity>
                                 </View>
                             </>
@@ -340,12 +378,35 @@ export default function TranslateScreen() {
             <LanguagePicker
                 visible={pickerTarget !== null}
                 onDismiss={() => setPickerTarget(null)}
-                onSelect={handlePickerSelect}
+                onSelect={(code) => {
+                    if (pickerTarget === 'source') setSourceLang(code);
+                    else if (pickerTarget === 'target1') setTargetLang1(code);
+                    else if (pickerTarget === 'target2') setTargetLang2(code);
+                    setPickerTarget(null);
+                }}
                 selected={
                     pickerTarget === 'source' ? sourceLang
                         : pickerTarget === 'target1' ? targetLang1
-                            : targetLang2
+                            : targetLang2 || 'tl'
                 }
+            />
+
+            <WordCardModal
+                visible={dictVisible}
+                onDismiss={() => setDictVisible(false)}
+                word={dictWord}
+                sourceLang={sourceLangLookup}
+                targetLang={targetLangLookup}
+            />
+
+            <SentenceBreakdownSheet
+                visible={breakdownVisible}
+                onClose={() => setBreakdownVisible(false)}
+                text={dictWord}
+                onWordPress={(word) => {
+                    setDictWord(word);
+                    setDictVisible(true);
+                }}
             />
         </View>
     );

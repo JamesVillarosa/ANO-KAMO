@@ -39,7 +39,7 @@ import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
-import SelectableWord from '../src/components/SelectableWord';
+import TappableWord from '../src/components/TappableWord';
 
 const { width } = Dimensions.get('window');
 
@@ -387,11 +387,13 @@ export default function ConversationScreen() {
                                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                                 </Text>
                                             </View>
-                                            <SelectableWord
+                                            <TappableWord
                                                 text={tr.text}
                                                 sourceLang={tr.lang}
                                                 targetLang={msg.lang}
                                                 style={[styles.transText, { color: langColor.trans }]}
+                                                isDarkMode={isDarkMode}
+                                                disabled={!tr.text}
                                             />
                                         </View>
                                     );
