@@ -12,9 +12,22 @@ mkdir -p "$LOG_DIR"
 # Cleanup existing processes
 cleanup() {
     echo "Stopping existing services..."
+    # Kill backend
     fuser -k $API_PORT/tcp > /dev/null 2>&1
-    pkill -f "ngrok http $API_PORT" > /dev/null 2>&1
+    
+    # Kill ngrok (more aggressively)
+    pkill -9 -f "ngrok http $API_PORT" > /dev/null 2>&1
+    
+    # Kill expo
     pkill -f "expo start" > /dev/null 2>&1
+    
+    # Clean up zombie processes
+    local zombies=$(ps aux | grep -e "uvicorn" -e "ngrok" -e "expo" | grep "Z" | awk '{print $2}')
+    if [ ! -z "$zombies" ]; then
+        kill -9 $zombies > /dev/null 2>&1
+    fi
+    
+    sleep 2
 }
 
 # Start Backend
@@ -31,21 +44,30 @@ start_backend() {
 # Start Ngrok and update environment
 start_ngrok() {
     echo "Starting Ngrok tunnel..."
-    nohup ngrok http $API_PORT > "$LOG_DIR/ngrok.log" 2>&1 &
+    
+    # Wipe old log to ensure we catch new errors
+    rm -f "$LOG_DIR/ngrok.log"
+    
+    # Start ngrok
+    nohup ngrok http $API_PORT --log=stdout > "$LOG_DIR/ngrok.log" 2>&1 &
     
     echo "Waiting for Ngrok public URL..."
     local public_url=""
-    local max_attempts=15
+    local max_attempts=20
     local attempt=0
     
     while [ -z "$public_url" ] && [ $attempt -lt $max_attempts ]; do
         sleep 2
+        echo -n "."
         public_url=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*"' | head -n 1 | cut -d'"' -f4)
         ((attempt++))
     done
+    echo "" # Newline after dots
     
     if [ -z "$public_url" ]; then
         echo "Error: Failed to obtain Ngrok URL."
+        echo "Last 10 lines of $LOG_DIR/ngrok.log:"
+        tail -n 10 "$LOG_DIR/ngrok.log"
         exit 1
     fi
     
