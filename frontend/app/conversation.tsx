@@ -21,6 +21,7 @@ import {
     Volume2,
     ChevronDown,
     Trash2,
+    BookOpen,
 } from 'lucide-react-native';
 import {
     createConversation,
@@ -40,6 +41,8 @@ import LanguagePicker from '../src/components/LanguagePicker';
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 import TappableWord from '../src/components/TappableWord';
+import WordCardModal from '../src/components/WordCardModal';
+import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 
 const { width } = Dimensions.get('window');
 
@@ -74,6 +77,13 @@ export default function ConversationScreen() {
     const [lang2, setLang2] = useState('hil');
     const [pickerFor, setPickerFor] = useState<number | null>(null);
     const [conversationId, setConversationId] = useState<string | null>(null);
+
+    // Dictionary state
+    const [dictVisible, setDictVisible] = useState(false);
+    const [dictWord, setDictWord] = useState('');
+    const [dictSourceLang, setDictSourceLang] = useState('');
+    const [dictTargetLang, setDictTargetLang] = useState('');
+    const [breakdownVisible, setBreakdownVisible] = useState(false);
 
     // Speech Recognition
     const getActiveLang = () => {
@@ -225,6 +235,26 @@ export default function ConversationScreen() {
             setInputText('');
         }
         setLoading(false);
+    };
+
+    const openDictionary = (text: string, src: string, tgt: string) => {
+        if (!text.trim()) return;
+
+        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 1) {
+            // Case A: Single word
+            const cleanWord = words[0].replace(/[.,!?;:"""''()[\]{}]/g, '').trim();
+            setDictWord(cleanWord);
+            setDictSourceLang(src);
+            setDictTargetLang(tgt);
+            setDictVisible(true);
+        } else {
+            // Case B: Sentence breakdown
+            setDictWord(text);
+            setDictSourceLang(src);
+            setDictTargetLang(tgt);
+            setBreakdownVisible(true);
+        }
     };
 
     const handleSendMessage = async () => {
@@ -387,19 +417,14 @@ export default function ConversationScreen() {
                                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                                 </Text>
                                             </View>
-                                            <TappableWord
-                                                text={tr.text}
-                                                sourceLang={tr.lang}
-                                                targetLang={msg.lang}
-                                                style={[styles.transText, { color: langColor.trans }]}
-                                                isDarkMode={isDarkMode}
-                                                disabled={!tr.text}
-                                            />
+                                            <Text style={[styles.transText, { color: langColor.trans }]}>
+                                                {tr.text}
+                                            </Text>
                                         </View>
                                     );
                                 })}
 
-                                {/* Footer with TTS icons */}
+                                {/* Footer with TTS and Dictionary icons */}
                                 <View style={styles.bubbleFooter}>
                                     <TouchableOpacity
                                         onPress={() => tts.speak(msg.text, msg.lang)}
@@ -408,14 +433,21 @@ export default function ConversationScreen() {
                                         <Volume2 size={14} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
                                     {msg.translations.map((tr, idx) => (
-                                        <TouchableOpacity
-                                            key={idx}
-                                            onPress={() => tts.speak(tr.text, tr.lang)}
-                                            style={styles.footerIcon}
-                                        >
-                                            <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
-                                            <Volume2 size={14} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
+                                        <React.Fragment key={idx}>
+                                            <TouchableOpacity
+                                                onPress={() => tts.speak(tr.text, tr.lang)}
+                                                style={styles.footerIcon}
+                                            >
+                                                <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
+                                                <Volume2 size={14} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                                style={styles.footerIcon}
+                                            >
+                                                <BookOpen size={14} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                        </React.Fragment>
                                     ))}
                                 </View>
                             </View>
@@ -500,8 +532,29 @@ export default function ConversationScreen() {
                 onDismiss={() => setPickerFor(null)}
                 onSelect={(code) => {
                     if (pickerFor !== null) setLang(pickerFor, code);
+                    setPickerFor(null);
                 }}
                 selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
+            />
+
+            <WordCardModal
+                visible={dictVisible}
+                onDismiss={() => setDictVisible(false)}
+                word={dictWord}
+                sourceLang={dictSourceLang}
+                targetLang={dictTargetLang}
+            />
+
+            <SentenceBreakdownSheet
+                visible={breakdownVisible}
+                onClose={() => setBreakdownVisible(false)}
+                text={dictWord}
+                onWordPress={(word) => {
+                    setBreakdownVisible(false);
+                    setDictWord(word);
+                    // Small timeout to let the sheet close animation finish before opening the modal
+                    setTimeout(() => setDictVisible(true), 300);
+                }}
             />
         </View>
     );
@@ -710,12 +763,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         backgroundColor: 'rgba(255,255,255,0.5)',
         borderRadius: 20,
-        outlineStyle: 'none',
     },
     textInputDark: {
         color: '#F8FAFC',
         backgroundColor: 'rgba(0,0,0,0.2)',
-        outlineStyle: 'none',
     },
     sendBtn: { padding: 10 },
 });

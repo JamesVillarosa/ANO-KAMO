@@ -139,10 +139,22 @@ export default function TranslateScreen() {
             }
             return;
         }
-        setDictWord(text);
-        setSourceLangLookup(src);
-        setTargetLangLookup(tgt);
-        setBreakdownVisible(true);
+
+        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 1) {
+            // Case A: Single word - open direct lookup
+            const cleanWord = words[0].replace(/[.,!?;:"""''()[\]{}]/g, '').trim();
+            setDictWord(cleanWord);
+            setSourceLangLookup(src);
+            setTargetLangLookup(tgt);
+            setDictVisible(true);
+        } else {
+            // Case B: Multiple words - open breakdown sheet
+            setDictWord(text);
+            setSourceLangLookup(src);
+            setTargetLangLookup(tgt);
+            setBreakdownVisible(true);
+        }
     };
 
     const [dictWord, setDictWord] = useState('');
@@ -310,14 +322,9 @@ export default function TranslateScreen() {
                         ) : (
                             <>
                                 <CoachmarkManager visible={!!translated1}>
-                                    <TappableWord
-                                        text={translated1}
-                                        sourceLang={targetLang1}
-                                        targetLang={sourceLang}
-                                        style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
-                                        isDarkMode={isDarkMode}
-                                        disabled={!translated1}
-                                    />
+                                    <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
+                                        {translated1}
+                                    </Text>
                                 </CoachmarkManager>
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated1, targetLang1)}>
@@ -349,14 +356,9 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <TappableWord
-                                    text={translated2}
-                                    sourceLang={targetLang2}
-                                    targetLang={sourceLang}
-                                    style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}
-                                    isDarkMode={isDarkMode}
-                                    disabled={!translated2}
-                                />
+                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
+                                    {translated2}
+                                </Text>
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated2, targetLang2)}>
                                         <Volume2 size={18} color={tgt2Color.light} />
@@ -404,8 +406,10 @@ export default function TranslateScreen() {
                 onClose={() => setBreakdownVisible(false)}
                 text={dictWord}
                 onWordPress={(word) => {
+                    setBreakdownVisible(false);
                     setDictWord(word);
-                    setDictVisible(true);
+                    // Small timeout to let the sheet close animation finish before opening the modal
+                    setTimeout(() => setDictVisible(true), 300);
                 }}
             />
         </View>
@@ -544,11 +548,9 @@ const styles = StyleSheet.create({
         color: '#1E293B',
         minHeight: 80,
         textAlignVertical: 'top',
-        outlineStyle: 'none',
     },
     textInputDark: {
         color: '#F8FAFC',
-        outlineStyle: 'none',
     },
     cardFooter: {
         flexDirection: 'row',

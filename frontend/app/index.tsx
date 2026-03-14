@@ -135,8 +135,18 @@ export default function HomeScreen() {
       showToast("Generate a translation first to use the dictionary.");
       return;
     }
-    setDictWord(text); // For breakdown sheet or direct word if needed
-    setBreakdownVisible(true);
+
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 1) {
+      // Case A: Single word - open direct lookup
+      const cleanWord = words[0].replace(/[.,!?;:"""''()[\]{}]/g, '').trim();
+      setDictWord(cleanWord);
+      setDictVisible(true);
+    } else {
+      // Case B: Multiple words - open breakdown sheet
+      setDictWord(text);
+      setBreakdownVisible(true);
+    }
   };
 
   const showToast = (message: string) => {
@@ -242,14 +252,9 @@ export default function HomeScreen() {
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
                   <CoachmarkManager visible={!!translated1}>
-                    <TappableWord
-                      text={translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
-                      sourceLang={targetLang1}
-                      targetLang={sourceLang}
-                      style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}
-                      isDarkMode={isDarkMode}
-                      disabled={!translated1}
-                    />
+                    <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}>
+                      {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
+                    </Text>
                   </CoachmarkManager>
                 )}
               </View>
@@ -297,14 +302,9 @@ export default function HomeScreen() {
                     {loading2 ? (
                       <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                     ) : (
-                      <TappableWord
-                        text={translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
-                        sourceLang={targetLang2}
-                        targetLang={sourceLang}
-                        style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}
-                        isDarkMode={isDarkMode}
-                        disabled={!translated2}
-                      />
+                      <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated2 && { color: '#94A3B8' }]}>
+                        {translated2 || LANGUAGE_PLACEHOLDERS[targetLang2]}
+                      </Text>
                     )}
                   </View>
                   {translated2 ? (
@@ -356,8 +356,10 @@ export default function HomeScreen() {
         onClose={() => setBreakdownVisible(false)}
         text={dictWord}
         onWordPress={(word) => {
+          setBreakdownVisible(false);
           setDictWord(word);
-          setDictVisible(true);
+          // Small timeout to let the sheet close animation finish before opening the modal
+          setTimeout(() => setDictVisible(true), 300);
         }}
       />
     </View>
@@ -429,7 +431,6 @@ const styles = StyleSheet.create({
     maxHeight: 150,
     textAlignVertical: 'top',
     padding: 0,
-    outlineStyle: 'none',
   },
   outputArea: { minHeight: 60 },
   outputText: { fontSize: 17, color: '#1E293B', lineHeight: 24 },
