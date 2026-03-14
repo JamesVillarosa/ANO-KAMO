@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,6 +9,8 @@ import {
   Platform,
   Clipboard,
   Alert,
+  Dimensions,
+  Animated,
   ToastAndroid,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
@@ -16,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
   Mic,
+  MicOff,
   ChevronDown,
   Repeat,
   Volume2,
@@ -41,6 +44,7 @@ import WordCardModal from '../src/components/WordCardModal';
 import TappableWord from '../src/components/TappableWord';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 import CoachmarkManager from '../src/components/CoachmarkManager';
+import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
@@ -69,6 +73,41 @@ export default function HomeScreen() {
   const [dictVisible, setDictVisible] = useState(false);
   const [dictWord, setDictWord] = useState('');
   const [breakdownVisible, setBreakdownVisible] = useState(false);
+
+  // Speech Recognition
+  const speech = useSpeechRecognition(sourceLang);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for mic when listening
+  useEffect(() => {
+    if (speech.isListening || speech.isProcessing) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [speech.isListening, speech.isProcessing]);
+
+  // Auto-populate input with live transcript
+  useEffect(() => {
+    const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
+    if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
+      setSourceText(liveText);
+    }
+  }, [speech.transcript, speech.interimTranscript]);
+
+  // When transcription completes, set the text (auto-translate will kick in via debounce)
+  useEffect(() => {
+    if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
+      setSourceText(speech.transcript.trim());
+    }
+  }, [speech.isProcessing, speech.transcript]);
 
   const translate = useCallback(async (text: string, from: string, to: string): Promise<string> => {
     try {
@@ -215,15 +254,38 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TextInput
                 style={[styles.input, isDarkMode && { color: '#F8FAFC' }]}
-                placeholder={LANGUAGE_PLACEHOLDERS[sourceLang] || "Insert the text"}
-                placeholderTextColor="#94A3B8"
+                placeholder={
+                  speech.isListening ? "Listening..."
+                    : speech.isProcessing ? "Transcribing..."
+                      : LANGUAGE_PLACEHOLDERS[sourceLang] || "Insert the text"
+                }
+                placeholderTextColor={
+                  (speech.isListening || speech.isProcessing)
+                    ? "#EF4444"
+                    : "#94A3B8"
+                }
                 multiline
                 value={sourceText}
                 onChangeText={setSourceText}
               />
               <View style={styles.panelFooter}>
-                <TouchableOpacity style={styles.iconCircle}>
-                  <Mic size={18} color="#3B82F6" />
+                <TouchableOpacity
+                  style={[styles.iconCircle, (speech.isListening || speech.isProcessing) && { backgroundColor: '#EF4444' }]}
+                  onPress={() => {
+                    if (speech.isListening) speech.stopListening();
+                    else if (!speech.isProcessing) speech.startListening();
+                  }}
+                  disabled={speech.isProcessing}
+                >
+                  <Animated.View style={{ transform: [{ scale: (speech.isListening || speech.isProcessing) ? pulseAnim : 1 }] }}>
+                    {speech.isListening ? (
+                      <MicOff size={18} color="#FFF" />
+                    ) : speech.isProcessing ? (
+                      <ActivityIndicator size={16} color="#FFF" />
+                    ) : (
+                      <Mic size={18} color="#3B82F6" />
+                    )}
+                  </Animated.View>
                 </TouchableOpacity>
               </View>
             </View>

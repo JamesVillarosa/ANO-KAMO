@@ -29,6 +29,7 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
     const [interimTranscript, setInterimTranscript] = useState('');
     const recordingRef = useRef<Audio.Recording | null>(null);
     const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const startTimeRef = useRef<number>(0);
     const isStoppingRef = useRef(false);
 
     const isSupported = true;
@@ -116,6 +117,7 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
             );
 
             recordingRef.current = recording;
+            startTimeRef.current = Date.now();
             setIsListening(true);
 
             // Monitor audio levels for silence detection
@@ -138,6 +140,18 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
                                 const rec = recordingRef.current;
                                 recordingRef.current = null;
                                 silenceTimerRef.current = null;
+
+                                // Noise Filter: Check minimum duration
+                                const duration = Date.now() - startTimeRef.current;
+                                if (duration < 500) {
+                                    console.log('STT: Ignored silence stop (recording too short)');
+                                    rec.stopAndUnloadAsync().catch(() => { });
+                                    setIsListening(false);
+                                    setInterimTranscript('');
+                                    isStoppingRef.current = false;
+                                    return;
+                                }
+
                                 processRecording(rec);
                             }
                         }, SILENCE_DURATION_MS);
@@ -171,6 +185,17 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
 
         const rec = recordingRef.current;
         recordingRef.current = null;
+
+        // Noise Filter: Check minimum duration
+        const duration = Date.now() - startTimeRef.current;
+        if (duration < 500) {
+            console.log('STT: Ignored manual stop (recording too short)');
+            await rec.stopAndUnloadAsync();
+            setInterimTranscript('');
+            isStoppingRef.current = false;
+            return;
+        }
+
         await processRecording(rec);
     }, [processRecording]);
 
