@@ -45,4 +45,5 @@ async def lookup_word(request: DictionaryLookupRequest, db: Session = Depends(ge
         "part_of_speech": result.get("part_of_speech", ""),
         "synonyms": result.get("synonyms", []),
         "root": result.get("root", result["word"]),
+        "example_translation": result.get("example_translation", ""),
     }

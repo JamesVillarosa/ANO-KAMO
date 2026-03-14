@@ -64,6 +64,7 @@ class DictionaryService:
                 part_of_speech=result.get("part_of_speech", ""),
                 synonyms=json.dumps(result.get("synonyms", [])),
                 root=result.get("root", ""),
+                example_translation=result.get("example_translation", ""),
             )
             result["entry_id"] = entry.entry_id
         else:
@@ -82,27 +83,37 @@ class DictionaryService:
             return DictionaryService._transient_error(word, source_lang)
 
         try:
-            src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
+            # Fallback to Tagalog if source_lang is not provided/valid
+            if not source_lang or source_lang not in SUPPORTED_LANGUAGES:
+                source_lang = "tl"
+                src = "Tagalog"
+            else:
+                src = SUPPORTED_LANGUAGES[source_lang]
+
             tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
-            # Bilingual Adaptive Prompt:
-            # The word tapped is in the TARGET language (what appeared on screen).
-            # The definition must be in the SOURCE language (what the user speaks).
+            # Source-to-Target Pivot Logic:
+            # Word (target), Pronunciation (IPA), 
+            # Definition (source), Synonyms (source),
+            # Example (target), Example Translation (source)
             prompt = (
-                f'The user is translating from {src} to {tgt}.\n'
-                f'They tapped the word "{word}" which appears in the {tgt} translation output.\n'
-                f'Provide a detailed dictionary entry for "{word}" (a {tgt} word).\n'
-                f'Write the definition and explanation in {src} so the user understands the {tgt} term.\n'
-                f'Synonyms should be in {tgt} (same language as the word).\n\n'
+                f'You are an expert bilingual dictionary. The user is translating from {src} to {tgt}.\n'
+                f'They encountered the word "{word}" in a {tgt} translation.\n\n'
+                f'Provide a dictionary entry for "{word}" with this specific language mapping:\n'
+                f'1. definition: Explain the meaning of the {tgt} word using the {src} language.\n'
+                f'2. synonyms: Provide familiar alternatives in the {src} language.\n'
+                f'3. example_sentence: Provide a natural, regional example sentence using "{word}" in {tgt}.\n'
+                f'4. example_translation: Translate that example sentence back into {src}.\n\n'
                 f"Return a JSON object with EXACTLY these keys:\n"
                 f'{{"word": "{word}", '
                 f'"root": "the root/base word if applicable, otherwise same as word", '
                 f'"pronunciation": "syllable-separated with interpuncts e.g. sho · kot", '
                 f'"part_of_speech": "e.g. Adjective (Slang/Colloquial) or Noun or Verb etc.", '
-                f'"definition": "full definition in {src}, include regional slang notes if applicable", '
-                f'"synonyms": ["synonym1_in_{target_lang}", "synonym2_in_{target_lang}"], '
-                f'"example_sentence": "a natural example sentence using the word in {tgt}"}}\n\n'
-                f"Return ONLY the JSON, no markdown, no explanation."
+                f'"definition": "clear explanation in {src}", '
+                f'"synonyms": ["synonym1_in_{source_lang}", "synonym2_in_{source_lang}"], '
+                f'"example_sentence": "sentence in {tgt}", '
+                f'"example_translation": "translation in {src}"}}\n\n'
+                f"Return ONLY the raw JSON object."
             )
 
             url = f"{API_BASE}/models/{MODEL}:generateContent?key={api_key}"
@@ -146,6 +157,7 @@ class DictionaryService:
                 "definition": data.get("definition", ""),
                 "synonyms": data.get("synonyms", []),
                 "example_sentence": data.get("example_sentence", ""),
+                "example_translation": data.get("example_translation", ""),
                 "language": source_lang,
                 "_from_api": True,
             }
@@ -164,6 +176,7 @@ class DictionaryService:
             "definition": f"(Dictionary temporarily unavailable. Please try again.)",
             "synonyms": [],
             "example_sentence": "",
+            "example_translation": "",
             "language": language,
             "_from_api": False,
         }
@@ -184,6 +197,7 @@ class DictionaryService:
             "pronunciation": entry.pronunciation or "",
             "definition": entry.definition or "",
             "example_sentence": entry.example_sentence or "",
+            "example_translation": getattr(entry, 'example_translation', '') or "",
             "part_of_speech": getattr(entry, 'part_of_speech', '') or "",
             "root": getattr(entry, 'root', entry.word) or entry.word,
             "synonyms": synonyms,

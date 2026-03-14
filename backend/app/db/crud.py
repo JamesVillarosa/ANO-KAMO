@@ -218,6 +218,7 @@ def create_dictionary_entry(
     part_of_speech: str = None,
     synonyms: str = None,
     root: str = None,
+    example_translation: str = None,
 ) -> DictionaryEntry:
     entry = DictionaryEntry(
         word=word,
@@ -228,6 +229,7 @@ def create_dictionary_entry(
         part_of_speech=part_of_speech,
         synonyms=synonyms,
         root=root,
+        example_translation=example_translation,
     )
     db.add(entry)
     db.commit()

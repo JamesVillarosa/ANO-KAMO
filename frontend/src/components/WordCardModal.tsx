@@ -24,6 +24,7 @@ interface WordEntry {
     partOfSpeech: string;
     synonyms: string[];
     example: string;
+    exampleTranslation: string;
 }
 
 export default function WordCardModal({
@@ -51,6 +52,7 @@ export default function WordCardModal({
                     partOfSpeech: res.part_of_speech || '',
                     synonyms: res.synonyms || [],
                     example: res.example_sentence || '',
+                    exampleTranslation: res.example_translation || '',
                 });
                 setLoading(false);
             }).catch(() => {
@@ -62,6 +64,7 @@ export default function WordCardModal({
                     partOfSpeech: '',
                     synonyms: [],
                     example: '',
+                    exampleTranslation: '',
                 });
                 setLoading(false);
             });
@@ -147,14 +150,22 @@ export default function WordCardModal({
                                 {entry.definition}
                             </Text>
 
-                            {/* Example */}
+                            {/* Example Section */}
                             {entry.example ? (
                                 <>
                                     <Text style={styles.sectionTitle}>Example</Text>
                                     <View style={[styles.exampleBox, isDarkMode && styles.exampleBoxDark]}>
+                                        {/* Target language example (Natural usage) */}
                                         <Text style={[styles.exampleText, isDarkMode && styles.textMuted]}>
                                             "{entry.example}"
                                         </Text>
+
+                                        {/* Source language translation (Instant clarity) */}
+                                        {entry.exampleTranslation ? (
+                                            <Text style={[styles.exampleSubText, isDarkMode && styles.textSecondaryMuted]}>
+                                                {entry.exampleTranslation}
+                                            </Text>
+                                        ) : null}
                                     </View>
                                 </>
                             ) : null}
@@ -299,10 +310,18 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(59, 130, 246, 0.15)',
     },
     exampleText: {
-        fontSize: 15,
+        fontSize: 16,
         color: '#3B82F6',
-        fontStyle: 'italic',
+        fontWeight: '600',
         lineHeight: 22,
+        marginBottom: 4,
+    },
+    exampleSubText: {
+        fontSize: 13,
+        color: '#64748B',
+        fontStyle: 'italic',
+        lineHeight: 18,
     },
     textMuted: { color: '#60A5FA' },
+    textSecondaryMuted: { color: '#94A3B8' },
 });

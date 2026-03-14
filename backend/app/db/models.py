@@ -160,6 +160,7 @@ class DictionaryEntry(Base):
     part_of_speech = Column(String(100), nullable=True)
     synonyms = Column(Text, nullable=True)  # JSON array as string
     root = Column(String(200), nullable=True)
+    example_translation = Column(Text, nullable=True)
 
     lookups = relationship("DictionaryLookup", back_populates="entry")
 
