@@ -43,7 +43,7 @@ import LanguagePicker from '../src/components/LanguagePicker';
 import WordCardModal from '../src/components/WordCardModal';
 import TappableWord from '../src/components/TappableWord';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
-import CoachmarkManager from '../src/components/CoachmarkManager';
+
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 export default function HomeScreen() {
@@ -313,11 +313,9 @@ export default function HomeScreen() {
                 {loading1 ? (
                   <ActivityIndicator color="#3B82F6" style={{ alignSelf: 'flex-start' }} />
                 ) : (
-                  <CoachmarkManager visible={!!translated1}>
-                    <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}>
-                      {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
-                    </Text>
-                  </CoachmarkManager>
+                  <Text style={[styles.outputText, isDarkMode && styles.outputTextDark, !translated1 && { color: '#94A3B8' }]}>
+                    {translated1 || LANGUAGE_PLACEHOLDERS[targetLang1]}
+                  </Text>
                 )}
               </View>
               {translated1 ? (

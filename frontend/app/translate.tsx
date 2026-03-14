@@ -41,7 +41,7 @@ import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
-import CoachmarkManager from '../src/components/CoachmarkManager';
+
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
@@ -321,11 +321,9 @@ export default function TranslateScreen() {
                             <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
                         ) : (
                             <>
-                                <CoachmarkManager visible={!!translated1}>
-                                    <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                        {translated1}
-                                    </Text>
-                                </CoachmarkManager>
+                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
+                                    {translated1}
+                                </Text>
                                 <View style={styles.cardFooter}>
                                     <TouchableOpacity onPress={() => tts.speak(translated1, targetLang1)}>
                                         <Volume2 size={18} color={tgt1Color.light} />
