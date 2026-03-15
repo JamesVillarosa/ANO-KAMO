@@ -107,6 +107,14 @@ def delete_translation(db: Session, translation_id: str) -> bool:
         return True
     return False
 
+def clear_all_history(db: Session) -> int:
+    """Delete all translations and their outputs. Returns count deleted."""
+    count = db.query(Translation).count()
+    db.query(TranslationOutput).delete()
+    db.query(Translation).delete()
+    db.commit()
+    return count
+
 
 # ──────────────────── Conversation ──────────────
 def create_conversation(
@@ -273,6 +281,22 @@ def vote_submission(db: Session, submission_id: int, direction: int = 1) -> Opti
     sub = db.query(CommunitySubmission).filter(CommunitySubmission.id == submission_id).first()
     if sub:
         sub.votes = (sub.votes or 0) + direction
+        # Auto-verify when votes reach +10
+        if sub.votes >= 10 and not sub.is_verified:
+            sub.is_verified = True
+            sub.status = "approved"
         db.commit()
         db.refresh(sub)
     return sub
+
+
+def get_verified_phrases(
+    db: Session, source_lang: str = None, target_lang: str = None
+) -> List[CommunitySubmission]:
+    """Get community-verified phrases, optionally filtered by language pair."""
+    q = db.query(CommunitySubmission).filter(CommunitySubmission.is_verified == True)
+    if source_lang:
+        q = q.filter(CommunitySubmission.source_lang == source_lang)
+    if target_lang:
+        q = q.filter(CommunitySubmission.target_lang == target_lang)
+    return q.all()

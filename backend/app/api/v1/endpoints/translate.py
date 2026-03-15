@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.crud import (
     create_translation, create_translation_output,
-    get_all_submissions,
+    get_verified_phrases,
 )
 from app.db.session import get_db
 from app.db.schemas import (
@@ -26,14 +26,13 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
     Single target translation with context-aware AI.
     Checks community-submitted phrases first.
     """
-    # Get community phrases for context (gracefully handle schema drift)
+    # RAG: Get community-verified phrases for this language pair
     community_phrases = []
     try:
-        community = get_all_submissions(db, limit=50, status="approved")
+        verified = get_verified_phrases(db, source_lang=request.source_lang, target_lang=request.target_lang)
         community_phrases = [
             {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
-            for c in community
-            if c.source_lang == request.source_lang and c.target_lang == request.target_lang
+            for c in verified
         ]
     except Exception as e:
         logger.warning(f"Community query skipped: {e}")
@@ -84,12 +83,13 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
     """
     Multi-target translation (one input → up to 2 outputs).
     """
+    # RAG: Get community-verified phrases
     community_phrases = []
     try:
-        community = get_all_submissions(db, limit=50, status="approved")
+        verified = get_verified_phrases(db, source_lang=request.source_lang)
         community_phrases = [
             {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
-            for c in community
+            for c in verified
         ]
     except Exception as e:
         logger.warning(f"Community query skipped: {e}")

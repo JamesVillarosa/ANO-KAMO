@@ -172,6 +172,8 @@ class CommunitySubmissionRequest(BaseModel):
     target_lang: str = Field(..., min_length=2, max_length=10)
     proposed_translation: str = Field(..., min_length=1, max_length=500)
     notes: Optional[str] = Field(None, max_length=1000)
+    origin: Optional[str] = Field(None, max_length=100, description="Regional origin: Metro Manila, Cebu, etc.")
+    context: Optional[str] = Field("informal", description="formal or informal")
     device_id: Optional[str] = None
 
 class CommunitySubmissionResponse(BaseModel):
@@ -181,8 +183,11 @@ class CommunitySubmissionResponse(BaseModel):
     target_lang: str
     proposed_translation: str
     notes: Optional[str]
+    origin: Optional[str]
+    context: Optional[str]
     status: str
     votes: int
+    is_verified: bool
     created_at: datetime
     class Config:
         from_attributes = True

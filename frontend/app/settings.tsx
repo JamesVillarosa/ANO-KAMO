@@ -1,30 +1,57 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Switch } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Switch, Modal, TextInput, Alert } from 'react-native';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
     User,
     Moon,
-    Volume2,
-    Sparkles,
-    Trash2,
-    Download,
+    ChevronRight,
+    Heart,
+    Users,
+    Send,
+    X,
+    ChevronDown,
     Info,
     Shield,
     FileText,
-    ChevronRight,
-    Heart,
 } from 'lucide-react-native';
-import { gradientColors, darkGradientColors, glassCard, darkGlassCard } from '../src/theme';
+import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED_LANGUAGES } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
+import { submitPhrase as apiSubmitPhrase } from '../src/lib/api';
+import LanguagePicker from '../src/components/LanguagePicker';
 
 export default function SettingsScreen() {
     const { isDarkMode, toggleTheme } = useTheme();
     const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
 
-    const [highQualityAudio, setHighQualityAudio] = useState(true);
-    const [autoDetectTone, setAutoDetectTone] = useState(true);
+    // Community submission modal
+    const [modalVisible, setModalVisible] = useState(false);
+    const [newPhrase, setNewPhrase] = useState('');
+    const [newTranslation, setNewTranslation] = useState('');
+    const [newNotes, setNewNotes] = useState('');
+    const [newOrigin, setNewOrigin] = useState('');
+    const [formSourceLang, setFormSourceLang] = useState('tl');
+    const [formTargetLang, setFormTargetLang] = useState('en');
+    const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
+
+    const handleSubmitPhrase = async () => {
+        if (!newPhrase.trim() || !newTranslation.trim()) {
+            Alert.alert('Error', 'Please fill in both the phrase and translation');
+            return;
+        }
+        try {
+            await apiSubmitPhrase(newPhrase, formSourceLang, formTargetLang, newTranslation, newNotes);
+            Alert.alert('Submitted! 🎉', 'Your suggestion has been sent for community review.');
+        } catch {
+            Alert.alert('Info', 'Suggestion saved locally — it will sync when online.');
+        }
+        setModalVisible(false);
+        setNewPhrase('');
+        setNewTranslation('');
+        setNewNotes('');
+        setNewOrigin('');
+    };
 
     const SettingsItem = ({
         icon: Icon,
@@ -99,58 +126,21 @@ export default function SettingsScreen() {
                             />
                         }
                     />
-                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
-                    <SettingsItem
-                        icon={Volume2}
-                        iconColor="#10B981"
-                        title="High Quality Audio"
-                        subtitle="Better voice quality (uses more data)"
-                        right={
-                            <Switch
-                                value={highQualityAudio}
-                                onValueChange={setHighQualityAudio}
-                                trackColor={{ false: '#E2E8F0', true: '#10B981' }}
-                                thumbColor="#FFF"
-                            />
-                        }
-                    />
-                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
-                    <SettingsItem
-                        icon={Sparkles}
-                        iconColor="#8B5CF6"
-                        title="Auto-detect Tone"
-                        subtitle="Automatically suggest translation tone"
-                        right={
-                            <Switch
-                                value={autoDetectTone}
-                                onValueChange={setAutoDetectTone}
-                                trackColor={{ false: '#E2E8F0', true: '#8B5CF6' }}
-                                thumbColor="#FFF"
-                            />
-                        }
-                    />
                 </BlurView>
 
-                {/* Data */}
-                <Text style={styles.sectionLabel}>ACCOUNT & DATA</Text>
+                {/* Community Contribution */}
+                <Text style={styles.sectionLabel}>COMMUNITY</Text>
                 <BlurView
                     intensity={isDarkMode ? 30 : 50}
                     tint={isDarkMode ? 'dark' : 'light'}
                     style={[styles.sectionCard, isDarkMode ? darkGlassCard : glassCard]}
                 >
                     <SettingsItem
-                        icon={Trash2}
-                        iconColor="#EF4444"
-                        title="Clear History"
-                        onPress={() => { }}
-                    />
-                    <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
-                    <SettingsItem
-                        icon={Download}
-                        iconColor="#F59E0B"
-                        title="Language Packages"
-                        subtitle="Download for offline use"
-                        onPress={() => { }}
+                        icon={Users}
+                        iconColor="#8B5CF6"
+                        title="Suggest Slang / Idiom"
+                        subtitle="Help improve Filipino translations"
+                        onPress={() => setModalVisible(true)}
                     />
                 </BlurView>
 
@@ -186,6 +176,93 @@ export default function SettingsScreen() {
                     <Text style={styles.footerText}>for the Philippines</Text>
                 </View>
             </ScrollView>
+
+            {/* Community Submission Modal */}
+            <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <BlurView
+                        intensity={60}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.modal, isDarkMode && styles.modalDark]}
+                    >
+                        <View style={styles.modalHandle} />
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Phrase</Text>
+                            <TouchableOpacity onPress={() => setModalVisible(false)}>
+                                <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Language selection */}
+                        <View style={styles.modalLangs}>
+                            <TouchableOpacity
+                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
+                                onPress={() => setPickerTarget('source')}
+                            >
+                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formSourceLang]}</Text>
+                                <ChevronDown size={14} color="#3B82F6" />
+                            </TouchableOpacity>
+                            <Text style={styles.modalArrow}>→</Text>
+                            <TouchableOpacity
+                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
+                                onPress={() => setPickerTarget('target')}
+                            >
+                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formTargetLang]}</Text>
+                                <ChevronDown size={14} color="#3B82F6" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                            placeholder="Slang or idiom (e.g. Werpa, Charot, Dasurv)"
+                            placeholderTextColor="#94A3B8"
+                            value={newPhrase}
+                            onChangeText={setNewPhrase}
+                        />
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 70 }]}
+                            placeholder="What does it mean?"
+                            placeholderTextColor="#94A3B8"
+                            value={newTranslation}
+                            onChangeText={setNewTranslation}
+                            multiline
+                        />
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                            placeholder="Region (e.g. Metro Manila, Cebu)"
+                            placeholderTextColor="#94A3B8"
+                            value={newOrigin}
+                            onChangeText={setNewOrigin}
+                        />
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                            placeholder="Notes (e.g. Gen Z slang, gay lingo)"
+                            placeholderTextColor="#94A3B8"
+                            value={newNotes}
+                            onChangeText={setNewNotes}
+                        />
+
+                        <TouchableOpacity
+                            style={[styles.submitBtn, (!newPhrase.trim() || !newTranslation.trim()) && { opacity: 0.5 }]}
+                            onPress={handleSubmitPhrase}
+                            disabled={!newPhrase.trim() || !newTranslation.trim()}
+                        >
+                            <Send size={18} color="#FFF" />
+                            <Text style={styles.submitText}>Submit for Review</Text>
+                        </TouchableOpacity>
+                    </BlurView>
+                </View>
+            </Modal>
+
+            <LanguagePicker
+                visible={pickerTarget !== null}
+                onDismiss={() => setPickerTarget(null)}
+                onSelect={(code) => {
+                    if (pickerTarget === 'source') setFormSourceLang(code);
+                    else setFormTargetLang(code);
+                }}
+                selected={pickerTarget === 'source' ? formSourceLang : formTargetLang}
+            />
         </View>
     );
 }
@@ -275,4 +352,70 @@ const styles = StyleSheet.create({
         paddingTop: 16,
     },
     footerText: { fontSize: 13, color: '#94A3B8' },
+
+    /* Modal */
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+    modal: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        paddingBottom: 40,
+        overflow: 'hidden',
+    },
+    modalDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    },
+    modalHandle: { width: 40, height: 4, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    modalTitle: { fontSize: 22, fontWeight: '700', color: '#1E293B' },
+    modalLangs: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+    modalLangChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    modalLangChipDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    modalLangText: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginRight: 6 },
+    modalArrow: { fontSize: 16, color: '#94A3B8', marginHorizontal: 16 },
+    modalInput: {
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 16,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        fontSize: 15,
+        color: '#1E293B',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        marginBottom: 14,
+    },
+    modalInputDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        color: '#F8FAFC',
+    },
+    submitBtn: {
+        flexDirection: 'row',
+        backgroundColor: '#8B5CF6',
+        borderRadius: 18,
+        paddingVertical: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 6,
+        shadowColor: '#8B5CF6',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    submitText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 });

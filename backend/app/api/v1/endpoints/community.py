@@ -21,6 +21,8 @@ async def submit_phrase(request: CommunitySubmissionRequest, db: Session = Depen
         target_lang=request.target_lang,
         proposed_translation=request.proposed_translation,
         notes=request.notes,
+        origin=request.origin,
+        context=request.context,
         device_id=request.device_id,
     )
     return sub
@@ -43,8 +45,8 @@ async def vote_on_submission(
     direction: int = Query(1, ge=-1, le=1),
     db: Session = Depends(get_db),
 ):
-    """Vote on a submission (+1 upvote, -1 downvote)."""
+    """Vote on a submission (+1 upvote, -1 downvote). Auto-verifies at +10 votes."""
     sub = vote_submission(db, submission_id, direction)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
-    return {"id": sub.id, "votes": sub.votes}
+    return {"id": sub.id, "votes": sub.votes, "is_verified": sub.is_verified}

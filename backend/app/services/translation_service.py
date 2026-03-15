@@ -83,11 +83,11 @@ class TranslationService:
             if tone:
                 parts.append(f"tone:{tone}")
             if community_phrases:
-                pairs = ";".join(
-                    f'{p["phrase"]}={p["proposed_translation"]}'
-                    for p in community_phrases[:5]
+                pairs = "; ".join(
+                    f'{p["phrase"]} → {p["proposed_translation"]}'
+                    for p in community_phrases[:10]
                 )
-                parts.append(f"ref:{pairs}")
+                parts.append(f"COMMUNITY GLOSSARY (use these verified translations): {pairs}")
             parts.append(text)
             prompt = "|".join(parts)
 

@@ -4,6 +4,7 @@ import {
     View,
     FlatList,
     TouchableOpacity,
+    Alert,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,7 +15,7 @@ import {
     Volume2,
     Clock,
 } from 'lucide-react-native';
-import { getHistory, toggleFavorite, deleteHistory } from '../src/lib/api';
+import { getHistory, toggleFavorite, deleteHistory, clearAllHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
 import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED_LANGUAGES } from '../src/theme';
 
@@ -69,6 +70,28 @@ export default function HistoryScreen() {
         } catch { }
     };
 
+    const handleClearAll = () => {
+        Alert.alert(
+            'Clear All History',
+            'This will permanently delete all translation history and favorites. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Clear All',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await clearAllHistory();
+                            setItems([]);
+                        } catch {
+                            Alert.alert('Error', 'Failed to clear history');
+                        }
+                    },
+                },
+            ],
+        );
+    };
+
     const filtered = activeTab === 'favorites'
         ? items.filter(i => i.outputs?.some(o => o.is_favorite))
         : items;
@@ -120,28 +143,40 @@ export default function HistoryScreen() {
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <LinearGradient colors={[...activeGradient]} style={styles.bg} />
             <View style={styles.content}>
-                <BlurView
-                    intensity={40}
-                    tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}
-                >
-                    <TouchableOpacity
-                        style={[styles.toggleBtn, activeTab === 'favorites' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setActiveTab('favorites')}
+                {/* Toggle Row + Clear All */}
+                <View style={styles.headerRow}>
+                    <BlurView
+                        intensity={40}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}
                     >
-                        <Text style={[styles.toggleText, activeTab === 'favorites' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            Favorites
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.toggleBtn, activeTab === 'history' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setActiveTab('history')}
-                    >
-                        <Text style={[styles.toggleText, activeTab === 'history' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            History
-                        </Text>
-                    </TouchableOpacity>
-                </BlurView>
+                        <TouchableOpacity
+                            style={[styles.toggleBtn, activeTab === 'favorites' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                            onPress={() => setActiveTab('favorites')}
+                        >
+                            <Text style={[styles.toggleText, activeTab === 'favorites' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                                Favorites
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.toggleBtn, activeTab === 'history' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                            onPress={() => setActiveTab('history')}
+                        >
+                            <Text style={[styles.toggleText, activeTab === 'history' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                                History
+                            </Text>
+                        </TouchableOpacity>
+                    </BlurView>
+                    {items.length > 0 && (
+                        <TouchableOpacity
+                            style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
+                            onPress={handleClearAll}
+                        >
+                            <Trash2 size={14} color="#EF4444" />
+                            <Text style={styles.clearAllText}>Clear All</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
 
                 {loading ? (
                     <View style={styles.center}>
@@ -178,12 +213,20 @@ const styles = StyleSheet.create({
     containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     content: { flex: 1, paddingTop: 100, paddingHorizontal: 20 },
+
+    /* Header row with toggle + clear all */
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 24,
+        gap: 10,
+    },
     toggleRow: {
+        flex: 1,
         flexDirection: 'row',
         backgroundColor: 'rgba(241,245,249,0.5)',
         borderRadius: 30,
         padding: 4,
-        marginBottom: 24,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
         overflow: 'hidden',
@@ -212,6 +255,29 @@ const styles = StyleSheet.create({
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },
+
+    /* Clear All button */
+    clearAllBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 20,
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.15)',
+    },
+    clearAllBtnDark: {
+        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+        borderColor: 'rgba(239, 68, 68, 0.2)',
+    },
+    clearAllText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#EF4444',
+    },
+
     card: {
         flexDirection: 'row',
         ...glassCard,
@@ -220,7 +286,7 @@ const styles = StyleSheet.create({
     },
     cardDark: {
         ...darkGlassCard,
-        backgroundColor: 'rgba(30, 41, 59, 0.45)', // Blur support
+        backgroundColor: 'rgba(30, 41, 59, 0.45)',
     },
     accentBar: { width: 6 },
     cardContent: { flex: 1, padding: 18 },

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.crud import (
     get_all_translations, toggle_favorite,
-    get_favorites, delete_translation,
+    get_favorites, delete_translation, clear_all_history,
 )
 from app.db.session import get_db
 from app.db.schemas import HistoryItemResponse, FavoriteToggleRequest
@@ -84,3 +84,10 @@ async def delete_history(translation_id: str, db: Session = Depends(get_db)):
     if not deleted:
         raise HTTPException(status_code=404, detail="Translation not found")
     return None
+
+
+@router.delete("/history/clear-all")
+async def clear_all(db: Session = Depends(get_db)):
+    """Delete all translation history."""
+    count = clear_all_history(db)
+    return {"deleted": count}

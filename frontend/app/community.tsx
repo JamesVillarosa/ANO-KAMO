@@ -19,6 +19,8 @@ import {
     X,
     ChevronDown,
     MessageCircle,
+    CheckCircle,
+    MapPin,
 } from 'lucide-react-native';
 import {
     getSubmissions as apiGetSubmissions,
@@ -37,7 +39,10 @@ interface Submission {
     target_lang: string;
     status: string;
     votes: number;
+    is_verified: boolean;
     notes?: string;
+    origin?: string;
+    context?: string;
 }
 
 export default function CommunityScreen() {
@@ -51,8 +56,9 @@ export default function CommunityScreen() {
     const [newPhrase, setNewPhrase] = useState('');
     const [newTranslation, setNewTranslation] = useState('');
     const [newNotes, setNewNotes] = useState('');
-    const [formSourceLang, setFormSourceLang] = useState('en');
-    const [formTargetLang, setFormTargetLang] = useState('tl');
+    const [newOrigin, setNewOrigin] = useState('');
+    const [formSourceLang, setFormSourceLang] = useState('tl');
+    const [formTargetLang, setFormTargetLang] = useState('en');
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
 
     const fetchSubmissions = async () => {
@@ -86,13 +92,16 @@ export default function CommunityScreen() {
             target_lang: formTargetLang,
             status: 'pending',
             votes: 0,
+            is_verified: false,
             notes: newNotes,
+            origin: newOrigin,
         }, ...prev]);
 
         setModalVisible(false);
         setNewPhrase('');
         setNewTranslation('');
         setNewNotes('');
+        setNewOrigin('');
     };
 
     const vote = async (id: number, direction: 'up' | 'down') => {
@@ -100,9 +109,16 @@ export default function CommunityScreen() {
             await apiVoteSubmission(id, direction === 'up' ? 1 : -1);
         } catch { }
         setSubmissions(prev => prev.map(s =>
-            s.id === id ? { ...s, votes: s.votes + (direction === 'up' ? 1 : -1) } : s
+            s.id === id ? {
+                ...s,
+                votes: s.votes + (direction === 'up' ? 1 : -1),
+                is_verified: (s.votes + (direction === 'up' ? 1 : -1)) >= 10,
+            } : s
         ));
     };
+
+    const verifiedCount = submissions.filter(s => s.is_verified).length;
+    const pendingCount = submissions.filter(s => !s.is_verified).length;
 
     const statusColor = (status: string) =>
         status === 'approved' ? '#10B981' : status === 'rejected' ? '#EF4444' : '#F59E0B';
@@ -111,26 +127,41 @@ export default function CommunityScreen() {
         <BlurView
             intensity={isDarkMode ? 30 : 50}
             tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.card, isDarkMode && styles.cardDark]}
+            style={[styles.card, isDarkMode && styles.cardDark, item.is_verified && styles.cardVerified]}
         >
             <View style={styles.cardHeader}>
-                <View style={[styles.statusBadge, { backgroundColor: statusColor(item.status) + '22' }]}>
-                    <Text style={[styles.statusText, { color: statusColor(item.status) }]}>
-                        {item.status}
-                    </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {item.is_verified ? (
+                        <View style={styles.verifiedBadge}>
+                            <CheckCircle size={12} color="#FFF" />
+                            <Text style={styles.verifiedText}>Verified</Text>
+                        </View>
+                    ) : (
+                        <View style={[styles.statusBadge, { backgroundColor: statusColor(item.status) + '22' }]}>
+                            <Text style={[styles.statusText, { color: statusColor(item.status) }]}>
+                                {item.status}
+                            </Text>
+                        </View>
+                    )}
                 </View>
                 <View style={styles.voteRow}>
                     <TouchableOpacity onPress={() => vote(item.id, 'up')}>
                         <ThumbsUp size={16} color="#10B981" />
                     </TouchableOpacity>
-                    <Text style={styles.voteCount}>{item.votes}</Text>
+                    <Text style={[styles.voteCount, isDarkMode && styles.textWhite]}>{item.votes}</Text>
                     <TouchableOpacity onPress={() => vote(item.id, 'down')}>
                         <ThumbsDown size={16} color="#EF4444" />
                     </TouchableOpacity>
                 </View>
             </View>
-            <Text style={styles.phrase}>{item.phrase}</Text>
-            <Text style={styles.translation}>{item.proposed_translation}</Text>
+            <Text style={[styles.phrase, isDarkMode && styles.textSecondary]}>{item.phrase}</Text>
+            <Text style={[styles.translation, isDarkMode && styles.textWhite]}>{item.proposed_translation}</Text>
+            {item.origin ? (
+                <View style={styles.originRow}>
+                    <MapPin size={12} color="#8B5CF6" />
+                    <Text style={styles.originText}>{item.origin}</Text>
+                </View>
+            ) : null}
             {item.notes ? (
                 <View style={styles.noteRow}>
                     <MessageCircle size={12} color="#94A3B8" />
@@ -138,7 +169,7 @@ export default function CommunityScreen() {
                 </View>
             ) : null}
             <Text style={[styles.langMeta, isDarkMode && styles.textSecondary]}>
-                {item.source_lang.toUpperCase()} → {item.target_lang.toUpperCase()}
+                {(SUPPORTED_LANGUAGES[item.source_lang] || item.source_lang.toUpperCase())} → {(SUPPORTED_LANGUAGES[item.target_lang] || item.target_lang.toUpperCase())}
             </Text>
         </BlurView>
     );
@@ -151,6 +182,19 @@ export default function CommunityScreen() {
                 <Text style={styles.subtitle}>
                     Help improve Filipino translations by contributing phrases, slang, and idioms.
                 </Text>
+
+                {/* Stats */}
+                {!loading && submissions.length > 0 && (
+                    <View style={styles.statsRow}>
+                        <View style={[styles.statChip, styles.statVerified]}>
+                            <CheckCircle size={13} color="#10B981" />
+                            <Text style={[styles.statText, { color: '#10B981' }]}>{verifiedCount} Verified</Text>
+                        </View>
+                        <View style={[styles.statChip, styles.statPending]}>
+                            <Text style={[styles.statText, { color: '#F59E0B' }]}>{pendingCount} Pending</Text>
+                        </View>
+                    </View>
+                )}
 
                 {loading ? (
                     <View style={styles.center}>
@@ -196,31 +240,31 @@ export default function CommunityScreen() {
                         {/* Language selection */}
                         <View style={styles.modalLangs}>
                             <TouchableOpacity
-                                style={styles.modalLangChip}
+                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
                                 onPress={() => setPickerTarget('source')}
                             >
-                                <Text style={styles.modalLangText}>{SUPPORTED_LANGUAGES[formSourceLang]}</Text>
+                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formSourceLang]}</Text>
                                 <ChevronDown size={14} color="#3B82F6" />
                             </TouchableOpacity>
                             <Text style={styles.modalArrow}>→</Text>
                             <TouchableOpacity
-                                style={styles.modalLangChip}
+                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
                                 onPress={() => setPickerTarget('target')}
                             >
-                                <Text style={styles.modalLangText}>{SUPPORTED_LANGUAGES[formTargetLang]}</Text>
+                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formTargetLang]}</Text>
                                 <ChevronDown size={14} color="#3B82F6" />
                             </TouchableOpacity>
                         </View>
 
                         <TextInput
-                            style={styles.modalInput}
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
                             placeholder="Original phrase (e.g. Char, Werpa, Dasurv)"
                             placeholderTextColor="#94A3B8"
                             value={newPhrase}
                             onChangeText={setNewPhrase}
                         />
                         <TextInput
-                            style={[styles.modalInput, { minHeight: 70 }]}
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 70 }]}
                             placeholder="Proposed meaning/translation"
                             placeholderTextColor="#94A3B8"
                             value={newTranslation}
@@ -228,7 +272,14 @@ export default function CommunityScreen() {
                             multiline
                         />
                         <TextInput
-                            style={styles.modalInput}
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                            placeholder="Region (e.g. Metro Manila, Cebu)"
+                            placeholderTextColor="#94A3B8"
+                            value={newOrigin}
+                            onChangeText={setNewOrigin}
+                        />
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
                             placeholder="Notes (e.g. Gen Z slang, gay lingo)"
                             placeholderTextColor="#94A3B8"
                             value={newNotes}
@@ -265,7 +316,33 @@ const styles = StyleSheet.create({
     containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     content: { flex: 1, paddingTop: 100, paddingHorizontal: 20 },
-    subtitle: { fontSize: 13, color: '#64748B', marginBottom: 20, lineHeight: 20 },
+    subtitle: { fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 20 },
+
+    /* Stats */
+    statsRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 16,
+    },
+    statChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    statVerified: {
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.15)',
+    },
+    statPending: {
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(245, 158, 11, 0.15)',
+    },
+    statText: { fontSize: 12, fontWeight: '700' },
 
     /* Card */
     card: {
@@ -276,15 +353,34 @@ const styles = StyleSheet.create({
     },
     cardDark: {
         ...darkGlassCard,
-        backgroundColor: 'rgba(30, 41, 59, 0.45)', // Blur support
+        backgroundColor: 'rgba(30, 41, 59, 0.45)',
+    },
+    cardVerified: {
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.25)',
     },
     cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+
+    /* Verified badge */
+    verifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#10B981',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    verifiedText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
+
     statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
     statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
     voteRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     voteCount: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
     phrase: { fontSize: 13, color: '#64748B', marginBottom: 2 },
     translation: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
+    originRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+    originText: { fontSize: 12, color: '#8B5CF6', fontWeight: '600' },
     noteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
     noteText: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
     langMeta: { fontSize: 11, color: '#94A3B8' },
@@ -336,6 +432,10 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
     },
+    modalLangChipDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
     modalLangText: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginRight: 6 },
     modalArrow: { fontSize: 16, color: '#94A3B8', marginHorizontal: 16 },
     modalInput: {
@@ -348,6 +448,11 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
         marginBottom: 14,
+    },
+    modalInputDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        color: '#F8FAFC',
     },
     submitBtn: {
         flexDirection: 'row',

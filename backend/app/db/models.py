@@ -191,8 +191,11 @@ class CommunitySubmission(Base):
     target_lang = Column(String(10), nullable=False)
     proposed_translation = Column(Text, nullable=False)
     notes = Column(Text, nullable=True)
+    origin = Column(String(100), nullable=True)          # Regional origin: Metro Manila, Cebu, etc.
+    context = Column(String(20), default="informal")      # formal / informal
     status = Column(String(20), default="pending", index=True)
     votes = Column(Integer, default=0)
+    is_verified = Column(Boolean, default=False, index=True)  # Auto-set True when votes >= 10
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     device = relationship("Device", back_populates="community_submissions")
