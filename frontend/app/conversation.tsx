@@ -10,7 +10,13 @@ import {
     Alert,
     Dimensions,
     Animated,
+    LayoutAnimation,
+    UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -35,6 +41,7 @@ import {
     SUPPORTED_LANGUAGES,
     LANGUAGE_PLACEHOLDERS,
     LANGUAGE_COLORS,
+    liquidGlass,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -44,21 +51,11 @@ import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
+import { useConversation, Message, Translation } from '../src/context/ConversationContext';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface Translation {
-    text: string;
-    lang: string;
-}
-
-interface Message {
-    id: string;
-    text: string;               // original text
-    translations: Translation[]; // one or two translations
-    speaker: number;            // 0 or 1 (in face_to_face), 0, 1, or 2 (in 3way)
-    lang: string;               // original language
-}
+// interfaces moved to ConversationContext
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
@@ -90,12 +87,24 @@ function ChatBubble({
             ]}
         >
             <View style={[styles.bubble, { backgroundColor: langColor.bg }]}>
-                <Text style={styles.bubbleSpeakerLabel}>
-                    {SUPPORTED_LANGUAGES[msg.lang]}
-                </Text>
-                <Text style={[styles.bubbleText, { color: langColor.text }]}>
-                    {msg.text}
-                </Text>
+                <View style={styles.bubbleHeader}>
+                    <Text style={styles.bubbleSpeakerLabel}>
+                        {SUPPORTED_LANGUAGES[msg.lang]}
+                    </Text>
+                </View>
+
+                <View style={styles.bubbleTextContainer}>
+                    <Text style={[styles.bubbleText, { color: langColor.text, flex: 1 }]}>
+                        {msg.text}
+                    </Text>
+                    <TouchableOpacity
+                        onPress={() => tts.speak(msg.text, msg.lang)}
+                        style={styles.inlineTTS}
+                    >
+                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                </View>
+
                 {msg.translations.map((tr, idx) => {
                     const trColor = getColorForLang(tr.lang);
                     return (
@@ -107,37 +116,28 @@ function ChatBubble({
                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                 </Text>
                             </View>
-                            <Text style={[styles.transText, { color: langColor.trans }]}>
-                                {tr.text}
-                            </Text>
+                            <View style={styles.bubbleTextContainer}>
+                                <Text style={[styles.transText, { color: langColor.trans, flex: 1 }]}>
+                                    {tr.text}
+                                </Text>
+                                <View style={styles.inlineActionRow}>
+                                    <TouchableOpacity
+                                        onPress={() => tts.speak(tr.text, tr.lang)}
+                                        style={styles.inlineTTS}
+                                    >
+                                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                        style={styles.inlineTTS}
+                                    >
+                                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
                         </View>
                     );
                 })}
-                <View style={styles.bubbleFooter}>
-                    <TouchableOpacity
-                        onPress={() => tts.speak(msg.text, msg.lang)}
-                        style={styles.footerIcon}
-                    >
-                        <Volume2 size={14} color="rgba(255,255,255,0.7)" />
-                    </TouchableOpacity>
-                    {msg.translations.map((tr, idx) => (
-                        <React.Fragment key={idx}>
-                            <TouchableOpacity
-                                onPress={() => tts.speak(tr.text, tr.lang)}
-                                style={styles.footerIcon}
-                            >
-                                <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
-                                <Volume2 size={14} color="rgba(255,255,255,0.7)" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
-                                style={styles.footerIcon}
-                            >
-                                <BookOpen size={14} color="rgba(255,255,255,0.7)" />
-                            </TouchableOpacity>
-                        </React.Fragment>
-                    ))}
-                </View>
             </View>
         </View>
     );
@@ -148,19 +148,29 @@ function ChatBubble({
 // ─────────────────────────────────────────
 export default function ConversationScreen() {
     const { isDarkMode } = useTheme();
-    const [viewMode, setViewMode] = useState<'two_way' | 'three_way' | 'face_to_face'>('two_way');
-    const [messages, setMessages] = useState<Message[]>([]);
+    const {
+        messages,
+        viewMode,
+        langs,
+        activeSpeaker,
+        conversationId,
+        setViewMode,
+        setMessages,
+        setLangs,
+        setActiveSpeaker,
+        setConversationId,
+        clearMessages,
+    } = useConversation();
+
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
-    const [activeSpeaker, setActiveSpeaker] = useState(0);
     const tts = useTextToSpeech();
 
-    // Languages (Speaker A = bottom, Speaker B = top in F2F)
-    const [lang0, setLang0] = useState('tl');
-    const [lang1, setLang1] = useState('ceb');
-    const [lang2, setLang2] = useState('hil');
+    const lang0 = langs[0];
+    const lang1 = langs[1];
+    const lang2 = langs[2];
+
     const [pickerFor, setPickerFor] = useState<number | null>(null);
-    const [conversationId, setConversationId] = useState<string | null>(null);
 
     // Dictionary
     const [dictVisible, setDictVisible] = useState(false);
@@ -300,8 +310,9 @@ export default function ConversationScreen() {
 
     // Create backend conversation session
     useEffect(() => {
-        setMessages([]);
-        setActiveSpeaker(0);
+        // Only create new session if none exists
+        if (conversationId) return;
+
         const speakerCount = viewMode === 'three_way' ? 3 : 2;
         const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
         const participants = [
@@ -316,6 +327,13 @@ export default function ConversationScreen() {
             .catch(() => setConversationId(null));
     }, [viewMode]);
 
+    const handleViewModeChange = (mode: 'two_way' | 'three_way' | 'face_to_face') => {
+        if (Platform.OS === 'ios' || Platform.OS === 'android') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
+        setViewMode(mode);
+    };
+
     const getLang = (speaker: number) => {
         if (speaker === 0) return lang0;
         if (speaker === 1) return lang1;
@@ -323,9 +341,7 @@ export default function ConversationScreen() {
     };
 
     const setLang = (speaker: number, code: string) => {
-        if (speaker === 0) setLang0(code);
-        else if (speaker === 1) setLang1(code);
-        else setLang2(code);
+        setLangs(speaker, code);
     };
 
     const getTargetLangs = (speaker: number): string[] => {
@@ -453,7 +469,7 @@ export default function ConversationScreen() {
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Clear', style: 'destructive', onPress: () => {
-                    setMessages([]);
+                    clearMessages();
                     setInputText('');
                     lastMessageIdRef.current = null;
                     const speakerCount = viewMode === 'three_way' ? 3 : 2;
@@ -475,8 +491,8 @@ export default function ConversationScreen() {
 
     const swapLanguages = () => {
         const tmp = lang0;
-        setLang0(lang1);
-        setLang1(tmp);
+        setLangs(0, lang1);
+        setLangs(1, tmp);
     };
 
     const speakerCount = viewMode === 'three_way' ? 3 : 2;
@@ -674,6 +690,8 @@ export default function ConversationScreen() {
                     visible={breakdownVisible}
                     onClose={() => setBreakdownVisible(false)}
                     text={dictWord}
+                    sourceLang={dictSourceLang}
+                    targetLang={dictTargetLang}
                     onWordPress={(word) => {
                         setBreakdownVisible(false);
                         setDictWord(word);
@@ -698,7 +716,7 @@ export default function ConversationScreen() {
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
                         style={[styles.toggleBtn, viewMode === 'two_way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setViewMode('two_way')}
+                        onPress={() => handleViewModeChange('two_way')}
                     >
                         <Text style={[styles.toggleText, viewMode === 'two_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             2-Way
@@ -706,7 +724,7 @@ export default function ConversationScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.toggleBtn, viewMode === 'three_way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setViewMode('three_way')}
+                        onPress={() => handleViewModeChange('three_way')}
                     >
                         <Text style={[styles.toggleText, viewMode === 'three_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             3-Way
@@ -714,7 +732,7 @@ export default function ConversationScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.toggleBtn, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setViewMode('face_to_face')}
+                        onPress={() => handleViewModeChange('face_to_face')}
                     >
                         <Text style={[styles.toggleText, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             Face-to-Face
@@ -896,6 +914,8 @@ export default function ConversationScreen() {
                 visible={breakdownVisible}
                 onClose={() => setBreakdownVisible(false)}
                 text={dictWord}
+                sourceLang={dictSourceLang}
+                targetLang={dictTargetLang}
                 onWordPress={(word) => {
                     setBreakdownVisible(false);
                     setDictWord(word);
@@ -929,17 +949,15 @@ const styles = StyleSheet.create({
     },
 
     toggleRow: {
+        ...liquidGlass,
         flexDirection: 'row',
-        backgroundColor: 'rgba(241,245,249,0.7)',
         borderRadius: 30,
         padding: 4,
         marginBottom: 14,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
     },
     toggleRowDark: {
-        backgroundColor: 'rgba(30,41,59,0.7)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(30, 41, 59, 0.55)',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
     },
     toggleBtn: {
         flex: 1,
@@ -1019,7 +1037,26 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
         textTransform: 'uppercase',
         letterSpacing: 1,
-        marginBottom: 4,
+        marginBottom: 2,
+    },
+    bubbleHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+    },
+    bubbleTextContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+    },
+    inlineTTS: {
+        padding: 4,
+        marginTop: 2,
+        opacity: 0.8,
+    },
+    inlineActionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     bubbleText: {
         fontSize: 15,

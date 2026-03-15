@@ -6,6 +6,7 @@ import { useRouter, useSegments, usePathname } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { lightTheme, darkTheme, liquidGlass } from '../src/theme';
 import { ThemeProvider, useTheme } from '../src/context/ThemeContext';
+import { ConversationProvider } from '../src/context/ConversationContext';
 
 function RootLayoutContent() {
   const router = useRouter();
@@ -83,7 +84,9 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutContent />
+      <ConversationProvider>
+        <RootLayoutContent />
+      </ConversationProvider>
     </ThemeProvider>
   );
 }

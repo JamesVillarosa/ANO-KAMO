@@ -32,7 +32,7 @@ export default function BottomNav() {
     return (
         <View style={styles.container}>
             <BlurView
-                intensity={isDarkMode ? 20 : 30}
+                intensity={25}
                 tint={isDarkMode ? 'dark' : 'light'}
                 style={[styles.nav, liquidGlass, isDarkMode && styles.navDark]}
             >
@@ -69,7 +69,6 @@ const styles = StyleSheet.create({
     },
     nav: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(241, 245, 249, 0.95)',
         borderRadius: 40,
         padding: 6,
         shadowColor: '#000',

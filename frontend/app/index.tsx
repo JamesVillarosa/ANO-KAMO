@@ -715,18 +715,16 @@ const styles = StyleSheet.create({
 
   /* Toggle */
   toggleRow: {
+    ...liquidGlass,
     flexDirection: 'row',
-    backgroundColor: 'rgba(241,245,249,0.7)',
     borderRadius: 30,
     padding: 4,
     marginTop: 35,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
   },
   toggleRowDark: {
-    backgroundColor: 'rgba(30,41,59,0.7)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(30, 41, 59, 0.55)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   toggleBtn: {
     flex: 1,
