@@ -29,6 +29,7 @@ import {
     Trash2,
     BookOpen,
     ArrowUpDown,
+    ChevronLeft,
 } from 'lucide-react-native';
 import {
     createConversation,
@@ -151,6 +152,7 @@ export default function ConversationScreen() {
     const {
         messages,
         viewMode,
+        lastStandardMode,
         langs,
         activeSpeaker,
         conversationId,
@@ -531,8 +533,8 @@ export default function ConversationScreen() {
                     >
                         {messages.length === 0 && (
                             <View style={styles.f2fEmpty}>
-                                <Mic size={28} color="rgba(255,255,255,0.3)" />
-                                <Text style={styles.f2fEmptyText}>Tap the mic to start</Text>
+                                <Mic size={28} color={isDarkMode ? 'rgba(255,255,255,0.3)' : '#4A4A4A'} />
+                                <Text style={[styles.f2fEmptyText, !isDarkMode && { color: '#4A4A4A' }]}>Tap the mic to start</Text>
                             </View>
                         )}
                         {messages.map((msg) => (
@@ -582,12 +584,18 @@ export default function ConversationScreen() {
 
                 {/* ═══ CENTER DIVIDER ═══ */}
                 <View style={[styles.f2fDivider, isDarkMode && styles.f2fDividerDark]}>
+                    <TouchableOpacity
+                        style={styles.f2fBackBtn}
+                        onPress={() => setViewMode(lastStandardMode)}
+                    >
+                        <ChevronLeft size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </TouchableOpacity>
                     <View style={styles.f2fDividerLine} />
                     <TouchableOpacity style={styles.f2fSwapBtn} onPress={swapLanguages}>
                         <ArrowUpDown size={18} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
                     </TouchableOpacity>
                     <View style={styles.f2fDividerLine} />
-                    {loading && <ActivityIndicator size={16} color="#3B82F6" style={{ position: 'absolute', right: 16 }} />}
+                    {loading && <ActivityIndicator size={16} color="#3B82F6" style={{ marginLeft: 8 }} />}
                 </View>
 
                 {/* ═══ BOTTOM SECTION — Speaker A ═══ */}
@@ -611,8 +619,8 @@ export default function ConversationScreen() {
                     >
                         {messages.length === 0 && (
                             <View style={styles.f2fEmpty}>
-                                <Mic size={28} color="rgba(255,255,255,0.3)" />
-                                <Text style={styles.f2fEmptyText}>Tap the mic to start</Text>
+                                <Mic size={28} color={isDarkMode ? 'rgba(255,255,255,0.3)' : '#4A4A4A'} />
+                                <Text style={[styles.f2fEmptyText, !isDarkMode && { color: '#4A4A4A' }]}>Tap the mic to start</Text>
                             </View>
                         )}
                         {messages.map((msg) => (
@@ -710,8 +718,6 @@ export default function ConversationScreen() {
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
             <View style={styles.headerArea}>
-                <Text style={[styles.headerTitle, isDarkMode && { color: '#F8FAFC' }]}>ANO-KAMO?</Text>
-
                 {/* Mode Toggle */}
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
@@ -731,10 +737,10 @@ export default function ConversationScreen() {
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                        style={[styles.toggleBtn, (viewMode as string) === 'face_to_face' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
                         onPress={() => handleViewModeChange('face_to_face')}
                     >
-                        <Text style={[styles.toggleText, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                        <Text style={[styles.toggleText, (viewMode as string) === 'face_to_face' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
                             Face-to-Face
                         </Text>
                     </TouchableOpacity>
@@ -936,16 +942,8 @@ const styles = StyleSheet.create({
 
     // ── Header (Standard mode) ──
     headerArea: {
-        paddingTop: 60,
+        paddingTop: 90,
         paddingHorizontal: 20,
-    },
-    headerTitle: {
-        fontSize: 22,
-        fontWeight: '800',
-        color: '#1E293B',
-        textAlign: 'center',
-        marginBottom: 12,
-        letterSpacing: 1,
     },
 
     toggleRow: {
@@ -1201,8 +1199,9 @@ const styles = StyleSheet.create({
         marginTop: 8,
     },
     f2fMicRow: {
+        height: 80,
+        justifyContent: 'center',
         alignItems: 'center',
-        paddingVertical: 8,
     },
     f2fMicBtn: {
         width: 56,
@@ -1244,7 +1243,18 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.2)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginHorizontal: 12,
+        marginHorizontal: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    f2fBackBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
     },

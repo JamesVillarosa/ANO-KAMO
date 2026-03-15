@@ -603,47 +603,54 @@ export default function HomeScreen() {
             onRequestClose={() => setRefineModal({ ...refineModal, visible: false })}
           >
             <View style={styles.modalOverlay}>
-              <BlurView
-                intensity={60}
-                tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.refineModal, isDarkMode && styles.refineModalDark]}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ width: '100%' }}
               >
-                <View style={styles.modalHandle} />
-                <View style={styles.refineHeader}>
-                  <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>
-                    Suggest Better Translation
-                  </Text>
-                  <TouchableOpacity onPress={() => setRefineModal({ ...refineModal, visible: false })}>
-                    <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={[styles.refineLabel, isDarkMode && { color: '#94A3B8' }]}>Current translation:</Text>
-                <Text style={[styles.refineOriginal, isDarkMode && { color: '#CBD5E1' }]}>
-                  "{refineModal.originalText}"
-                </Text>
-
-                <Text style={[styles.refineLabel, { marginTop: 16 }, isDarkMode && { color: '#94A3B8' }]}>
-                  Your suggested translation:
-                </Text>
-                <TextInput
-                  style={[styles.refineInput, isDarkMode && styles.refineInputDark]}
-                  placeholder="Type a better translation..."
-                  placeholderTextColor="#94A3B8"
-                  value={refineText}
-                  onChangeText={setRefineText}
-                  multiline
-                />
-
-                <TouchableOpacity
-                  style={[styles.refineSubmit, !refineText.trim() && { opacity: 0.5 }]}
-                  onPress={handleSubmitRefinement}
-                  disabled={!refineText.trim()}
+                <BlurView
+                  intensity={60}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={[styles.refineModal, isDarkMode && styles.refineModalDark]}
                 >
-                  <Send size={18} color="#FFF" />
-                  <Text style={styles.refineSubmitText}>Submit Suggestion</Text>
-                </TouchableOpacity>
-              </BlurView>
+                  <View style={styles.modalHandle} />
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                    <View style={styles.refineHeader}>
+                      <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>
+                        Suggest Better Translation
+                      </Text>
+                      <TouchableOpacity onPress={() => setRefineModal({ ...refineModal, visible: false })}>
+                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={[styles.refineLabel, isDarkMode && { color: '#94A3B8' }]}>Current translation:</Text>
+                    <Text style={[styles.refineOriginal, isDarkMode && { color: '#CBD5E1' }]}>
+                      "{refineModal.originalText}"
+                    </Text>
+
+                    <Text style={[styles.refineLabel, { marginTop: 16 }, isDarkMode && { color: '#94A3B8' }]}>
+                      Your suggested translation:
+                    </Text>
+                    <TextInput
+                      style={[styles.refineInput, isDarkMode && styles.refineInputDark]}
+                      placeholder="Type a better translation..."
+                      placeholderTextColor="#94A3B8"
+                      value={refineText}
+                      onChangeText={setRefineText}
+                      multiline
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.refineSubmit, !refineText.trim() && { opacity: 0.5 }]}
+                      onPress={handleSubmitRefinement}
+                      disabled={!refineText.trim()}
+                    >
+                      <Send size={18} color="#FFF" />
+                      <Text style={styles.refineSubmitText}>Submit Suggestion</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </BlurView>
+              </KeyboardAvoidingView>
             </View>
           </Modal>
 

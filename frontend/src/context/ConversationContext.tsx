@@ -16,6 +16,7 @@ export interface Message {
 interface ConversationContextProps {
     messages: Message[];
     viewMode: 'two_way' | 'three_way' | 'face_to_face';
+    lastStandardMode: 'two_way' | 'three_way';
     langs: { 0: string; 1: string; 2: string };
     activeSpeaker: number;
     conversationId: string | null;
@@ -31,7 +32,8 @@ const ConversationContext = createContext<ConversationContextProps | undefined>(
 
 export const ConversationProvider = ({ children }: { children: ReactNode }) => {
     const [messages, setMessages] = useState<Message[]>([]);
-    const [viewMode, setViewMode] = useState<'two_way' | 'three_way' | 'face_to_face'>('two_way');
+    const [viewMode, setInternalViewMode] = useState<'two_way' | 'three_way' | 'face_to_face'>('two_way');
+    const [lastStandardMode, setLastStandardMode] = useState<'two_way' | 'three_way'>('two_way');
     const [langs, setInternalLangs] = useState<{ 0: string; 1: string; 2: string }>({
         0: 'tl',
         1: 'ceb',
@@ -39,6 +41,13 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
     });
     const [activeSpeaker, setActiveSpeaker] = useState(0);
     const [conversationId, setConversationId] = useState<string | null>(null);
+
+    const setViewMode = useCallback((mode: 'two_way' | 'three_way' | 'face_to_face') => {
+        if (mode !== 'face_to_face') {
+            setLastStandardMode(mode);
+        }
+        setInternalViewMode(mode);
+    }, []);
 
     const setLangs = useCallback((speaker: number, code: string) => {
         setInternalLangs(prev => ({ ...prev, [speaker]: code }));
@@ -54,6 +63,7 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
             value={{
                 messages,
                 viewMode,
+                lastStandardMode,
                 langs,
                 activeSpeaker,
                 conversationId,

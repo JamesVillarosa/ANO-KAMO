@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Switch, Modal, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Switch, Modal, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -36,6 +36,10 @@ export default function SettingsScreen() {
     const [formSourceLang, setFormSourceLang] = useState('tl');
     const [formTargetLang, setFormTargetLang] = useState('en');
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
+
+    // Legal modals
+    const [tosVisible, setTosVisible] = useState(false);
+    const [privacyVisible, setPrivacyVisible] = useState(false);
 
     // Notification state
     const [notifVisible, setNotifVisible] = useState(false);
@@ -172,13 +176,13 @@ export default function SettingsScreen() {
                     <SettingsItem
                         icon={FileText}
                         title="Terms of Service"
-                        onPress={() => { }}
+                        onPress={() => setTosVisible(true)}
                     />
                     <View style={[styles.separator, isDarkMode && styles.separatorDark]} />
                     <SettingsItem
                         icon={Shield}
                         title="Privacy Policy"
-                        onPress={() => { }}
+                        onPress={() => setPrivacyVisible(true)}
                     />
                 </BlurView>
 
@@ -192,65 +196,146 @@ export default function SettingsScreen() {
             {/* Community Submission Modal */}
             <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
                 <View style={styles.modalOverlay}>
-                    <BlurView
-                        intensity={60}
-                        tint={isDarkMode ? 'dark' : 'light'}
-                        style={[styles.modal, isDarkMode && styles.modalDark]}
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={{ width: '100%' }}
                     >
-                        <View style={styles.modalHandle} />
+                        <BlurView
+                            intensity={60}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[styles.modal, isDarkMode && styles.modalDark]}
+                        >
+                            <View style={styles.modalHandle} />
+                            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                                <View style={styles.modalHeader}>
+                                    <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Slang</Text>
+                                    <TouchableOpacity onPress={() => setModalVisible(false)}>
+                                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <TextInput
+                                    style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                                    placeholder="Slang or idiom (e.g. Werpa, Charot, Dasurv)"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newPhrase}
+                                    onChangeText={setNewPhrase}
+                                />
+                                <TextInput
+                                    style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 70 }]}
+                                    placeholder="What does it mean?"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newTranslation}
+                                    onChangeText={setNewTranslation}
+                                    multiline
+                                />
+                                <TextInput
+                                    style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                                    placeholder="Region (e.g. Metro Manila, Cebu)"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newOrigin}
+                                    onChangeText={setNewOrigin}
+                                />
+                                <TextInput
+                                    style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 60 }]}
+                                    placeholder="Sample sentence (e.g. 'Omsim ka talaga!')"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newSampleSentence}
+                                    onChangeText={setNewSampleSentence}
+                                    multiline
+                                />
+                                <TextInput
+                                    style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                                    placeholder="Notes (e.g. Gen Z slang, gay lingo)"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newNotes}
+                                    onChangeText={setNewNotes}
+                                />
+
+                                <TouchableOpacity
+                                    style={[styles.submitBtn, (!newPhrase.trim() || !newTranslation.trim()) && { opacity: 0.5 }]}
+                                    onPress={handleSubmitPhrase}
+                                    disabled={!newPhrase.trim() || !newTranslation.trim()}
+                                >
+                                    <Send size={18} color="#FFF" />
+                                    <Text style={styles.submitText}>Submit for Review</Text>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </BlurView>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
+
+            {/* Terms of Service Modal */}
+            <Modal visible={tosVisible} transparent animationType="fade" onRequestClose={() => setTosVisible(false)}>
+                <View style={styles.legalModalOverlay}>
+                    <BlurView intensity={80} tint={isDarkMode ? 'dark' : 'light'} style={[styles.legalModal, isDarkMode && styles.modalDark]}>
                         <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Slang</Text>
-                            <TouchableOpacity onPress={() => setModalVisible(false)}>
+                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Terms of Service</Text>
+                            <TouchableOpacity onPress={() => setTosVisible(false)}>
                                 <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                             </TouchableOpacity>
                         </View>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <Text style={[styles.legalText, isDarkMode && styles.textWhite]}>
+                                Welcome to Ano-Kamo?. By using our app, you agree to these terms.
+                                {"\n\n"}
+                                1. ACCEPTANCE OF TERMS{"\n"}
+                                Use of Ano-Kamo? constitutes acceptance of these terms. If you do not agree, please discontinue use.
+                                {"\n\n"}
+                                2. SERVICE DESCRIPTION{"\n"}
+                                Ano-Kamo? provides translation services between Filipino languages (Tagalog, Cebuano, Hiligaynon) and English. We aim for accuracy but do not guarantee it.
+                                {"\n\n"}
+                                3. USER CONDUCT{"\n"}
+                                Users agree not to submit offensive, harmful, or illegal content through our community contribution features.
+                                {"\n\n"}
+                                4. INTELLECTUAL PROPERTY{"\n"}
+                                All original content and software are the property of the Ano-Kamo? team.
+                                {"\n\n"}
+                                5. LIMITATION OF LIABILITY{"\n"}
+                                We are not liable for any misunderstandings or damages resulting from incorrect translations or service interruptions.
+                                {"\n\n"}
+                                6. GOVERNING LAW{"\n"}
+                                These terms follow the laws of the Republic of the Philippines.
+                            </Text>
+                        </ScrollView>
+                    </BlurView>
+                </View>
+            </Modal>
 
-                        <TextInput
-                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
-                            placeholder="Slang or idiom (e.g. Werpa, Charot, Dasurv)"
-                            placeholderTextColor="#94A3B8"
-                            value={newPhrase}
-                            onChangeText={setNewPhrase}
-                        />
-                        <TextInput
-                            style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 70 }]}
-                            placeholder="What does it mean?"
-                            placeholderTextColor="#94A3B8"
-                            value={newTranslation}
-                            onChangeText={setNewTranslation}
-                            multiline
-                        />
-                        <TextInput
-                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
-                            placeholder="Region (e.g. Metro Manila, Cebu)"
-                            placeholderTextColor="#94A3B8"
-                            value={newOrigin}
-                            onChangeText={setNewOrigin}
-                        />
-                        <TextInput
-                            style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 60 }]}
-                            placeholder="Sample sentence (e.g. 'Omsim ka talaga!')"
-                            placeholderTextColor="#94A3B8"
-                            value={newSampleSentence}
-                            onChangeText={setNewSampleSentence}
-                            multiline
-                        />
-                        <TextInput
-                            style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
-                            placeholder="Notes (e.g. Gen Z slang, gay lingo)"
-                            placeholderTextColor="#94A3B8"
-                            value={newNotes}
-                            onChangeText={setNewNotes}
-                        />
-
-                        <TouchableOpacity
-                            style={[styles.submitBtn, (!newPhrase.trim() || !newTranslation.trim()) && { opacity: 0.5 }]}
-                            onPress={handleSubmitPhrase}
-                            disabled={!newPhrase.trim() || !newTranslation.trim()}
-                        >
-                            <Send size={18} color="#FFF" />
-                            <Text style={styles.submitText}>Submit for Review</Text>
-                        </TouchableOpacity>
+            {/* Privacy Policy Modal */}
+            <Modal visible={privacyVisible} transparent animationType="fade" onRequestClose={() => setPrivacyVisible(false)}>
+                <View style={styles.legalModalOverlay}>
+                    <BlurView intensity={80} tint={isDarkMode ? 'dark' : 'light'} style={[styles.legalModal, isDarkMode && styles.modalDark]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Privacy Policy</Text>
+                            <TouchableOpacity onPress={() => setPrivacyVisible(false)}>
+                                <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <Text style={[styles.legalText, isDarkMode && styles.textWhite]}>
+                                Your privacy is important to us.
+                                {"\n\n"}
+                                1. DATA COLLECTION{"\n"}
+                                We collect translation history and community suggestions. We do not sell your personal data.
+                                {"\n\n"}
+                                2. USE OF DATA{"\n"}
+                                Collected data is used purely to improve translation models and user experience.
+                                {"\n\n"}
+                                3. DATA SECURITY{"\n"}
+                                We implement industry-standard security to protect your data stored on our servers.
+                                {"\n\n"}
+                                4. THIRD-PARTY SERVICES{"\n"}
+                                We may use third-party tools (like speech recognition) which have their own privacy policies.
+                                {"\n\n"}
+                                5. YOUR RIGHTS{"\n"}
+                                You can clear your local history at any time through the History tab.
+                                {"\n\n"}
+                                6. UPDATES{"\n"}
+                                We may update this policy occasionally. Continued use of the app implies acceptance of updates.
+                            </Text>
+                        </ScrollView>
                     </BlurView>
                 </View>
             </Modal>
@@ -425,4 +510,7 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     submitText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+    legalModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    legalModal: { width: '90%', maxHeight: '80%', padding: 24, borderRadius: 24, overflow: 'hidden' },
+    legalText: { fontSize: 14, lineHeight: 22, color: '#475569' },
 });
