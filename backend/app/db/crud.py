@@ -11,7 +11,7 @@ from app.db.models import (
     Conversation, Participant, Message, Tone,
     OcrRequest, OcrText,
     DictionaryEntry, DictionaryLookup,
-    CommunitySubmission,
+    CommunitySubmission, TranslationFeedback,
 )
 
 
@@ -300,3 +300,74 @@ def get_verified_phrases(
     if target_lang:
         q = q.filter(CommunitySubmission.target_lang == target_lang)
     return q.all()
+
+
+# ──────────────────── Translation Feedback ──────
+def create_feedback(
+    db: Session,
+    translation_id: str,
+    feedback_type: str,
+    device_id: str = None,
+    suggested_text: str = None,
+) -> TranslationFeedback:
+    fb = TranslationFeedback(
+        translation_id=translation_id,
+        feedback_type=feedback_type,
+        device_id=device_id,
+        suggested_text=suggested_text,
+    )
+    db.add(fb)
+    db.commit()
+    db.refresh(fb)
+    return fb
+
+
+def get_feedback_counts(db: Session, translation_id: str) -> dict:
+    likes = db.query(TranslationFeedback).filter(
+        TranslationFeedback.translation_id == translation_id,
+        TranslationFeedback.feedback_type == "like",
+    ).count()
+    dislikes = db.query(TranslationFeedback).filter(
+        TranslationFeedback.translation_id == translation_id,
+        TranslationFeedback.feedback_type == "dislike",
+    ).count()
+    return {"likes": likes, "dislikes": dislikes}
+
+
+# ──────────────────── Evolution Loop ────────────
+def get_rising_submissions(db: Session) -> List[CommunitySubmission]:
+    """Get all submissions in 'rising' tier for re-evaluation."""
+    return (
+        db.query(CommunitySubmission)
+        .filter(CommunitySubmission.popularity_tier == "rising")
+        .filter(CommunitySubmission.is_verified == False)
+        .all()
+    )
+
+
+def graduate_submission(db: Session, submission_id: int, reasoning: str = None):
+    """Promote a rising term to verified/popular."""
+    sub = db.query(CommunitySubmission).filter(CommunitySubmission.id == submission_id).first()
+    if sub:
+        sub.is_verified = True
+        sub.status = "approved"
+        sub.popularity_tier = "popular"
+        sub.last_scanned = datetime.utcnow()
+        if reasoning:
+            sub.ai_reasoning = reasoning
+        db.commit()
+        db.refresh(sub)
+    return sub
+
+
+def mark_submission_inactive(db: Session, submission_id: int, reasoning: str = None):
+    """Mark a term as inactive/fad — remove from priority."""
+    sub = db.query(CommunitySubmission).filter(CommunitySubmission.id == submission_id).first()
+    if sub:
+        sub.popularity_tier = "inactive"
+        sub.last_scanned = datetime.utcnow()
+        if reasoning:
+            sub.ai_reasoning = reasoning
+        db.commit()
+        db.refresh(sub)
+    return sub

@@ -196,6 +196,24 @@ class CommunitySubmission(Base):
     status = Column(String(20), default="pending", index=True)
     votes = Column(Integer, default=0)
     is_verified = Column(Boolean, default=False, index=True)  # Auto-set True when votes >= 10
+    popularity_tier = Column(String(20), default="rising", index=True)  # popular / rising / inactive
+    ai_reasoning = Column(Text, nullable=True)          # Gemini's analysis of cultural presence
+    last_scanned = Column(DateTime(timezone=True), nullable=True)  # Last Evolution Loop scan
+    sample_sentence = Column(Text, nullable=True)       # Example usage from contributor
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     device = relationship("Device", back_populates="community_submissions")
+
+
+# ──────────────────────────── TRANSLATION FEEDBACK ──────────────
+class TranslationFeedback(Base):
+    __tablename__ = "translation_feedback"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    translation_id = Column(String(36), ForeignKey("translation.translation_id"), nullable=False)
+    device_id = Column(String(36), ForeignKey("device.device_id"), nullable=True)
+    feedback_type = Column(String(10), nullable=False, index=True)  # "like" or "dislike"
+    suggested_text = Column(Text, nullable=True)          # Better translation suggestion
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    translation = relationship("Translation")

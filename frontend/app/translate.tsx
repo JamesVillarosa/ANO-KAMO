@@ -8,11 +8,12 @@ import {
     KeyboardAvoidingView,
     Platform,
     Animated,
-    Dimensions, // Added
-    ToastAndroid, // Added
-    Alert, // Added
+    Dimensions,
+    ToastAndroid,
+    Alert,
+    Modal,
 } from 'react-native';
-import { Text, ActivityIndicator } from 'react-native-paper';
+import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
@@ -23,9 +24,17 @@ import {
     ChevronDown,
     Mic,
     MicOff,
-    BookOpen, // Added
+    BookOpen,
+    ThumbsUp,
+    ThumbsDown,
+    MoreHorizontal,
+    MessageSquare,
+    X,
+    Send,
 } from 'lucide-react-native';
-import { translateSingle, translateMulti } from '../src/lib/api';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import { translateSingle, submitFeedback } from '../src/lib/api';
 import {
     gradientColors,
     darkGradientColors,
@@ -42,7 +51,6 @@ import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 
-
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
 
@@ -58,15 +66,38 @@ export default function TranslateScreen() {
     const [sourceText, setSourceText] = useState('');
     const [translated1, setTranslated1] = useState('');
     const [translated2, setTranslated2] = useState('');
+    const [translationId1, setTranslationId1] = useState('');
+    const [translationId2, setTranslationId2] = useState('');
     const [loading1, setLoading1] = useState(false);
     const [loading2, setLoading2] = useState(false);
     const [breakdownVisible, setBreakdownVisible] = useState(false);
 
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target1' | 'target2' | null>(null);
 
+    // Feedback state
+    const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
+    const [feedbackGiven2, setFeedbackGiven2] = useState<'like' | 'dislike' | null>(null);
+    const [showMenu1, setShowMenu1] = useState(false);
+    const [showMenu2, setShowMenu2] = useState(false);
+    const [refineModal, setRefineModal] = useState<{ visible: boolean; translationId: string; originalText: string; target: 1 | 2 }>({
+        visible: false, translationId: '', originalText: '', target: 1,
+    });
+    const [refineText, setRefineText] = useState('');
+    const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+    const [activeFeedbackTarget, setActiveFeedbackTarget] = useState<{ id: string; target: 1 | 2 } | null>(null);
+
+    // Glow animations
+    const glowAnim1 = useRef(new Animated.Value(0)).current;
+    const glowAnim2 = useRef(new Animated.Value(0)).current;
+
     // STT
     const speech = useSpeechRecognition(sourceLang);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    const [dictWord, setDictWord] = useState('');
+    const [sourceLangLookup, setSourceLangLookup] = useState('');
+    const [targetLangLookup, setTargetLangLookup] = useState('');
+    const [dictVisible, setDictVisible] = useState(false);
 
     // Pulse animation
     useEffect(() => {
@@ -92,7 +123,7 @@ export default function TranslateScreen() {
         }
     }, [speech.transcript, speech.interimTranscript]);
 
-    // When transcription completes, set the text (auto-translate will kick in via debounce)
+    // When transcription completes, set the text
     useEffect(() => {
         if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
             setSourceText(speech.transcript.trim());
@@ -104,13 +135,20 @@ export default function TranslateScreen() {
         if (!sourceText.trim() || sourceText.length < 2) {
             setTranslated1('');
             setTranslated2('');
+            setTranslationId1('');
+            setTranslationId2('');
+            setFeedbackGiven1(null);
+            setFeedbackGiven2(null);
             return;
         }
         const timer = setTimeout(async () => {
             setLoading1(true);
+            setFeedbackGiven1(null);
+            setFeedbackGiven2(null);
             try {
                 const r1 = await translateSingle(sourceText, sourceLang, targetLang1);
                 setTranslated1(r1.output_text || '');
+                setTranslationId1(r1.translation_id || '');
             } catch {
                 setTranslated1('Translation unavailable');
             }
@@ -121,6 +159,7 @@ export default function TranslateScreen() {
                 try {
                     const r2 = await translateSingle(sourceText, sourceLang, targetLang2);
                     setTranslated2(r2.output_text || '');
+                    setTranslationId2(r2.translation_id || '');
                 } catch {
                     setTranslated2('Translation unavailable');
                 }
@@ -132,35 +171,24 @@ export default function TranslateScreen() {
 
     const openDictionary = (text: string, src: string, tgt: string) => {
         if (!text.trim()) {
-            if (Platform.OS === 'android') {
-                ToastAndroid.show("Generate a translation first to use the dictionary.", ToastAndroid.SHORT);
-            } else {
-                Alert.alert('', "Generate a translation first to use the dictionary.");
-            }
+            showToast("Generate a translation first to use the dictionary.");
             return;
         }
 
         const words = text.trim().split(/\s+/).filter(w => w.length > 0);
         if (words.length === 1) {
-            // Case A: Single word - open direct lookup
-            const cleanWord = words[0].replace(/[.,!?;:"""''()[\]{}]/g, '').trim();
+            const cleanWord = words[0].replace(/[.,!?;:""''()\[\]{}]/g, '').trim();
             setDictWord(cleanWord);
             setSourceLangLookup(src);
             setTargetLangLookup(tgt);
             setDictVisible(true);
         } else {
-            // Case B: Multiple words - open breakdown sheet
             setDictWord(text);
             setSourceLangLookup(src);
             setTargetLangLookup(tgt);
             setBreakdownVisible(true);
         }
     };
-
-    const [dictWord, setDictWord] = useState('');
-    const [sourceLangLookup, setSourceLangLookup] = useState('');
-    const [targetLangLookup, setTargetLangLookup] = useState('');
-    const [dictVisible, setDictVisible] = useState(false);
 
     const swapLanguages = () => {
         const oldSource = sourceLang;
@@ -173,244 +201,486 @@ export default function TranslateScreen() {
         }
     };
 
+    const showToast = (message: string) => {
+        if (Platform.OS === 'android') {
+            ToastAndroid.show(message, ToastAndroid.SHORT);
+        } else {
+            Alert.alert('', message);
+        }
+    };
+
     const handlePickerSelect = (code: string) => {
         if (pickerTarget === 'source') setSourceLang(code);
         else if (pickerTarget === 'target1') setTargetLang1(code);
         else if (pickerTarget === 'target2') setTargetLang2(code);
+        setPickerTarget(null);
+    };
+
+    const triggerGlow = (anim: Animated.Value) => {
+        Animated.sequence([
+            Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: false }),
+            Animated.timing(anim, { toValue: 0, duration: 600, useNativeDriver: false }),
+        ]).start();
+    };
+
+    const handleFeedback = async (
+        translationId: string,
+        type: 'like' | 'dislike',
+        target: 1 | 2,
+    ) => {
+        const anim = target === 1 ? glowAnim1 : glowAnim2;
+        const setFeedback = target === 1 ? setFeedbackGiven1 : setFeedbackGiven2;
+        const currentFeedback = target === 1 ? feedbackGiven1 : feedbackGiven2;
+
+        if (currentFeedback === type) {
+            setFeedback(null);
+            return;
+        }
+
+        setFeedback(type);
+        triggerGlow(anim);
+
+        try {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } catch { }
+
+        try {
+            await submitFeedback(translationId, type);
+        } catch { }
+    };
+
+    const handleCopy = async (text: string) => {
+        try {
+            await Clipboard.setStringAsync(text);
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('Copied to clipboard');
+        } catch { }
+    };
+
+    const handleSubmitRefinement = async () => {
+        if (!refineText.trim()) return;
+        try {
+            await submitFeedback(refineModal.translationId, 'dislike', refineText.trim());
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('Suggestion submitted! Thank you.');
+        } catch { }
+        setRefineModal({ visible: false, translationId: '', originalText: '', target: 1 });
+        setRefineText('');
     };
 
     const srcColor = getColorForLang(sourceLang);
     const tgt1Color = getColorForLang(targetLang1);
     const tgt2Color = getColorForLang(targetLang2);
 
-    return (
-        <View style={[styles.container, isDarkMode && styles.containerDark]}>
-            <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+    const renderActionRow = (
+        text: string,
+        translationId: string,
+        langColor: any,
+        src: string,
+        tgt: string,
+        target: 1 | 2,
+        feedbackState: 'like' | 'dislike' | null,
+        showMenu: boolean,
+        setShowMenu: (v: boolean) => void,
+        glowAnim: Animated.Value,
+    ) => {
+        const glowColor = glowAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['transparent', feedbackState === 'dislike' ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'],
+        });
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.headerArea}>
-                    <Text style={[styles.headerTitle, isDarkMode && { color: '#F8FAFC' }]}>ANO-KAMO?</Text>
+        return (
+            <Animated.View style={[styles.cardFooter, { backgroundColor: glowColor, borderRadius: 12, marginHorizontal: -4, paddingHorizontal: 4 }]}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => tts.speak(text, tgt)}>
+                    <Volume2 size={18} color={langColor.light} />
+                </TouchableOpacity>
 
-                    {/* Mode Toggle */}
-                    <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
-                        <TouchableOpacity
-                            style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                            onPress={() => setMode('2way')}
-                        >
-                            <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                                2 Languages
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                            onPress={() => setMode('3way')}
-                        >
-                            <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                                3 Languages
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => openDictionary(text, tgt, src)}>
+                    <BookOpen size={18} color={langColor.light} />
+                </TouchableOpacity>
 
-                {/* Language Selectors */}
-                <View style={styles.langRow}>
-                    <TouchableOpacity style={[styles.langBtn, { borderColor: srcColor.light }]} onPress={() => setPickerTarget('source')}>
-                        <View style={[styles.langDot, { backgroundColor: srcColor.light }]} />
-                        <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[sourceLang]}</Text>
-                        <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.swapBtn} onPress={swapLanguages}>
-                        <ArrowLeftRight size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.langBtn, { borderColor: tgt1Color.light }]} onPress={() => setPickerTarget('target1')}>
-                        <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
-                        <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang1]}</Text>
-                        <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                    </TouchableOpacity>
-                </View>
-
-                {mode === '3way' && (
-                    <View style={[styles.langRow, { marginTop: 8 }]}>
-                        <View style={{ flex: 1 }} />
-                        <TouchableOpacity style={[styles.langBtn, { borderColor: tgt2Color.light }]} onPress={() => setPickerTarget('target2')}>
-                            <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
-                            <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang2]}</Text>
-                            <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Source Input with Mic */}
-                <BlurView
-                    intensity={40}
-                    tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.card, isDarkMode && styles.cardDark]}
+                {/* Feedback Trigger */}
+                <TouchableOpacity
+                    style={[styles.actionBtn, feedbackState && { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#3B82F6' }]}
+                    onPress={() => {
+                        setActiveFeedbackTarget({ id: translationId, target });
+                        setFeedbackModalVisible(true);
+                    }}
                 >
-                    <TextInput
-                        style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                        placeholder={
-                            speech.isListening ? 'Listening...'
-                                : speech.isProcessing ? 'Transcribing...'
-                                    : LANGUAGE_PLACEHOLDERS[sourceLang] || 'Enter text...'
-                        }
-                        placeholderTextColor={
-                            (speech.isListening || speech.isProcessing)
-                                ? '#EF4444'
-                                : (isDarkMode ? '#64748B' : '#94A3B8')
-                        }
-                        value={sourceText}
-                        onChangeText={setSourceText}
-                        multiline
-                        numberOfLines={4}
-                    />
-                    <View style={styles.cardFooter}>
-                        {/* Mic button */}
-                        <TouchableOpacity
-                            style={[styles.micBtnSmall, {
-                                backgroundColor: (speech.isListening || speech.isProcessing)
-                                    ? '#EF4444'
-                                    : srcColor.light
-                            }]}
-                            onPress={() => {
-                                if (speech.isListening) {
-                                    speech.stopListening();
-                                } else if (!speech.isProcessing) {
-                                    speech.startListening();
-                                }
-                            }}
-                            disabled={speech.isProcessing}
-                        >
-                            <Animated.View style={{ transform: [{ scale: (speech.isListening || speech.isProcessing) ? pulseAnim : 1 }] }}>
-                                {speech.isListening ? (
-                                    <MicOff size={16} color="#FFF" />
-                                ) : speech.isProcessing ? (
-                                    <ActivityIndicator size={12} color="#FFF" />
-                                ) : (
-                                    <Mic size={16} color="#FFF" />
-                                )}
-                            </Animated.View>
-                        </TouchableOpacity>
+                    <MessageSquare size={18} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                </TouchableOpacity>
 
-                        <View style={{ flex: 1 }} />
+                <View style={{ flex: 1 }} />
 
-                        {/* TTS button */}
-                        {sourceText.length > 0 && (
-                            <TouchableOpacity onPress={() => tts.speak(sourceText, sourceLang)}>
-                                <Volume2 size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                <View>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => setShowMenu(!showMenu)}>
+                        <MoreHorizontal size={18} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                    </TouchableOpacity>
+                    {showMenu && (
+                        <Portal>
+                            <TouchableOpacity
+                                style={StyleSheet.absoluteFill}
+                                onPress={() => setShowMenu(false)}
+                            >
+                                <View style={[styles.popoverMenu, isDarkMode && styles.popoverMenuDark, {
+                                    top: Dimensions.get('window').height / 2, // Approximation
+                                    right: 20
+                                }]}>
+                                    <TouchableOpacity
+                                        style={styles.popoverItem}
+                                        onPress={() => {
+                                            setShowMenu(false);
+                                            handleCopy(text);
+                                        }}
+                                    >
+                                        <Copy size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
+                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy Text</Text>
+                                    </TouchableOpacity>
+                                    <View style={[styles.popoverSep, isDarkMode && { backgroundColor: '#334155' }]} />
+                                    <TouchableOpacity
+                                        style={styles.popoverItem}
+                                        onPress={() => {
+                                            setShowMenu(false);
+                                            setRefineText(text);
+                                            setRefineModal({ visible: true, translationId, originalText: text, target });
+                                        }}
+                                    >
+                                        <MessageSquare size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
+                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest Better Translation</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </TouchableOpacity>
-                        )}
-                    </View>
-                </BlurView>
+                        </Portal>
+                    )}
+                </View>
+            </Animated.View>
+        );
+    };
 
-                {/* Translation Result 1 */}
-                {(translated1 || loading1) && (
-                    <BlurView
-                        intensity={40}
-                        tint={isDarkMode ? 'dark' : 'light'}
-                        style={[styles.resultCard, { borderLeftColor: tgt1Color.light }, isDarkMode && styles.cardDark]}
-                    >
-                        <View style={styles.resultHeader}>
-                            <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
-                            <Text style={[styles.resultLang, { color: tgt1Color.light }]}>
-                                {SUPPORTED_LANGUAGES[targetLang1]}
-                            </Text>
+    return (
+        <PaperProvider>
+            <Portal.Host>
+                <View style={[styles.container, isDarkMode && styles.containerDark]}>
+                    <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+
+                    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                        <View style={styles.headerArea}>
+                            <Text style={[styles.headerTitle, isDarkMode && { color: '#F8FAFC' }]}>ANO-KAMO?</Text>
+
+                            {/* Mode Toggle */}
+                            <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
+                                <TouchableOpacity
+                                    style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                                    onPress={() => setMode('2way')}
+                                >
+                                    <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                                        2 Languages
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                                    onPress={() => setMode('3way')}
+                                >
+                                    <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                                        3 Languages
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                        {loading1 ? (
-                            <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
-                        ) : (
-                            <>
-                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                    {translated1}
-                                </Text>
-                                <View style={styles.cardFooter}>
-                                    <TouchableOpacity onPress={() => tts.speak(translated1, targetLang1)}>
-                                        <Volume2 size={18} color={tgt1Color.light} />
+
+                        {/* Language Selectors */}
+                        <View style={styles.langRow}>
+                            <TouchableOpacity style={[styles.langBtn, { borderColor: srcColor.light }]} onPress={() => setPickerTarget('source')}>
+                                <View style={[styles.langDot, { backgroundColor: srcColor.light }]} />
+                                <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[sourceLang]}</Text>
+                                <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.swapBtn} onPress={swapLanguages}>
+                                <ArrowLeftRight size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[styles.langBtn, { borderColor: tgt1Color.light }]} onPress={() => setPickerTarget('target1')}>
+                                <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
+                                <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang1]}</Text>
+                                <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {mode === '3way' && (
+                            <View style={[styles.langRow, { marginTop: 8 }]}>
+                                <View style={{ flex: 1 }} />
+                                <TouchableOpacity style={[styles.langBtn, { borderColor: tgt2Color.light }]} onPress={() => setPickerTarget('target2')}>
+                                    <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
+                                    <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang2]}</Text>
+                                    <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {/* Source Input with Mic */}
+                        <BlurView
+                            intensity={40}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[styles.card, isDarkMode && styles.cardDark]}
+                        >
+                            <TextInput
+                                style={[styles.textInput, isDarkMode && styles.textInputDark]}
+                                placeholder={
+                                    speech.isListening ? 'Listening...'
+                                        : speech.isProcessing ? 'Transcribing...'
+                                            : LANGUAGE_PLACEHOLDERS[sourceLang] || 'Enter text...'
+                                }
+                                placeholderTextColor={
+                                    (speech.isListening || speech.isProcessing)
+                                        ? '#EF4444'
+                                        : (isDarkMode ? '#64748B' : '#94A3B8')
+                                }
+                                value={sourceText}
+                                onChangeText={setSourceText}
+                                multiline
+                                numberOfLines={4}
+                            />
+                            <View style={styles.cardFooter}>
+                                <TouchableOpacity
+                                    style={[styles.micBtnSmall, {
+                                        backgroundColor: (speech.isListening || speech.isProcessing)
+                                            ? '#EF4444'
+                                            : srcColor.light
+                                    }]}
+                                    onPress={() => {
+                                        if (speech.isListening) speech.stopListening();
+                                        else if (!speech.isProcessing) speech.startListening();
+                                    }}
+                                    disabled={speech.isProcessing}
+                                >
+                                    <Animated.View style={{ transform: [{ scale: (speech.isListening || speech.isProcessing) ? pulseAnim : 1 }] }}>
+                                        {speech.isListening ? (
+                                            <MicOff size={16} color="#FFF" />
+                                        ) : speech.isProcessing ? (
+                                            <ActivityIndicator size={12} color="#FFF" />
+                                        ) : (
+                                            <Mic size={16} color="#FFF" />
+                                        )}
+                                    </Animated.View>
+                                </TouchableOpacity>
+
+                                <View style={{ flex: 1 }} />
+
+                                {sourceText.length > 0 && (
+                                    <TouchableOpacity onPress={() => tts.speak(sourceText, sourceLang)}>
+                                        <Volume2 size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
                                     </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => openDictionary(translated1, targetLang1, sourceLang)}>
-                                        <BookOpen size={18} color={tgt1Color.light} />
+                                )}
+                            </View>
+                        </BlurView>
+
+                        {/* Translation Result 1 */}
+                        {(translated1 || loading1) && (
+                            <BlurView
+                                intensity={40}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={[styles.resultCard, { borderLeftColor: tgt1Color.light }, isDarkMode && styles.cardDark]}
+                            >
+                                <View style={styles.resultHeader}>
+                                    <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
+                                    <Text style={[styles.resultLang, { color: tgt1Color.light }]}>
+                                        {SUPPORTED_LANGUAGES[targetLang1]}
+                                    </Text>
+                                </View>
+                                {loading1 ? (
+                                    <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
+                                ) : (
+                                    <>
+                                        <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
+                                            {translated1}
+                                        </Text>
+                                        {renderActionRow(
+                                            translated1, translationId1, tgt1Color,
+                                            sourceLang, targetLang1, 1,
+                                            feedbackGiven1, showMenu1, setShowMenu1, glowAnim1,
+                                        )}
+                                    </>
+                                )}
+                            </BlurView>
+                        )}
+
+                        {/* Translation Result 2 (3-way mode) */}
+                        {mode === '3way' && (translated2 || loading2) && (
+                            <BlurView
+                                intensity={40}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={[styles.resultCard, { borderLeftColor: tgt2Color.light }, isDarkMode && styles.cardDark]}
+                            >
+                                <View style={styles.resultHeader}>
+                                    <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
+                                    <Text style={[styles.resultLang, { color: tgt2Color.light }]}>
+                                        {SUPPORTED_LANGUAGES[targetLang2]}
+                                    </Text>
+                                </View>
+                                {loading2 ? (
+                                    <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
+                                ) : (
+                                    <>
+                                        <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
+                                            {translated2}
+                                        </Text>
+                                        {renderActionRow(
+                                            translated2, translationId2, tgt2Color,
+                                            sourceLang, targetLang2, 2,
+                                            feedbackGiven2, showMenu2, setShowMenu2, glowAnim2,
+                                        )}
+                                    </>
+                                )}
+                            </BlurView>
+                        )}
+
+                        <View style={{ height: 120 }} />
+                    </ScrollView>
+
+                    <BottomNav activeTab="translate" />
+
+                    <LanguagePicker
+                        visible={pickerTarget !== null}
+                        onClose={() => setPickerTarget(null)}
+                        onSelect={handlePickerSelect}
+                        selectedCode={
+                            pickerTarget === 'source' ? sourceLang
+                                : pickerTarget === 'target1' ? targetLang1
+                                    : targetLang2
+                        }
+                    />
+
+                    <WordCardModal
+                        visible={dictVisible}
+                        onClose={() => setDictVisible(false)}
+                        word={dictWord}
+                        sourceLang={sourceLangLookup}
+                        targetLang={targetLangLookup}
+                    />
+
+                    <SentenceBreakdownSheet
+                        visible={breakdownVisible}
+                        onClose={() => setBreakdownVisible(false)}
+                        text={dictWord}
+                        sourceLang={sourceLangLookup}
+                        targetLang={targetLangLookup}
+                        onWordPress={(word) => {
+                            setBreakdownVisible(false);
+                            setDictWord(word);
+                            setTimeout(() => setDictVisible(true), 300);
+                        }}
+                    />
+
+                    {/* Refinement Modal */}
+                    <Modal
+                        visible={refineModal.visible}
+                        transparent
+                        animationType="slide"
+                        onRequestClose={() => setRefineModal({ ...refineModal, visible: false })}
+                    >
+                        <View style={styles.modalOverlay}>
+                            <BlurView
+                                intensity={60}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={[styles.refineModal, isDarkMode && styles.refineModalDark]}
+                            >
+                                <View style={styles.modalHandle} />
+                                <View style={styles.refineHeader}>
+                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>
+                                        Suggest Better Translation
+                                    </Text>
+                                    <TouchableOpacity onPress={() => setRefineModal({ ...refineModal, visible: false })}>
+                                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                                     </TouchableOpacity>
                                 </View>
-                            </>
-                        )}
-                    </BlurView>
-                )}
 
-                {/* Translation Result 2 (3-way mode) */}
-                {mode === '3way' && (translated2 || loading2) && (
-                    <BlurView
-                        intensity={40}
-                        tint={isDarkMode ? 'dark' : 'light'}
-                        style={[styles.resultCard, { borderLeftColor: tgt2Color.light }, isDarkMode && styles.cardDark]}
-                    >
-                        <View style={styles.resultHeader}>
-                            <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
-                            <Text style={[styles.resultLang, { color: tgt2Color.light }]}>
-                                {SUPPORTED_LANGUAGES[targetLang2]}
-                            </Text>
-                        </View>
-                        {loading2 ? (
-                            <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
-                        ) : (
-                            <>
-                                <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                    {translated2}
+                                <Text style={[styles.refineLabel, isDarkMode && { color: '#94A3B8' }]}>Current translation:</Text>
+                                <Text style={[styles.refineOriginal, isDarkMode && { color: '#CBD5E1' }]}>
+                                    "{refineModal.originalText}"
                                 </Text>
-                                <View style={styles.cardFooter}>
-                                    <TouchableOpacity onPress={() => tts.speak(translated2, targetLang2)}>
-                                        <Volume2 size={18} color={tgt2Color.light} />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => openDictionary(translated2, targetLang2, sourceLang)}>
-                                        <BookOpen size={18} color={tgt2Color.light} />
+
+                                <Text style={[styles.refineLabel, { marginTop: 16 }, isDarkMode && { color: '#94A3B8' }]}>
+                                    Your suggested translation:
+                                </Text>
+                                <TextInput
+                                    style={[styles.refineInput, isDarkMode && styles.refineInputDark]}
+                                    placeholder="Type a better translation..."
+                                    placeholderTextColor="#94A3B8"
+                                    value={refineText}
+                                    onChangeText={setRefineText}
+                                    multiline
+                                />
+
+                                <TouchableOpacity
+                                    style={[styles.refineSubmit, !refineText.trim() && { opacity: 0.5 }]}
+                                    onPress={handleSubmitRefinement}
+                                    disabled={!refineText.trim()}
+                                >
+                                    <Send size={18} color="#FFF" />
+                                    <Text style={styles.refineSubmitText}>Submit Suggestion</Text>
+                                </TouchableOpacity>
+                            </BlurView>
+                        </View>
+                    </Modal>
+
+                    {/* Feedback Modal */}
+                    <Modal
+                        visible={feedbackModalVisible}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setFeedbackModalVisible(false)}
+                    >
+                        <View style={styles.modalOverlay}>
+                            <BlurView
+                                intensity={60}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={[styles.feedbackModal, isDarkMode && styles.feedbackModalDark]}
+                            >
+                                <View style={styles.refineHeader}>
+                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#FFF' }]}>Rate this translation</Text>
+                                    <TouchableOpacity onPress={() => setFeedbackModalVisible(false)}>
+                                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                                     </TouchableOpacity>
                                 </View>
-                            </>
-                        )}
-                    </BlurView>
-                )}
 
-                <View style={{ height: 120 }} />
-            </ScrollView>
+                                <Text style={[styles.feedbackBody, isDarkMode && { color: '#94A3B8' }]}>
+                                    Your feedback is important to us!
+                                </Text>
 
-            <BottomNav />
+                                <View style={styles.feedbackActionRow}>
+                                    <TouchableOpacity
+                                        style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(34,197,94,0.1)' }]}
+                                        onPress={() => {
+                                            if (activeFeedbackTarget) {
+                                                handleFeedback(activeFeedbackTarget.id, 'like', activeFeedbackTarget.target);
+                                            }
+                                            setFeedbackModalVisible(false);
+                                        }}
+                                    >
+                                        <ThumbsUp size={32} color="#22C55E" />
+                                        <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Like</Text>
+                                    </TouchableOpacity>
 
-            <LanguagePicker
-                visible={pickerTarget !== null}
-                onDismiss={() => setPickerTarget(null)}
-                onSelect={(code) => {
-                    if (pickerTarget === 'source') setSourceLang(code);
-                    else if (pickerTarget === 'target1') setTargetLang1(code);
-                    else if (pickerTarget === 'target2') setTargetLang2(code);
-                    setPickerTarget(null);
-                }}
-                selected={
-                    pickerTarget === 'source' ? sourceLang
-                        : pickerTarget === 'target1' ? targetLang1
-                            : targetLang2 || 'tl'
-                }
-            />
-
-            <WordCardModal
-                visible={dictVisible}
-                onDismiss={() => setDictVisible(false)}
-                word={dictWord}
-                sourceLang={sourceLangLookup}
-                targetLang={targetLangLookup}
-            />
-
-            <SentenceBreakdownSheet
-                visible={breakdownVisible}
-                onClose={() => setBreakdownVisible(false)}
-                text={dictWord}
-                onWordPress={(word) => {
-                    setBreakdownVisible(false);
-                    setDictWord(word);
-                    // Small timeout to let the sheet close animation finish before opening the modal
-                    setTimeout(() => setDictVisible(true), 300);
-                }}
-            />
-        </View>
+                                    <TouchableOpacity
+                                        style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(239,68,68,0.1)' }]}
+                                        onPress={() => {
+                                            if (activeFeedbackTarget) {
+                                                handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
+                                            }
+                                            setFeedbackModalVisible(false);
+                                        }}
+                                    >
+                                        <ThumbsDown size={32} color="#EF4444" />
+                                        <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Dislike</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </BlurView>
+                        </View>
+                    </Modal>
+                </View>
+            </Portal.Host>
+        </PaperProvider>
     );
 }
 
@@ -555,7 +825,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 8,
-        gap: 12,
+        gap: 4,
     },
     micBtnSmall: {
         width: 32,
@@ -563,10 +833,173 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
         elevation: 2,
+    },
+
+    actionBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    popoverMenu: {
+        position: 'absolute',
+        right: 0,
+        top: 38,
+        backgroundColor: '#FFF',
+        borderRadius: 14,
+        paddingVertical: 4,
+        minWidth: 200,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.06)',
+        zIndex: 999,
+    },
+    popoverMenuDark: {
+        backgroundColor: '#1E293B',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    popoverItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        gap: 10,
+    },
+    popoverText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#334155',
+    },
+    popoverSep: {
+        height: 1,
+        backgroundColor: '#F1F5F9',
+        marginHorizontal: 8,
+    },
+
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        justifyContent: 'flex-end',
+    },
+    refineModal: {
+        backgroundColor: 'rgba(255,255,255,0.85)',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        paddingBottom: 40,
+        overflow: 'hidden',
+        minHeight: 380,
+    },
+    refineModalDark: {
+        backgroundColor: 'rgba(30,41,59,0.85)',
+    },
+    modalHandle: {
+        width: 40,
+        height: 4,
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    refineHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    refineTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
+    refineLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#64748B',
+        marginBottom: 6,
+    },
+    refineOriginal: {
+        fontSize: 15,
+        fontStyle: 'italic',
+        color: '#475569',
+        lineHeight: 22,
+        marginBottom: 12,
+    },
+    refineInput: {
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 16,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        fontSize: 15,
+        color: '#1E293B',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        minHeight: 100,
+        textAlignVertical: 'top',
+        marginBottom: 16,
+    },
+    refineInputDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        color: '#F8FAFC',
+    },
+    refineSubmit: {
+        flexDirection: 'row',
+        backgroundColor: '#3B82F6',
+        borderRadius: 18,
+        paddingVertical: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+        elevation: 4,
+    },
+    refineSubmitText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#FFF',
+    },
+
+    /* Feedback Modal */
+    feedbackModal: {
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        paddingBottom: 50,
+        minHeight: 380,
+    },
+    feedbackModalDark: {
+        backgroundColor: '#1E293B',
+    },
+    feedbackBody: {
+        fontSize: 15,
+        color: '#64748B',
+        marginBottom: 30,
+        textAlign: 'center',
+    },
+    feedbackActionRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 16,
+    },
+    largeFeedbackBtn: {
+        flex: 1,
+        height: 140,
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.05)',
+    },
+    largeFeedbackText: {
+        marginTop: 12,
+        fontSize: 18,
+        fontWeight: '700',
     },
 });

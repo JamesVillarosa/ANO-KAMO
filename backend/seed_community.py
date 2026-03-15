@@ -1,117 +1,172 @@
 """
-Seed Script — Migrate schema + seed verified Filipino slang/idioms.
+Seed Script -- Pre-populate community_submission with verified Filipino slang/idioms.
+Also migrates existing DB schemas to add new columns.
 Run: python3 seed_community.py   (from /backend directory)
 """
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__))
+# Ensure app modules are importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from datetime import datetime
 from sqlalchemy import text
 from app.db.session import SessionLocal, engine
-from app.db.models import CommunitySubmission
 from app.db.base import Base
+
+# Import all models so Base.metadata has them
+from app.db.models import (  # noqa: F401
+    Device, Translation, TranslationOutput,
+    Conversation, Participant, Message, Tone,
+    OcrRequest, OcrText,
+    DictionaryEntry, DictionaryLookup,
+    CommunitySubmission, TranslationFeedback,
+)
 
 
 def migrate_schema():
-    """Add new columns to existing community_submission table if missing."""
-    migrations = [
-        ("origin", "ALTER TABLE community_submission ADD COLUMN origin VARCHAR(100)"),
-        ("context", "ALTER TABLE community_submission ADD COLUMN context VARCHAR(20) DEFAULT 'informal'"),
-        ("is_verified", "ALTER TABLE community_submission ADD COLUMN is_verified BOOLEAN DEFAULT 0"),
+    """Add new columns via ALTER TABLE if they don't exist yet."""
+    columns_to_add = [
+        ("community_submission", "origin", "VARCHAR(100)"),
+        ("community_submission", "context", "VARCHAR(20) DEFAULT 'informal'"),
+        ("community_submission", "is_verified", "BOOLEAN DEFAULT 0"),
+        ("community_submission", "popularity_tier", "VARCHAR(20) DEFAULT 'rising'"),
+        ("community_submission", "ai_reasoning", "TEXT"),
+        ("community_submission", "last_scanned", "DATETIME"),
+        ("community_submission", "sample_sentence", "TEXT"),
     ]
+
     with engine.connect() as conn:
-        for col_name, sql in migrations:
+        for table, col, col_type in columns_to_add:
             try:
-                conn.execute(text(sql))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
                 conn.commit()
-                print(f"  + Added column '{col_name}'")
-            except Exception as e:
-                if "duplicate column" in str(e).lower():
-                    print(f"  = Column '{col_name}' already exists")
-                else:
-                    print(f"  = Column '{col_name}': {e}")
+                print(f"  Added column {table}.{col}")
+            except Exception:
+                # Column already exists
+                pass
 
-
-SEED_DATA = [
-    {
-        "phrase": "Werpa",
-        "proposed_translation": "Power (reversed slang, expression of strength/support)",
-        "source_lang": "tl",
-        "target_lang": "en",
-        "notes": "Gen Z slang - reversed word for power",
-        "origin": "Metro Manila",
-        "context": "informal",
-        "votes": 15,
-        "is_verified": True,
-        "status": "approved",
-    },
-    {
-        "phrase": "Charot",
-        "proposed_translation": "Just kidding / I am joking",
-        "source_lang": "tl",
-        "target_lang": "en",
-        "notes": "Gay lingo that became mainstream - used to soften a statement",
-        "origin": "Metro Manila",
-        "context": "informal",
-        "votes": 25,
-        "is_verified": True,
-        "status": "approved",
-    },
-    {
-        "phrase": "Dasurv",
-        "proposed_translation": "Deserved (you deserve it, well-earned)",
-        "source_lang": "tl",
-        "target_lang": "en",
-        "notes": "Gen Z slang - playful spelling of deserve",
-        "origin": "Metro Manila",
-        "context": "informal",
-        "votes": 18,
-        "is_verified": True,
-        "status": "approved",
-    },
-    {
-        "phrase": "Ambot",
-        "proposed_translation": "I dont know (expression of uncertainty or frustration)",
-        "source_lang": "ceb",
-        "target_lang": "en",
-        "notes": "Common Cebuano expression",
-        "origin": "Cebu",
-        "context": "informal",
-        "votes": 22,
-        "is_verified": True,
-        "status": "approved",
-    },
-    {
-        "phrase": "Pakal",
-        "proposed_translation": "Fake / bootleg / counterfeit",
-        "source_lang": "ceb",
-        "target_lang": "en",
-        "notes": "Visayan slang for counterfeit goods",
-        "origin": "Visayas",
-        "context": "informal",
-        "votes": 12,
-        "is_verified": True,
-        "status": "approved",
-    },
-]
+    # Create translation_feedback table if it doesn't exist
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+    print("  Schema migration complete")
 
 
 def seed():
-    # Step 1: Ensure tables exist
-    Base.metadata.create_all(bind=engine)
+    """Seed the database with community entries."""
+    entries = [
+        {
+            "phrase": "Werpa",
+            "source_lang": "tl",
+            "target_lang": "en",
+            "proposed_translation": "Power (reversed) -- expression of support",
+            "origin": "Metro Manila",
+            "context": "informal",
+            "sample_sentence": "Werpa sa lahat ng nagtatrabaho!",
+            "notes": "Gay lingo popularized on social media",
+            "status": "approved",
+            "votes": 25,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Widely used across Filipino social media platforms",
+        },
+        {
+            "phrase": "Charot",
+            "source_lang": "tl",
+            "target_lang": "en",
+            "proposed_translation": "Just kidding / not serious",
+            "origin": "Metro Manila",
+            "context": "informal",
+            "sample_sentence": "Ang pangit mo! Charot lang!",
+            "notes": "Gay lingo, equivalent of 'char'",
+            "status": "approved",
+            "votes": 30,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Extremely popular slang used nationwide",
+        },
+        {
+            "phrase": "Dasurv",
+            "source_lang": "tl",
+            "target_lang": "en",
+            "proposed_translation": "Deserved / well-deserved",
+            "origin": "Metro Manila",
+            "context": "informal",
+            "sample_sentence": "Panalo siya sa contest, dasurv!",
+            "notes": "Gen Z slang from 'deserve'",
+            "status": "approved",
+            "votes": 22,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Viral Gen Z slang, widely used on Twitter PH and TikTok",
+        },
+        {
+            "phrase": "Omsim",
+            "source_lang": "tl",
+            "target_lang": "en",
+            "proposed_translation": "For sure / definitely (reversed 'mismo')",
+            "origin": "Metro Manila",
+            "context": "informal",
+            "sample_sentence": "Omsim ka talaga, pare!",
+            "notes": "Reversed slang from 'mismo', Gen Z",
+            "status": "pending",
+            "votes": 5,
+            "is_verified": False,
+            "popularity_tier": "rising",
+            "ai_reasoning": "Gaining traction in Filipino online communities, currently rising",
+        },
+        {
+            "phrase": "Gid",
+            "source_lang": "hil",
+            "target_lang": "en",
+            "proposed_translation": "Very / really (intensifier word in Hiligaynon)",
+            "origin": "Western Visayas",
+            "context": "informal",
+            "sample_sentence": "Maayo gid ang imo obra!",
+            "notes": "Common Hiligaynon intensifier",
+            "status": "approved",
+            "votes": 18,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Essential Hiligaynon word, universally understood in Western Visayas",
+        },
+        {
+            "phrase": "Ambot",
+            "source_lang": "ceb",
+            "target_lang": "en",
+            "proposed_translation": "I don't know",
+            "origin": "Visayas",
+            "context": "informal",
+            "sample_sentence": "Ambot nimo, wa ko kabalo!",
+            "notes": "Common Cebuano expression",
+            "status": "approved",
+            "votes": 20,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Standard Cebuano expression used daily across Visayas",
+        },
+        {
+            "phrase": "Pakal",
+            "source_lang": "ceb",
+            "target_lang": "en",
+            "proposed_translation": "Pretending / faking it",
+            "origin": "Cebu",
+            "context": "informal",
+            "sample_sentence": "Nagpakal ra na siya nga busy.",
+            "notes": "Cebuano street slang",
+            "status": "approved",
+            "votes": 15,
+            "is_verified": True,
+            "popularity_tier": "popular",
+            "ai_reasoning": "Common Cebuano colloquial term",
+        },
+    ]
 
-    # Step 2: Migrate missing columns
-    print("Migrating schema...")
-    migrate_schema()
-
-    # Step 3: Seed data
-    print("\nSeeding data...")
     db = SessionLocal()
     added = 0
+    skipped = 0
     try:
-        for entry in SEED_DATA:
-            exists = (
+        for entry in entries:
+            existing = (
                 db.query(CommunitySubmission)
                 .filter(
                     CommunitySubmission.phrase == entry["phrase"],
@@ -120,30 +175,25 @@ def seed():
                 )
                 .first()
             )
-            if exists:
-                print(f"  SKIP: '{entry['phrase']}' (already exists)")
+            if existing:
+                skipped += 1
                 continue
 
             sub = CommunitySubmission(**entry)
             db.add(sub)
             added += 1
-            print(f"  ADDED: '{entry['phrase']}' ({entry['source_lang']}->{entry['target_lang']})")
 
         db.commit()
-        print(f"\nDone! Seeded {added} phrases ({len(SEED_DATA) - added} skipped)")
+        print(f"\n  Added {added} entries, skipped {skipped} duplicates")
 
-        # Verify
-        verified = db.query(CommunitySubmission).filter(CommunitySubmission.is_verified == True).count()
-        total = db.query(CommunitySubmission).count()
-        print(f"Total in DB: {total} | Verified: {verified}")
-    except Exception as e:
-        db.rollback()
-        print(f"ERROR: {e}")
-        raise
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    print("=== Community Seed Script ===\n")
+    print("Seeding community submissions...\n")
+    print("[1/2] Migrating schema...")
+    migrate_schema()
+    print("[2/2] Seeding data...")
     seed()
+    print("\nDone!")

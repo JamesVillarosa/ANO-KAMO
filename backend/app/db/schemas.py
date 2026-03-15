@@ -174,6 +174,7 @@ class CommunitySubmissionRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000)
     origin: Optional[str] = Field(None, max_length=100, description="Regional origin: Metro Manila, Cebu, etc.")
     context: Optional[str] = Field("informal", description="formal or informal")
+    sample_sentence: Optional[str] = Field(None, max_length=500, description="Example sentence using this term")
     device_id: Optional[str] = None
 
 class CommunitySubmissionResponse(BaseModel):
@@ -185,9 +186,30 @@ class CommunitySubmissionResponse(BaseModel):
     notes: Optional[str]
     origin: Optional[str]
     context: Optional[str]
+    sample_sentence: Optional[str]
     status: str
     votes: int
     is_verified: bool
+    popularity_tier: Optional[str]
+    ai_reasoning: Optional[str]
+    last_scanned: Optional[datetime]
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+
+# ──────────────────── Translation Feedback ──────
+class TranslationFeedbackRequest(BaseModel):
+    translation_id: str = Field(..., description="ID of the translation being rated")
+    feedback_type: str = Field(..., pattern="^(like|dislike)$", description="'like' or 'dislike'")
+    suggested_text: Optional[str] = Field(None, max_length=1000, description="Suggested better translation")
+    device_id: Optional[str] = None
+
+class TranslationFeedbackResponse(BaseModel):
+    id: int
+    translation_id: str
+    feedback_type: str
+    suggested_text: Optional[str]
     created_at: datetime
     class Config:
         from_attributes = True

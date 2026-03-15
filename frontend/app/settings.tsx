@@ -31,6 +31,7 @@ export default function SettingsScreen() {
     const [newTranslation, setNewTranslation] = useState('');
     const [newNotes, setNewNotes] = useState('');
     const [newOrigin, setNewOrigin] = useState('');
+    const [newSampleSentence, setNewSampleSentence] = useState('');
     const [formSourceLang, setFormSourceLang] = useState('tl');
     const [formTargetLang, setFormTargetLang] = useState('en');
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
@@ -41,8 +42,8 @@ export default function SettingsScreen() {
             return;
         }
         try {
-            await apiSubmitPhrase(newPhrase, formSourceLang, formTargetLang, newTranslation, newNotes);
-            Alert.alert('Submitted! 🎉', 'Your suggestion has been sent for community review.');
+            await apiSubmitPhrase(newPhrase, formSourceLang, formTargetLang, newTranslation, newNotes, newOrigin, newSampleSentence);
+            Alert.alert('Success', 'You successfully submitted a slang for review. Thank you!');
         } catch {
             Alert.alert('Info', 'Suggestion saved locally — it will sync when online.');
         }
@@ -51,6 +52,7 @@ export default function SettingsScreen() {
         setNewTranslation('');
         setNewNotes('');
         setNewOrigin('');
+        setNewSampleSentence('');
     };
 
     const SettingsItem = ({
@@ -233,6 +235,14 @@ export default function SettingsScreen() {
                             placeholderTextColor="#94A3B8"
                             value={newOrigin}
                             onChangeText={setNewOrigin}
+                        />
+                        <TextInput
+                            style={[styles.modalInput, isDarkMode && styles.modalInputDark, { minHeight: 60 }]}
+                            placeholder="Sample sentence (e.g. 'Omsim ka talaga!')"
+                            placeholderTextColor="#94A3B8"
+                            value={newSampleSentence}
+                            onChangeText={setNewSampleSentence}
+                            multiline
                         />
                         <TextInput
                             style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
