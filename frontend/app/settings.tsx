@@ -20,6 +20,7 @@ import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED
 import { useTheme } from '../src/context/ThemeContext';
 import { submitPhrase as apiSubmitPhrase } from '../src/lib/api';
 import LanguagePicker from '../src/components/LanguagePicker';
+import GlassNotification from '../src/components/GlassNotification';
 
 export default function SettingsScreen() {
     const { isDarkMode, toggleTheme } = useTheme();
@@ -36,16 +37,25 @@ export default function SettingsScreen() {
     const [formTargetLang, setFormTargetLang] = useState('en');
     const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
 
+    // Notification state
+    const [notifVisible, setNotifVisible] = useState(false);
+    const [notifMessage, setNotifMessage] = useState('');
+
+    const showNotification = (msg: string) => {
+        setNotifMessage(msg);
+        setNotifVisible(true);
+    };
+
     const handleSubmitPhrase = async () => {
         if (!newPhrase.trim() || !newTranslation.trim()) {
-            Alert.alert('Error', 'Please fill in both the phrase and translation');
+            showNotification('Please fill in both phrase and translation.');
             return;
         }
         try {
-            await apiSubmitPhrase(newPhrase, formSourceLang, formTargetLang, newTranslation, newNotes, newOrigin, newSampleSentence);
-            Alert.alert('Success', 'You successfully submitted a slang for review. Thank you!');
+            await apiSubmitPhrase(newPhrase, 'tl', 'en', newTranslation, newNotes, newOrigin, newSampleSentence);
+            showNotification('Slang submission received. Thank you.');
         } catch {
-            Alert.alert('Info', 'Suggestion saved locally — it will sync when online.');
+            showNotification('Suggestion saved locally for sync.');
         }
         setModalVisible(false);
         setNewPhrase('');
@@ -189,28 +199,9 @@ export default function SettingsScreen() {
                     >
                         <View style={styles.modalHandle} />
                         <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Phrase</Text>
+                            <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>Suggest a Slang</Text>
                             <TouchableOpacity onPress={() => setModalVisible(false)}>
                                 <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Language selection */}
-                        <View style={styles.modalLangs}>
-                            <TouchableOpacity
-                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
-                                onPress={() => setPickerTarget('source')}
-                            >
-                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formSourceLang]}</Text>
-                                <ChevronDown size={14} color="#3B82F6" />
-                            </TouchableOpacity>
-                            <Text style={styles.modalArrow}>→</Text>
-                            <TouchableOpacity
-                                style={[styles.modalLangChip, isDarkMode && styles.modalLangChipDark]}
-                                onPress={() => setPickerTarget('target')}
-                            >
-                                <Text style={[styles.modalLangText, isDarkMode && styles.textWhite]}>{SUPPORTED_LANGUAGES[formTargetLang]}</Text>
-                                <ChevronDown size={14} color="#3B82F6" />
                             </TouchableOpacity>
                         </View>
 
@@ -272,6 +263,12 @@ export default function SettingsScreen() {
                     else setFormTargetLang(code);
                 }}
                 selected={pickerTarget === 'source' ? formSourceLang : formTargetLang}
+            />
+            <GlassNotification
+                visible={notifVisible}
+                message={notifMessage}
+                onHide={() => setNotifVisible(false)}
+                isDarkMode={isDarkMode}
             />
         </View>
     );

@@ -6,6 +6,7 @@ import { BlurView } from 'expo-blur';
 import { Type, Camera, MessageSquare } from 'lucide-react-native';
 
 import { useTheme } from '../context/ThemeContext';
+import { liquidGlass } from '../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -31,9 +32,9 @@ export default function BottomNav() {
     return (
         <View style={styles.container}>
             <BlurView
-                intensity={isDarkMode ? 40 : 60}
+                intensity={isDarkMode ? 20 : 30}
                 tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.nav, isDarkMode && styles.navDark]}
+                style={[styles.nav, liquidGlass, isDarkMode && styles.navDark]}
             >
                 {TABS.map((tab) => {
                     const isActive = activeTab === tab.key;

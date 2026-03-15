@@ -9,6 +9,8 @@ interface SentenceBreakdownSheetProps {
     visible: boolean;
     onClose: () => void;
     text: string;
+    sourceLang: string;
+    targetLang: string;
     onWordPress: (word: string) => void;
 }
 
@@ -20,6 +22,8 @@ export default function SentenceBreakdownSheet({
     visible,
     onClose,
     text,
+    sourceLang,
+    targetLang,
     onWordPress,
 }: SentenceBreakdownSheetProps) {
     const { isDarkMode } = useTheme();

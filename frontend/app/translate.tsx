@@ -41,6 +41,7 @@ import {
     SUPPORTED_LANGUAGES,
     LANGUAGE_COLORS,
     LANGUAGE_PLACEHOLDERS,
+    liquidGlass,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -333,8 +334,7 @@ export default function TranslateScreen() {
                                             handleCopy(text);
                                         }}
                                     >
-                                        <Copy size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
-                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy Text</Text>
+                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy</Text>
                                     </TouchableOpacity>
                                     <View style={[styles.popoverSep, isDarkMode && { backgroundColor: '#334155' }]} />
                                     <TouchableOpacity
@@ -345,8 +345,7 @@ export default function TranslateScreen() {
                                             setRefineModal({ visible: true, translationId, originalText: text, target });
                                         }}
                                     >
-                                        <MessageSquare size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
-                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest Better Translation</Text>
+                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest a Translation</Text>
                                     </TouchableOpacity>
                                 </View>
                             </TouchableOpacity>
@@ -468,7 +467,7 @@ export default function TranslateScreen() {
                                 <View style={{ flex: 1 }} />
 
                                 {sourceText.length > 0 && (
-                                    <TouchableOpacity onPress={() => tts.speak(sourceText, sourceLang)}>
+                                    <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => tts.speak(sourceText, sourceLang)}>
                                         <Volume2 size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
                                     </TouchableOpacity>
                                 )}
@@ -538,13 +537,13 @@ export default function TranslateScreen() {
                         <View style={{ height: 120 }} />
                     </ScrollView>
 
-                    <BottomNav activeTab="translate" />
+                    <BottomNav />
 
                     <LanguagePicker
                         visible={pickerTarget !== null}
-                        onClose={() => setPickerTarget(null)}
+                        onDismiss={() => setPickerTarget(null)}
                         onSelect={handlePickerSelect}
-                        selectedCode={
+                        selected={
                             pickerTarget === 'source' ? sourceLang
                                 : pickerTarget === 'target1' ? targetLang1
                                     : targetLang2
@@ -553,7 +552,7 @@ export default function TranslateScreen() {
 
                     <WordCardModal
                         visible={dictVisible}
-                        onClose={() => setDictVisible(false)}
+                        onDismiss={() => setDictVisible(false)}
                         word={dictWord}
                         sourceLang={sourceLangLookup}
                         targetLang={targetLangLookup}
@@ -631,14 +630,15 @@ export default function TranslateScreen() {
                         animationType="fade"
                         onRequestClose={() => setFeedbackModalVisible(false)}
                     >
-                        <View style={styles.modalOverlay}>
+                        <View style={styles.modalOverlayCentered}>
                             <BlurView
-                                intensity={60}
+                                intensity={30}
                                 tint={isDarkMode ? 'dark' : 'light'}
-                                style={[styles.feedbackModal, isDarkMode && styles.feedbackModalDark]}
+                                style={[styles.feedbackModalCentered, liquidGlass, isDarkMode && styles.feedbackModalDark]}
                             >
+                                <View style={styles.modalHandle} />
                                 <View style={styles.refineHeader}>
-                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#FFF' }]}>Rate this translation</Text>
+                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>Rate this translation</Text>
                                     <TouchableOpacity onPress={() => setFeedbackModalVisible(false)}>
                                         <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                                     </TouchableOpacity>
@@ -659,7 +659,6 @@ export default function TranslateScreen() {
                                         }}
                                     >
                                         <ThumbsUp size={32} color="#22C55E" />
-                                        <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Like</Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
@@ -672,7 +671,6 @@ export default function TranslateScreen() {
                                         }}
                                     >
                                         <ThumbsDown size={32} color="#EF4444" />
-                                        <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Dislike</Text>
                                     </TouchableOpacity>
                                 </View>
                             </BlurView>
@@ -873,31 +871,28 @@ const styles = StyleSheet.create({
     },
     popoverText: {
         fontSize: 14,
-        fontWeight: '500',
-        color: '#334155',
+        fontWeight: '600',
+        color: '#1E293B',
     },
     popoverSep: {
         height: 1,
-        backgroundColor: '#F1F5F9',
+        backgroundColor: 'rgba(0,0,0,0.05)',
         marginHorizontal: 8,
     },
 
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.35)',
-        justifyContent: 'flex-end',
-    },
+    /* Modal Overlay */
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+    modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
     refineModal: {
-        backgroundColor: 'rgba(255,255,255,0.85)',
+        backgroundColor: 'rgba(255,255,255,0.95)',
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
         padding: 24,
         paddingBottom: 40,
-        overflow: 'hidden',
-        minHeight: 380,
+        minHeight: 350,
     },
     refineModalDark: {
-        backgroundColor: 'rgba(30,41,59,0.85)',
+        backgroundColor: '#1E293B',
     },
     modalHandle: {
         width: 40,
@@ -914,7 +909,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     refineTitle: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: '700',
         color: '#1E293B',
     },
@@ -928,41 +923,35 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontStyle: 'italic',
         color: '#475569',
-        lineHeight: 22,
-        marginBottom: 12,
-    },
-    refineInput: {
-        backgroundColor: 'rgba(255,255,255,0.5)',
-        borderRadius: 16,
-        paddingHorizontal: 18,
-        paddingVertical: 14,
-        fontSize: 15,
-        color: '#1E293B',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-        minHeight: 100,
-        textAlignVertical: 'top',
         marginBottom: 16,
     },
+    refineInput: {
+        backgroundColor: 'rgba(241,245,249,0.5)',
+        borderRadius: 16,
+        padding: 16,
+        fontSize: 15,
+        color: '#1E293B',
+        minHeight: 120,
+        textAlignVertical: 'top',
+        marginBottom: 20,
+    },
     refineInputDark: {
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
         color: '#F8FAFC',
     },
     refineSubmit: {
         flexDirection: 'row',
         backgroundColor: '#3B82F6',
-        borderRadius: 18,
-        paddingVertical: 16,
+        borderRadius: 16,
+        paddingVertical: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 10,
-        elevation: 4,
+        gap: 8,
     },
     refineSubmitText: {
-        fontSize: 16,
-        fontWeight: '700',
         color: '#FFF',
+        fontSize: 15,
+        fontWeight: '700',
     },
 
     /* Feedback Modal */
@@ -973,6 +962,13 @@ const styles = StyleSheet.create({
         padding: 24,
         paddingBottom: 50,
         minHeight: 380,
+    },
+    feedbackModalCentered: {
+        width: Dimensions.get('window').width * 0.85,
+        borderRadius: 32,
+        padding: 24,
+        paddingBottom: 30,
+        overflow: 'hidden',
     },
     feedbackModalDark: {
         backgroundColor: '#1E293B',

@@ -84,6 +84,18 @@ export const glassPill = {
     elevation: 2,
 };
 
+export const liquidGlass = {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 24,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+};
+
 export const SUPPORTED_LANGUAGES: Record<string, string> = {
     tl: 'Tagalog',
     ceb: 'Cebuano',

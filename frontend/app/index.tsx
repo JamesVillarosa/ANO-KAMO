@@ -41,6 +41,7 @@ import {
   darkGlassCard,
   SUPPORTED_LANGUAGES,
   LANGUAGE_PLACEHOLDERS,
+  liquidGlass,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -95,6 +96,8 @@ export default function HomeScreen() {
   // Dictionary
   const [dictVisible, setDictVisible] = useState(false);
   const [dictWord, setDictWord] = useState('');
+  const [dictSourceLang, setDictSourceLang] = useState('');
+  const [dictTargetLang, setDictTargetLang] = useState('');
   const [breakdownVisible, setBreakdownVisible] = useState(false);
 
   // Speech Recognition
@@ -211,11 +214,14 @@ export default function HomeScreen() {
     } catch { }
   };
 
-  const openDictionary = (text: string) => {
+  const openDictionary = (text: string, src: string, tgt: string) => {
     if (!text.trim()) {
       showToast("Generate a translation first to use the dictionary.");
       return;
     }
+
+    setDictSourceLang(src);
+    setDictTargetLang(tgt);
 
     const words = text.trim().split(/\s+/).filter(w => w.length > 0);
     if (words.length === 1) {
@@ -301,7 +307,7 @@ export default function HomeScreen() {
         <TouchableOpacity style={styles.iconCircle} onPress={() => tts.speak(text, tgtLang)}>
           <Volume2 size={18} color="#3B82F6" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconCircle} onPress={() => openDictionary(text)}>
+        <TouchableOpacity style={styles.iconCircle} onPress={() => openDictionary(text, sourceLang, tgtLang)}>
           <BookOpen size={18} color="#3B82F6" />
         </TouchableOpacity>
 
@@ -338,8 +344,7 @@ export default function HomeScreen() {
                       copyText(text);
                     }}
                   >
-                    <Copy size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
-                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy Text</Text>
+                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.popoverItem}
@@ -349,8 +354,7 @@ export default function HomeScreen() {
                       setRefineModal({ visible: true, translationId, originalText: text, target });
                     }}
                   >
-                    <MessageSquare size={14} color={isDarkMode ? '#E2E8F0' : '#334155'} />
-                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest Better Translation</Text>
+                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest a Translation</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -458,7 +462,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
 
                     {sourceText.length > 0 && (
-                      <TouchableOpacity style={[styles.iconCircle, { marginLeft: 10 }]} onPress={() => tts.speak(sourceText, sourceLang)}>
+                      <TouchableOpacity style={styles.iconCircle} onPress={() => tts.speak(sourceText, sourceLang)}>
                         <Volume2 size={18} color="#3B82F6" />
                       </TouchableOpacity>
                     )}
@@ -554,14 +558,14 @@ export default function HomeScreen() {
             </ScrollView>
           </KeyboardAvoidingView>
 
-          <BottomNav activeTab="home" />
+          <BottomNav />
 
           {/* Language Picker */}
           <LanguagePicker
             visible={pickerTarget !== null}
-            onClose={() => setPickerTarget(null)}
+            onDismiss={() => setPickerTarget(null)}
             onSelect={handlePickerSelect}
-            selectedCode={
+            selected={
               pickerTarget === 'source' ? sourceLang
                 : pickerTarget === 'target1' ? targetLang1
                   : targetLang2
@@ -571,19 +575,19 @@ export default function HomeScreen() {
           {/* Word Card Modal */}
           <WordCardModal
             visible={dictVisible}
-            onClose={() => setDictVisible(false)}
+            onDismiss={() => setDictVisible(false)}
             word={dictWord}
-            sourceLang={sourceLang}
-            targetLang={targetLang1}
+            sourceLang={dictSourceLang}
+            targetLang={dictTargetLang}
           />
 
           {/* Sentence Breakdown Sheet */}
           <SentenceBreakdownSheet
             visible={breakdownVisible}
             onClose={() => setBreakdownVisible(false)}
-            text={translated1}
-            sourceLang={sourceLang}
-            targetLang={targetLang1}
+            text={dictWord}
+            sourceLang={dictSourceLang}
+            targetLang={dictTargetLang}
             onWordPress={(word) => {
               setBreakdownVisible(false);
               setDictWord(word);
@@ -650,12 +654,13 @@ export default function HomeScreen() {
             animationType="fade"
             onRequestClose={() => setFeedbackModalVisible(false)}
           >
-            <View style={styles.modalOverlay}>
+            <View style={styles.modalOverlayCentered}>
               <BlurView
-                intensity={60}
+                intensity={30}
                 tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.feedbackModal, isDarkMode && styles.feedbackModalDark]}
+                style={[styles.feedbackModalCentered, liquidGlass, isDarkMode && styles.feedbackModalDark]}
               >
+                <View style={styles.modalHandle} />
                 <View style={styles.refineHeader}>
                   <Text style={[styles.refineTitle, isDarkMode && { color: '#FFF' }]}>Rate this translation</Text>
                   <TouchableOpacity onPress={() => setFeedbackModalVisible(false)}>
@@ -678,7 +683,6 @@ export default function HomeScreen() {
                     }}
                   >
                     <ThumbsUp size={32} color="#22C55E" />
-                    <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Like</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -691,7 +695,6 @@ export default function HomeScreen() {
                     }}
                   >
                     <ThumbsDown size={32} color="#EF4444" />
-                    <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Dislike</Text>
                   </TouchableOpacity>
                 </View>
               </BlurView>
@@ -852,17 +855,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   popoverText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#334155',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
   },
 
   /* Modal Overlay */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+  modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   refineModal: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderTopLeftRadius: 32,
@@ -968,6 +968,13 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 50,
     minHeight: 380,
+  },
+  feedbackModalCentered: {
+    width: Dimensions.get('window').width * 0.85,
+    borderRadius: 32,
+    padding: 24,
+    paddingBottom: 30,
+    overflow: 'hidden',
   },
   feedbackModalDark: {
     backgroundColor: '#1E293B',
