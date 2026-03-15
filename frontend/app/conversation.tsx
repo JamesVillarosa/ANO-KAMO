@@ -22,6 +22,7 @@ import {
     ChevronDown,
     Trash2,
     BookOpen,
+    ArrowUpDown,
 } from 'lucide-react-native';
 import {
     createConversation,
@@ -44,7 +45,7 @@ import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 
-const { width } = Dimensions.get('window');
+const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface Translation {
     text: string;
@@ -55,37 +56,120 @@ interface Message {
     id: string;
     text: string;               // original text
     translations: Translation[]; // one or two translations
-    speaker: number;            // 0, 1, or 2
+    speaker: number;            // 0 or 1 (in face_to_face), 0, 1, or 2 (in 3way)
     lang: string;               // original language
 }
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
 
+// ─────────────────────────────────────────
+// Shared Bubble Component
+// ─────────────────────────────────────────
+function ChatBubble({
+    msg,
+    alignment,
+    tts,
+    openDictionary,
+    isDarkMode,
+}: {
+    msg: Message;
+    alignment: 'left' | 'right' | 'center';
+    tts: { speak: (text: string, lang: string) => void };
+    openDictionary: (text: string, src: string, tgt: string) => void;
+    isDarkMode: boolean;
+}) {
+    const langColor = getColorForLang(msg.lang);
+    return (
+        <View
+            style={[
+                styles.msgRow,
+                alignment === 'left' ? styles.msgLeft :
+                    alignment === 'center' ? styles.msgCenter :
+                        styles.msgRight,
+            ]}
+        >
+            <View style={[styles.bubble, { backgroundColor: langColor.bg }]}>
+                <Text style={styles.bubbleSpeakerLabel}>
+                    {SUPPORTED_LANGUAGES[msg.lang]}
+                </Text>
+                <Text style={[styles.bubbleText, { color: langColor.text }]}>
+                    {msg.text}
+                </Text>
+                {msg.translations.map((tr, idx) => {
+                    const trColor = getColorForLang(tr.lang);
+                    return (
+                        <View key={idx}>
+                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                            <View style={styles.transRow}>
+                                <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
+                                <Text style={styles.transLangLabel}>
+                                    {SUPPORTED_LANGUAGES[tr.lang]}
+                                </Text>
+                            </View>
+                            <Text style={[styles.transText, { color: langColor.trans }]}>
+                                {tr.text}
+                            </Text>
+                        </View>
+                    );
+                })}
+                <View style={styles.bubbleFooter}>
+                    <TouchableOpacity
+                        onPress={() => tts.speak(msg.text, msg.lang)}
+                        style={styles.footerIcon}
+                    >
+                        <Volume2 size={14} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    {msg.translations.map((tr, idx) => (
+                        <React.Fragment key={idx}>
+                            <TouchableOpacity
+                                onPress={() => tts.speak(tr.text, tr.lang)}
+                                style={styles.footerIcon}
+                            >
+                                <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
+                                <Volume2 size={14} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                style={styles.footerIcon}
+                            >
+                                <BookOpen size={14} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                        </React.Fragment>
+                    ))}
+                </View>
+            </View>
+        </View>
+    );
+}
+
+// ─────────────────────────────────────────
+// Main Screen
+// ─────────────────────────────────────────
 export default function ConversationScreen() {
     const { isDarkMode } = useTheme();
-    const [mode, setMode] = useState<'2way' | '3way'>('2way');
+    const [viewMode, setViewMode] = useState<'two_way' | 'three_way' | 'face_to_face'>('two_way');
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const [activeSpeaker, setActiveSpeaker] = useState(0);
     const tts = useTextToSpeech();
 
-    // Languages
+    // Languages (Speaker A = bottom, Speaker B = top in F2F)
     const [lang0, setLang0] = useState('tl');
     const [lang1, setLang1] = useState('ceb');
     const [lang2, setLang2] = useState('hil');
     const [pickerFor, setPickerFor] = useState<number | null>(null);
     const [conversationId, setConversationId] = useState<string | null>(null);
 
-    // Dictionary state
+    // Dictionary
     const [dictVisible, setDictVisible] = useState(false);
     const [dictWord, setDictWord] = useState('');
     const [dictSourceLang, setDictSourceLang] = useState('');
     const [dictTargetLang, setDictTargetLang] = useState('');
     const [breakdownVisible, setBreakdownVisible] = useState(false);
 
-    // Speech Recognition
+    // ── Speech (Side-by-Side / 3-Way uses a single hook) ──
     const getActiveLang = () => {
         if (activeSpeaker === 0) return lang0;
         if (activeSpeaker === 1) return lang1;
@@ -94,8 +178,18 @@ export default function ConversationScreen() {
     const speech = useSpeechRecognition(getActiveLang());
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
-    // Pulse animation for mic when listening
+    // ── Face-to-Face: Dual speech hooks ──
+    const speechBottom = useSpeechRecognition(lang0); // Speaker A (bottom)
+    const speechTop = useSpeechRecognition(lang1);    // Speaker B (top)
+    const pulseAnimBottom = useRef(new Animated.Value(1)).current;
+    const pulseAnimTop = useRef(new Animated.Value(1)).current;
+
+    // Auto-TTS flag — speak the translated text after each message
+    const lastMessageIdRef = useRef<string | null>(null);
+
+    // Pulse animation for standard mode mic
     useEffect(() => {
+        if (viewMode === 'face_to_face') return;
         if (speech.isListening || speech.isProcessing) {
             const pulse = Animated.loop(
                 Animated.sequence([
@@ -108,38 +202,108 @@ export default function ConversationScreen() {
         } else {
             pulseAnim.setValue(1);
         }
-    }, [speech.isListening, speech.isProcessing]);
+    }, [speech.isListening, speech.isProcessing, viewMode]);
 
-    // Auto-populate input with live transcript
+    // Pulse animation for F2F bottom mic
     useEffect(() => {
+        if (viewMode !== 'face_to_face') return;
+        if (speechBottom.isListening || speechBottom.isProcessing) {
+            const pulse = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnimBottom, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+                    Animated.timing(pulseAnimBottom, { toValue: 1, duration: 600, useNativeDriver: true }),
+                ])
+            );
+            pulse.start();
+            return () => pulse.stop();
+        } else {
+            pulseAnimBottom.setValue(1);
+        }
+    }, [speechBottom.isListening, speechBottom.isProcessing, viewMode]);
+
+    // Pulse animation for F2F top mic
+    useEffect(() => {
+        if (viewMode !== 'face_to_face') return;
+        if (speechTop.isListening || speechTop.isProcessing) {
+            const pulse = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnimTop, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+                    Animated.timing(pulseAnimTop, { toValue: 1, duration: 600, useNativeDriver: true }),
+                ])
+            );
+            pulse.start();
+            return () => pulse.stop();
+        } else {
+            pulseAnimTop.setValue(1);
+        }
+    }, [speechTop.isListening, speechTop.isProcessing, viewMode]);
+
+    // ── Standard mode: auto-populate + auto-send ──
+    useEffect(() => {
+        if (viewMode === 'face_to_face') return;
         const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
         if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
             setInputText(liveText);
         } else if (speech.isListening || speech.isProcessing) {
             setInputText('');
         }
-    }, [speech.transcript, speech.interimTranscript]);
+    }, [speech.transcript, speech.interimTranscript, viewMode]);
 
-    // When transcription completes, auto-send as message (with translation)
     useEffect(() => {
+        if (viewMode === 'face_to_face') return;
         if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
             const finalText = speech.transcript.trim();
             setInputText(finalText);
             handleAutoSend(finalText);
         }
-    }, [speech.isProcessing, speech.transcript]);
+    }, [speech.isProcessing, speech.transcript, viewMode]);
+
+    // ── Face-to-Face: auto-send for bottom mic (Speaker A) ──
+    useEffect(() => {
+        if (viewMode !== 'face_to_face') return;
+        if (!speechBottom.isListening && !speechBottom.isProcessing && speechBottom.transcript.trim()) {
+            handleF2FSend(speechBottom.transcript.trim(), 0);
+        }
+    }, [speechBottom.isProcessing, speechBottom.transcript, viewMode]);
+
+    // ── Face-to-Face: auto-send for top mic (Speaker B) ──
+    useEffect(() => {
+        if (viewMode !== 'face_to_face') return;
+        if (!speechTop.isListening && !speechTop.isProcessing && speechTop.transcript.trim()) {
+            handleF2FSend(speechTop.transcript.trim(), 1);
+        }
+    }, [speechTop.isProcessing, speechTop.transcript, viewMode]);
+
+    // ── Auto-TTS when a new message arrives in F2F mode ──
+    useEffect(() => {
+        if (viewMode !== 'face_to_face') return;
+        if (messages.length === 0) return;
+        const latest = messages[messages.length - 1];
+        if (latest.id === lastMessageIdRef.current) return;
+        lastMessageIdRef.current = latest.id;
+        // Speak the translated text in the OTHER speaker's language
+        if (latest.translations.length > 0) {
+            const tr = latest.translations[0];
+            tts.speak(tr.text, tr.lang);
+        }
+    }, [messages, viewMode]);
 
     const scrollRef = useRef<ScrollView>(null);
+    const scrollTopRef = useRef<ScrollView>(null);
+    const scrollBottomRef = useRef<ScrollView>(null);
 
     useEffect(() => {
         scrollRef.current?.scrollToEnd({ animated: true });
+        scrollTopRef.current?.scrollToEnd({ animated: true });
+        scrollBottomRef.current?.scrollToEnd({ animated: true });
     }, [messages]);
 
-    // Create a new backend conversation session when mode changes
+    // Create backend conversation session
     useEffect(() => {
         setMessages([]);
         setActiveSpeaker(0);
-        const speakerCount = mode === '3way' ? 3 : 2;
+        const speakerCount = viewMode === 'three_way' ? 3 : 2;
+        const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
         const participants = [
             { speaker_label: 'A', preferred_language: lang0 },
             { speaker_label: 'B', preferred_language: lang1 },
@@ -147,10 +311,10 @@ export default function ConversationScreen() {
         if (speakerCount === 3) {
             participants.push({ speaker_label: 'C', preferred_language: lang2 });
         }
-        createConversation(mode === '2way' ? 'two_way' : 'three_way', participants)
+        createConversation(backendMode, participants, viewMode)
             .then(res => setConversationId(res.conversation_id))
             .catch(() => setConversationId(null));
-    }, [mode]);
+    }, [viewMode]);
 
     const getLang = (speaker: number) => {
         if (speaker === 0) return lang0;
@@ -164,22 +328,17 @@ export default function ConversationScreen() {
         else setLang2(code);
     };
 
-    // Get all OTHER speakers' languages (for translation targets)
     const getTargetLangs = (speaker: number): string[] => {
         const allLangs = [lang0, lang1];
-        if (mode === '3way') allLangs.push(lang2);
-
+        if (viewMode === 'three_way') allLangs.push(lang2);
         const srcLang = getLang(speaker);
-        // Return unique target languages that differ from source
         const targets = allLangs
             .filter((_, i) => i !== speaker)
             .filter(l => l !== srcLang);
-
-        // Remove duplicates
         return [...new Set(targets.length > 0 ? targets : allLangs.filter((_, i) => i !== speaker))];
     };
 
-    // Auto-send speech transcript with translation
+    // Standard mode send
     const handleAutoSend = async (text: string) => {
         if (!text.trim()) return;
         const fromLang = getLang(activeSpeaker);
@@ -189,31 +348,19 @@ export default function ConversationScreen() {
         setLoading(true);
         try {
             const translations: Translation[] = [];
-
-            // Translate to each target language
             for (const tl of targetLangs) {
                 try {
                     if (conversationId) {
-                        const res = await apiSendMessage(
-                            conversationId, speakerLabel, text, fromLang, tl
-                        );
-                        translations.push({
-                            text: res.translated_text || '',
-                            lang: tl,
-                        });
+                        const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, tl);
+                        translations.push({ text: res.translated_text || '', lang: tl });
                     } else {
-                        // Fallback: use direct translate API
                         const res = await translateSingle(text, fromLang, tl);
-                        translations.push({
-                            text: res.output_text || '',
-                            lang: tl,
-                        });
+                        translations.push({ text: res.output_text || '', lang: tl });
                     }
                 } catch {
                     translations.push({ text: `(Translation to ${SUPPORTED_LANGUAGES[tl]} unavailable)`, lang: tl });
                 }
             }
-
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
@@ -229,7 +376,7 @@ export default function ConversationScreen() {
                 text,
                 translations: [],
                 speaker: activeSpeaker,
-                lang: fromLang,
+                lang: getLang(activeSpeaker),
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
@@ -237,19 +384,58 @@ export default function ConversationScreen() {
         setLoading(false);
     };
 
+    // Face-to-Face send
+    const handleF2FSend = async (text: string, speaker: number) => {
+        if (!text.trim()) return;
+        const fromLang = getLang(speaker);
+        const targetLang = speaker === 0 ? lang1 : lang0;
+        const speakerLabel = speaker === 0 ? 'A' : 'B';
+
+        setLoading(true);
+        try {
+            let translatedText = '';
+            try {
+                if (conversationId) {
+                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang);
+                    translatedText = res.translated_text || '';
+                } else {
+                    const res = await translateSingle(text, fromLang, targetLang);
+                    translatedText = res.output_text || '';
+                }
+            } catch {
+                translatedText = `(Translation to ${SUPPORTED_LANGUAGES[targetLang]} unavailable)`;
+            }
+            const msg: Message = {
+                id: Date.now().toString(),
+                text,
+                translations: [{ text: translatedText, lang: targetLang }],
+                speaker,
+                lang: fromLang,
+            };
+            setMessages(prev => [...prev, msg]);
+        } catch {
+            const msg: Message = {
+                id: Date.now().toString(),
+                text,
+                translations: [],
+                speaker,
+                lang: fromLang,
+            };
+            setMessages(prev => [...prev, msg]);
+        }
+        setLoading(false);
+    };
+
     const openDictionary = (text: string, src: string, tgt: string) => {
         if (!text.trim()) return;
-
         const words = text.trim().split(/\s+/).filter(w => w.length > 0);
         if (words.length === 1) {
-            // Case A: Single word
-            const cleanWord = words[0].replace(/[.,!?;:"""''()[\]{}]/g, '').trim();
+            const cleanWord = words[0].replace(/[.,!?;:""\"''()\[\]{}]/g, '').trim();
             setDictWord(cleanWord);
             setDictSourceLang(src);
             setDictTargetLang(tgt);
             setDictVisible(true);
         } else {
-            // Case B: Sentence breakdown
             setDictWord(text);
             setDictSourceLang(src);
             setDictTargetLang(tgt);
@@ -269,8 +455,9 @@ export default function ConversationScreen() {
                 text: 'Clear', style: 'destructive', onPress: () => {
                     setMessages([]);
                     setInputText('');
-                    // Create a fresh conversation session
-                    const speakerCount = mode === '3way' ? 3 : 2;
+                    lastMessageIdRef.current = null;
+                    const speakerCount = viewMode === 'three_way' ? 3 : 2;
+                    const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
                     const participants = [
                         { speaker_label: 'A', preferred_language: lang0 },
                         { speaker_label: 'B', preferred_language: lang1 },
@@ -278,7 +465,7 @@ export default function ConversationScreen() {
                     if (speakerCount === 3) {
                         participants.push({ speaker_label: 'C', preferred_language: lang2 });
                     }
-                    createConversation(mode === '2way' ? 'two_way' : 'three_way', participants)
+                    createConversation(backendMode, participants, viewMode)
                         .then(res => setConversationId(res.conversation_id))
                         .catch(() => setConversationId(null));
                 },
@@ -286,8 +473,220 @@ export default function ConversationScreen() {
         ]);
     };
 
-    const speakerCount = mode === '3way' ? 3 : 2;
+    const swapLanguages = () => {
+        const tmp = lang0;
+        setLang0(lang1);
+        setLang1(tmp);
+    };
 
+    const speakerCount = viewMode === 'three_way' ? 3 : 2;
+
+    // ─────────────────────────────────────────
+    // Face-to-Face Render
+    // ─────────────────────────────────────────
+    if (viewMode === 'face_to_face') {
+        const topColor = getColorForLang(lang1);
+        const bottomColor = getColorForLang(lang0);
+        const isBusyTop = speechTop.isListening || speechTop.isProcessing;
+        const isBusyBottom = speechBottom.isListening || speechBottom.isProcessing;
+
+        return (
+            <View style={[styles.container, isDarkMode && styles.containerDark]}>
+                <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+
+                {/* ═══ TOP SECTION (rotated 180°) — Speaker B ═══ */}
+                <View style={[styles.f2fSection, { transform: [{ rotate: '180deg' }] }]}>
+                    {/* Language label + picker */}
+                    <TouchableOpacity
+                        style={[styles.f2fLangChip, { backgroundColor: topColor.bg, borderColor: topColor.light }]}
+                        onPress={() => setPickerFor(1)}
+                    >
+                        <View style={[styles.langDot, { backgroundColor: topColor.light }]} />
+                        <Text style={styles.f2fLangText}>{SUPPORTED_LANGUAGES[lang1]}</Text>
+                        <ChevronDown size={12} color="#FFF" />
+                    </TouchableOpacity>
+
+                    {/* Chat bubbles — ALL messages, aligned by speaker */}
+                    <ScrollView
+                        ref={scrollTopRef}
+                        style={styles.f2fChat}
+                        contentContainerStyle={styles.f2fChatContent}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {messages.length === 0 && (
+                            <View style={styles.f2fEmpty}>
+                                <Mic size={28} color="rgba(255,255,255,0.3)" />
+                                <Text style={styles.f2fEmptyText}>Tap the mic to start</Text>
+                            </View>
+                        )}
+                        {messages.map((msg) => (
+                            <ChatBubble
+                                key={msg.id}
+                                msg={msg}
+                                alignment={msg.speaker === 1 ? 'right' : 'left'}
+                                tts={tts}
+                                openDictionary={openDictionary}
+                                isDarkMode={isDarkMode}
+                            />
+                        ))}
+                    </ScrollView>
+
+                    {/* Mic button */}
+                    <View style={styles.f2fMicRow}>
+                        {isBusyTop && (
+                            <Text style={styles.f2fListeningLabel}>
+                                {speechTop.isProcessing ? 'Transcribing...' : 'Listening...'}
+                            </Text>
+                        )}
+                        <TouchableOpacity
+                            style={[styles.f2fMicBtn, {
+                                backgroundColor: isBusyTop ? '#EF4444' : topColor.light,
+                            }]}
+                            onPress={() => {
+                                if (speechTop.isListening) {
+                                    speechTop.stopListening();
+                                } else if (!speechTop.isProcessing) {
+                                    speechTop.startListening();
+                                }
+                            }}
+                            disabled={speechTop.isProcessing || loading}
+                        >
+                            <Animated.View style={{ transform: [{ scale: isBusyTop ? pulseAnimTop : 1 }] }}>
+                                {speechTop.isListening ? (
+                                    <MicOff size={26} color="#FFF" />
+                                ) : speechTop.isProcessing ? (
+                                    <ActivityIndicator size={22} color="#FFF" />
+                                ) : (
+                                    <Mic size={26} color="#FFF" />
+                                )}
+                            </Animated.View>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* ═══ CENTER DIVIDER ═══ */}
+                <View style={[styles.f2fDivider, isDarkMode && styles.f2fDividerDark]}>
+                    <View style={styles.f2fDividerLine} />
+                    <TouchableOpacity style={styles.f2fSwapBtn} onPress={swapLanguages}>
+                        <ArrowUpDown size={18} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </TouchableOpacity>
+                    <View style={styles.f2fDividerLine} />
+                    {loading && <ActivityIndicator size={16} color="#3B82F6" style={{ position: 'absolute', right: 16 }} />}
+                </View>
+
+                {/* ═══ BOTTOM SECTION — Speaker A ═══ */}
+                <View style={styles.f2fSection}>
+                    {/* Language label + picker */}
+                    <TouchableOpacity
+                        style={[styles.f2fLangChip, { backgroundColor: bottomColor.bg, borderColor: bottomColor.light }]}
+                        onPress={() => setPickerFor(0)}
+                    >
+                        <View style={[styles.langDot, { backgroundColor: bottomColor.light }]} />
+                        <Text style={styles.f2fLangText}>{SUPPORTED_LANGUAGES[lang0]}</Text>
+                        <ChevronDown size={12} color="#FFF" />
+                    </TouchableOpacity>
+
+                    {/* Chat bubbles — ALL messages, aligned by speaker */}
+                    <ScrollView
+                        ref={scrollBottomRef}
+                        style={styles.f2fChat}
+                        contentContainerStyle={styles.f2fChatContent}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {messages.length === 0 && (
+                            <View style={styles.f2fEmpty}>
+                                <Mic size={28} color="rgba(255,255,255,0.3)" />
+                                <Text style={styles.f2fEmptyText}>Tap the mic to start</Text>
+                            </View>
+                        )}
+                        {messages.map((msg) => (
+                            <ChatBubble
+                                key={msg.id}
+                                msg={msg}
+                                alignment={msg.speaker === 0 ? 'right' : 'left'}
+                                tts={tts}
+                                openDictionary={openDictionary}
+                                isDarkMode={isDarkMode}
+                            />
+                        ))}
+                    </ScrollView>
+
+                    {/* Mic button */}
+                    <View style={styles.f2fMicRow}>
+                        {isBusyBottom && (
+                            <Text style={styles.f2fListeningLabel}>
+                                {speechBottom.isProcessing ? 'Transcribing...' : 'Listening...'}
+                            </Text>
+                        )}
+                        <TouchableOpacity
+                            style={[styles.f2fMicBtn, {
+                                backgroundColor: isBusyBottom ? '#EF4444' : bottomColor.light,
+                            }]}
+                            onPress={() => {
+                                if (speechBottom.isListening) {
+                                    speechBottom.stopListening();
+                                } else if (!speechBottom.isProcessing) {
+                                    speechBottom.startListening();
+                                }
+                            }}
+                            disabled={speechBottom.isProcessing || loading}
+                        >
+                            <Animated.View style={{ transform: [{ scale: isBusyBottom ? pulseAnimBottom : 1 }] }}>
+                                {speechBottom.isListening ? (
+                                    <MicOff size={26} color="#FFF" />
+                                ) : speechBottom.isProcessing ? (
+                                    <ActivityIndicator size={22} color="#FFF" />
+                                ) : (
+                                    <Mic size={26} color="#FFF" />
+                                )}
+                            </Animated.View>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Clear button — floating */}
+                <TouchableOpacity
+                    style={[styles.f2fClearBtn, isDarkMode && styles.f2fClearBtnDark]}
+                    onPress={clearConversation}
+                >
+                    <Trash2 size={16} color="#EF4444" />
+                </TouchableOpacity>
+
+                <BottomNav />
+
+                <LanguagePicker
+                    visible={pickerFor !== null}
+                    onDismiss={() => setPickerFor(null)}
+                    onSelect={(code) => {
+                        if (pickerFor !== null) setLang(pickerFor, code);
+                        setPickerFor(null);
+                    }}
+                    selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
+                />
+                <WordCardModal
+                    visible={dictVisible}
+                    onDismiss={() => setDictVisible(false)}
+                    word={dictWord}
+                    sourceLang={dictSourceLang}
+                    targetLang={dictTargetLang}
+                />
+                <SentenceBreakdownSheet
+                    visible={breakdownVisible}
+                    onClose={() => setBreakdownVisible(false)}
+                    text={dictWord}
+                    onWordPress={(word) => {
+                        setBreakdownVisible(false);
+                        setDictWord(word);
+                        setTimeout(() => setDictVisible(true), 300);
+                    }}
+                />
+            </View>
+        );
+    }
+
+    // ─────────────────────────────────────────
+    // Standard (Two-Way / Three-Way) Render
+    // ─────────────────────────────────────────
     return (
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
@@ -298,19 +697,27 @@ export default function ConversationScreen() {
                 {/* Mode Toggle */}
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setMode('2way')}
+                        style={[styles.toggleBtn, viewMode === 'two_way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                        onPress={() => setViewMode('two_way')}
                     >
-                        <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            2 Way Talk
+                        <Text style={[styles.toggleText, viewMode === 'two_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                            2-Way
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                        onPress={() => setMode('3way')}
+                        style={[styles.toggleBtn, viewMode === 'three_way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                        onPress={() => setViewMode('three_way')}
                     >
-                        <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            3 Way Talk
+                        <Text style={[styles.toggleText, viewMode === 'three_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                            3-Way
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.toggleBtn, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                        onPress={() => setViewMode('face_to_face')}
+                    >
+                        <Text style={[styles.toggleText, viewMode === 'face_to_face' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                            Face-to-Face
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -369,7 +776,7 @@ export default function ConversationScreen() {
                     <View style={styles.emptyState}>
                         <Mic size={44} color="#CBD5E1" />
                         <Text style={styles.emptyTitle}>
-                            {mode === '2way' ? '2-Way Conversation' : '3-Way Conversation'}
+                            {viewMode === 'two_way' ? '2-Way Conversation' : '3-Way Conversation'}
                         </Text>
                         <Text style={styles.emptySubtext}>
                             Tap a speaker above to set who's talking, then type or use the mic. Tap again to change language.
@@ -378,80 +785,20 @@ export default function ConversationScreen() {
                 )}
 
                 {messages.map((msg) => {
-                    const langColor = getColorForLang(msg.lang);
                     const isLeft = msg.speaker === 0;
-                    const isCenter = mode === '3way' && msg.speaker === 1;
-                    const isRight = (mode === '2way' && msg.speaker === 1) ||
-                        (mode === '3way' && msg.speaker === 2);
+                    const isCenter = viewMode === 'three_way' && msg.speaker === 1;
+                    const isRight = (viewMode === 'two_way' && msg.speaker === 1) ||
+                        (viewMode === 'three_way' && msg.speaker === 2);
 
                     return (
-                        <View
+                        <ChatBubble
                             key={msg.id}
-                            style={[
-                                styles.msgRow,
-                                isLeft ? styles.msgLeft :
-                                    isCenter ? styles.msgCenter :
-                                        styles.msgRight,
-                            ]}
-                        >
-                            <View style={[styles.bubble, { backgroundColor: langColor.bg }]}>
-                                {/* Speaker label */}
-                                <Text style={styles.bubbleSpeakerLabel}>
-                                    {SUPPORTED_LANGUAGES[msg.lang]}
-                                </Text>
-
-                                {/* Original text on top */}
-                                <Text style={[styles.bubbleText, { color: langColor.text }]}>
-                                    {msg.text}
-                                </Text>
-
-                                {/* Translation(s) on bottom */}
-                                {msg.translations.map((tr, idx) => {
-                                    const trColor = getColorForLang(tr.lang);
-                                    return (
-                                        <View key={idx}>
-                                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-                                            <View style={styles.transRow}>
-                                                <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
-                                                <Text style={styles.transLangLabel}>
-                                                    {SUPPORTED_LANGUAGES[tr.lang]}
-                                                </Text>
-                                            </View>
-                                            <Text style={[styles.transText, { color: langColor.trans }]}>
-                                                {tr.text}
-                                            </Text>
-                                        </View>
-                                    );
-                                })}
-
-                                {/* Footer with TTS and Dictionary icons */}
-                                <View style={styles.bubbleFooter}>
-                                    <TouchableOpacity
-                                        onPress={() => tts.speak(msg.text, msg.lang)}
-                                        style={styles.footerIcon}
-                                    >
-                                        <Volume2 size={14} color="rgba(255,255,255,0.7)" />
-                                    </TouchableOpacity>
-                                    {msg.translations.map((tr, idx) => (
-                                        <React.Fragment key={idx}>
-                                            <TouchableOpacity
-                                                onPress={() => tts.speak(tr.text, tr.lang)}
-                                                style={styles.footerIcon}
-                                            >
-                                                <View style={[styles.ttsLangDot, { backgroundColor: getColorForLang(tr.lang).light }]} />
-                                                <Volume2 size={14} color="rgba(255,255,255,0.7)" />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
-                                                style={styles.footerIcon}
-                                            >
-                                                <BookOpen size={14} color="rgba(255,255,255,0.7)" />
-                                            </TouchableOpacity>
-                                        </React.Fragment>
-                                    ))}
-                                </View>
-                            </View>
-                        </View>
+                            msg={msg}
+                            alignment={isLeft ? 'left' : isCenter ? 'center' : 'right'}
+                            tts={tts}
+                            openDictionary={openDictionary}
+                            isDarkMode={isDarkMode}
+                        />
                     );
                 })}
             </ScrollView>
@@ -552,7 +899,6 @@ export default function ConversationScreen() {
                 onWordPress={(word) => {
                     setBreakdownVisible(false);
                     setDictWord(word);
-                    // Small timeout to let the sheet close animation finish before opening the modal
                     setTimeout(() => setDictVisible(true), 300);
                 }}
             />
@@ -560,11 +906,15 @@ export default function ConversationScreen() {
     );
 }
 
+// ─────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
     containerDark: { backgroundColor: '#0F172A' },
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
+    // ── Header (Standard mode) ──
     headerArea: {
         paddingTop: 60,
         paddingHorizontal: 20,
@@ -642,6 +992,7 @@ const styles = StyleSheet.create({
         padding: 6,
     },
 
+    // ── Chat (Standard mode) ──
     chatArea: { flex: 1 },
     chatContent: { padding: 16, paddingBottom: 160 },
 
@@ -649,6 +1000,7 @@ const styles = StyleSheet.create({
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
+    // ── Shared bubble styles ──
     msgRow: { marginBottom: 10, maxWidth: '82%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
@@ -719,6 +1071,7 @@ const styles = StyleSheet.create({
         borderRadius: 3,
     },
 
+    // ── Input Bar (Standard mode) ──
     inputBar: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -769,4 +1122,108 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.2)',
     },
     sendBtn: { padding: 10 },
+
+    // ── Face-to-Face styles ──
+    f2fSection: {
+        flex: 1,
+        paddingHorizontal: 12,
+        paddingTop: Platform.OS === 'ios' ? 50 : 30,
+        paddingBottom: 4,
+    },
+    f2fLangChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1.5,
+        marginBottom: 6,
+    },
+    f2fLangText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#FFF',
+        marginRight: 4,
+    },
+    f2fChat: {
+        flex: 1,
+    },
+    f2fChatContent: {
+        paddingVertical: 6,
+        paddingHorizontal: 4,
+    },
+    f2fEmpty: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 30,
+    },
+    f2fEmptyText: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.4)',
+        marginTop: 8,
+    },
+    f2fMicRow: {
+        alignItems: 'center',
+        paddingVertical: 8,
+    },
+    f2fMicBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 10,
+        elevation: 6,
+    },
+    f2fListeningLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#EF4444',
+        marginBottom: 4,
+    },
+    f2fDivider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    f2fDividerDark: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    f2fDividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: 'rgba(148,163,184,0.3)',
+    },
+    f2fSwapBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    f2fClearBtn: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 54 : 34,
+        right: 16,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 20,
+    },
+    f2fClearBtnDark: {
+        backgroundColor: 'rgba(30,41,59,0.5)',
+    },
 });
