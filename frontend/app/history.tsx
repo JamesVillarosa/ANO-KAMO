@@ -19,7 +19,7 @@ import {
 } from 'lucide-react-native';
 import { getHistory, toggleFavorite, deleteHistory, clearAllHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
-import { gradientColors, darkGradientColors, glassCard, darkGlassCard, SUPPORTED_LANGUAGES, liquidGlass } from '../src/theme';
+import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES, liquidGlass } from '../src/theme';
 
 interface HistoryItem {
     translation_id: string;
@@ -172,14 +172,16 @@ export default function HistoryScreen() {
                         contentContainerStyle={styles.list}
                         showsVerticalScrollIndicator={false}
                         ListHeaderComponent={
-                            items.length > 0 ? (
-                                <TouchableOpacity
-                                    style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
-                                    onPress={() => setClearModalVisible(true)}
-                                >
-                                    <Trash2 size={14} color="#EF4444" />
-                                    <Text style={styles.clearAllText}>Clear All</Text>
-                                </TouchableOpacity>
+                            activeTab === 'history' && items.length > 0 ? (
+                                <View style={styles.clearAllRow}>
+                                    <TouchableOpacity
+                                        style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
+                                        onPress={() => setClearModalVisible(true)}
+                                    >
+                                        <Trash2 size={14} color="#EF4444" />
+                                        <Text style={styles.clearAllText}>Clear All</Text>
+                                    </TouchableOpacity>
+                                </View>
                             ) : null
                         }
                         ListEmptyComponent={
@@ -280,13 +282,18 @@ const styles = StyleSheet.create({
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },
 
-    /* Clear All button */
+    /* Clear All row + button */
+    clearAllRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginBottom: 12,
+    },
     clearAllBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        gap: 6,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
         borderRadius: 20,
         backgroundColor: 'rgba(239, 68, 68, 0.08)',
         borderWidth: 1,
@@ -304,13 +311,22 @@ const styles = StyleSheet.create({
 
     card: {
         flexDirection: 'row',
-        ...glassCard,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        elevation: 4,
         marginBottom: 12,
         overflow: 'hidden',
     },
     cardDark: {
-        ...darkGlassCard,
-        backgroundColor: 'rgba(30, 41, 59, 0.45)',
+        backgroundColor: 'rgba(30, 41, 59, 0.35)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        shadowOpacity: 0.2,
     },
     accentBar: { width: 6 },
     cardContent: { flex: 1, padding: 18 },

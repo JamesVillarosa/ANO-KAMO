@@ -30,7 +30,10 @@ import {
     BookOpen,
     ArrowUpDown,
     ChevronLeft,
+    Settings,
+    ArrowLeft,
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import {
     createConversation,
     sendMessage as apiSendMessage,
@@ -149,6 +152,7 @@ function ChatBubble({
 // ─────────────────────────────────────────
 export default function ConversationScreen() {
     const { isDarkMode } = useTheme();
+    const router = useRouter();
     const {
         messages,
         viewMode,
@@ -491,6 +495,18 @@ export default function ConversationScreen() {
         ]);
     };
 
+    const clearSpeakerMessages = (speaker: number) => {
+        const speakerName = speaker === 0 ? 'A (bottom)' : 'B (top)';
+        Alert.alert(`Clear Speaker ${speakerName}`, `Remove all messages from Speaker ${speakerName}?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Clear', style: 'destructive', onPress: () => {
+                    setMessages((prev: Message[]) => prev.filter((m: Message) => m.speaker !== speaker));
+                },
+            },
+        ]);
+    };
+
     const swapLanguages = () => {
         const tmp = lang0;
         setLangs(0, lang1);
@@ -582,24 +598,41 @@ export default function ConversationScreen() {
                     </View>
                 </View>
 
-                {/* ═══ CENTER DIVIDER ═══ */}
+                {/* ═══ CENTER DIVIDER — Control Spine ═══ */}
                 <View style={[styles.f2fDivider, isDarkMode && styles.f2fDividerDark]}>
                     <TouchableOpacity
-                        style={styles.f2fBackBtn}
+                        style={styles.f2fSpineBtn}
                         onPress={() => setViewMode(lastStandardMode)}
                     >
-                        <ChevronLeft size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                        <ChevronLeft size={18} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.f2fSpineBtn}
+                        onPress={() => clearSpeakerMessages(1)}
+                    >
+                        <Trash2 size={16} color="#EF4444" />
                     </TouchableOpacity>
                     <View style={styles.f2fDividerLine} />
                     <TouchableOpacity style={styles.f2fSwapBtn} onPress={swapLanguages}>
                         <ArrowUpDown size={18} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
                     </TouchableOpacity>
                     <View style={styles.f2fDividerLine} />
-                    {loading && <ActivityIndicator size={16} color="#3B82F6" style={{ marginLeft: 8 }} />}
+                    <TouchableOpacity
+                        style={styles.f2fSpineBtn}
+                        onPress={() => clearSpeakerMessages(0)}
+                    >
+                        <Trash2 size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.f2fSpineBtn}
+                        onPress={() => router.push('/settings' as any)}
+                    >
+                        <Settings size={18} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </TouchableOpacity>
                 </View>
 
                 {/* ═══ BOTTOM SECTION — Speaker A ═══ */}
-                <View style={styles.f2fSection}>
+                <View style={[styles.f2fSection, { paddingBottom: 110 }]}>
                     {/* Language label + picker */}
                     <TouchableOpacity
                         style={[styles.f2fLangChip, { backgroundColor: bottomColor.bg, borderColor: bottomColor.light }]}
@@ -668,13 +701,7 @@ export default function ConversationScreen() {
                     </View>
                 </View>
 
-                {/* Clear button — floating */}
-                <TouchableOpacity
-                    style={[styles.f2fClearBtn, isDarkMode && styles.f2fClearBtnDark]}
-                    onPress={clearConversation}
-                >
-                    <Trash2 size={16} color="#EF4444" />
-                </TouchableOpacity>
+
 
                 <BottomNav />
 
@@ -716,6 +743,28 @@ export default function ConversationScreen() {
     return (
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+
+            {/* Custom Glass Header */}
+            <View style={styles.customHeader}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.customHeaderBtn}>
+                    <BlurView
+                        intensity={20}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.customHeaderGlass, isDarkMode && styles.customHeaderGlassDark]}
+                    >
+                        <ArrowLeft size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </BlurView>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => router.push('/settings' as any)} style={styles.customHeaderBtn}>
+                    <BlurView
+                        intensity={20}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.customHeaderGlass, isDarkMode && styles.customHeaderGlassDark]}
+                    >
+                        <Settings size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                    </BlurView>
+                </TouchableOpacity>
+            </View>
 
             <View style={styles.headerArea}>
                 {/* Mode Toggle */}
@@ -809,16 +858,16 @@ export default function ConversationScreen() {
                 )}
 
                 {messages.map((msg) => {
-                    const isLeft = msg.speaker === 0;
+                    const isRight = msg.speaker === 0;
                     const isCenter = viewMode === 'three_way' && msg.speaker === 1;
-                    const isRight = (viewMode === 'two_way' && msg.speaker === 1) ||
+                    const isLeft = (viewMode === 'two_way' && msg.speaker === 1) ||
                         (viewMode === 'three_way' && msg.speaker === 2);
 
                     return (
                         <ChatBubble
                             key={msg.id}
                             msg={msg}
-                            alignment={isLeft ? 'left' : isCenter ? 'center' : 'right'}
+                            alignment={isRight ? 'right' : isCenter ? 'center' : 'left'}
                             tts={tts}
                             openDictionary={openDictionary}
                             isDarkMode={isDarkMode}
@@ -1017,7 +1066,7 @@ const styles = StyleSheet.create({
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     // ── Shared bubble styles ──
-    msgRow: { marginBottom: 10, maxWidth: '82%' },
+    msgRow: { marginBottom: 10, maxWidth: '85%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
     msgRight: { alignSelf: 'flex-end' },
@@ -1162,8 +1211,9 @@ const styles = StyleSheet.create({
     f2fSection: {
         flex: 1,
         paddingHorizontal: 12,
-        paddingTop: Platform.OS === 'ios' ? 50 : 30,
+        paddingTop: Platform.OS === 'ios' ? 20 : 12,
         paddingBottom: 4,
+        justifyContent: 'center',
     },
     f2fLangChip: {
         flexDirection: 'row',
@@ -1224,9 +1274,10 @@ const styles = StyleSheet.create({
     f2fDivider: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 10,
         paddingVertical: 6,
         backgroundColor: 'rgba(255,255,255,0.1)',
+        gap: 6,
     },
     f2fDividerDark: {
         backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1243,34 +1294,40 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.2)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginHorizontal: 10,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
     },
-    f2fBackBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
-    },
-    f2fClearBtn: {
-        position: 'absolute',
-        top: Platform.OS === 'ios' ? 54 : 34,
-        right: 16,
+    f2fSpineBtn: {
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.15)',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
-    f2fClearBtnDark: {
-        backgroundColor: 'rgba(30,41,59,0.5)',
+
+    // ── Custom Header (Standard mode, since Stack header is hidden) ──
+    customHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 54 : 34,
+        left: 16,
+        right: 16,
+        zIndex: 10,
+    },
+    customHeaderBtn: {},
+    customHeaderGlass: {
+        ...liquidGlass,
+        padding: 8,
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    customHeaderGlassDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.55)',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
     },
 });

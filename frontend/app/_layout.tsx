@@ -71,7 +71,7 @@ function RootLayoutContent() {
           options={{ headerShown: false, animation: 'fade' }}
         />
         <Stack.Screen name="index" options={{ ...mainScreenOptions, title: 'ANO-KAMO?' }} />
-        <Stack.Screen name="conversation" options={{ ...mainScreenOptions, title: 'Chat' }} />
+        <Stack.Screen name="conversation" options={{ headerShown: false }} />
         <Stack.Screen name="ocr" options={{ ...mainScreenOptions, title: 'Camera' }} />
         <Stack.Screen name="history" options={{ ...mainScreenOptions, title: 'History' }} />
         <Stack.Screen name="community" options={{ ...mainScreenOptions, title: 'Community' }} />

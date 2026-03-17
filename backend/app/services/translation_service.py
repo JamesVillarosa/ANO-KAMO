@@ -24,7 +24,38 @@ SUPPORTED_LANGUAGES = {
 AVAILABLE_TONES = [
     "neutral", "polite", "angry", "joking",
     "sarcastic", "playful", "formal", "informal",
+    # Cultural tones (Phase 5.2)
+    "street", "taglish", "respectful", "direct",
 ]
+
+# ─── Cultural Tone Strategy Injections ───
+TONE_STRATEGIES: dict[str, str] = {
+    "formal": (
+        "Use deep, formal regional vocabulary (e.g., 'mabulakon' not 'nindot' in Cebuano, "
+        "'mapagmahal' not 'mahal' in Tagalog). "
+        "Absolutely zero Taglish or slang. Use full, grammatically complete sentences."
+    ),
+    "street": (
+        "Inject tropa-slang naturally: use 'omsim', 'lodi', 'petmalu', 'lels', 'mars', 'bes', "
+        "'grabe', 'charot', 'gets mo?', 'pak ganern' as appropriate for the regional language. "
+        "Sound like a teenager from Manila or Cebu streets."
+    ),
+    "taglish": (
+        "Use natural Filipino code-switching: mix English nouns/verbs with Filipino affixes "
+        "(e.g., 'i-print mo', 'na-receive ko na', 'mag-check ka'). "
+        "English for technical terms, Filipino for connectors. Sound natural, not forced."
+    ),
+    "respectful": (
+        "For Tagalog: force Po/Opo honorifics in every sentence. "
+        "For Cebuano/Hiligaynon: use soft, indirect phrasing — avoid direct commands. "
+        "Add 'kung maaari', 'nais kong', 'kung pwede po', 'pakisuyo'. Sound gentle and deferential."
+    ),
+    "direct": (
+        "Maximum brevity — use the fewest words possible. "
+        "Imperatives only: no pleasantries, no filler words. "
+        "Ideal for emergencies and urgent commands. Every word must carry weight."
+    ),
+}
 
 SYSTEM_INSTRUCTION = (
     "You are Ano-Kamo?, a Filipino-language translator. "
@@ -82,6 +113,10 @@ class TranslationService:
             parts = [f"{src}→{tgt}"]
             if tone:
                 parts.append(f"tone:{tone}")
+                # Inject cultural strategy if available
+                strategy = TONE_STRATEGIES.get(tone)
+                if strategy:
+                    parts.append(f"STRATEGY: {strategy}")
             if community_phrases:
                 pairs = "; ".join(
                     f'{p["phrase"]} → {p["proposed_translation"]}'
@@ -143,11 +178,24 @@ class TranslationService:
         except Exception as e:
             logger.error(f"Gemini API call error: {type(e).__name__}: {e}\n{traceback.format_exc()}")
             detected = TranslationService._heuristic_tone(text)
+            # Phase 7.1: Retry once with neutral tone before giving up
+            if tone and tone != "neutral":
+                logger.info("Retrying with neutral tone as fallback...")
+                try:
+                    return TranslationService.translate_text(
+                        text=text,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
+                        tone=None,
+                        community_phrases=community_phrases,
+                    )
+                except Exception as e2:
+                    logger.error(f"Fallback also failed: {e2}")
             return {
                 "input_text": text,
                 "source_lang": source_lang,
                 "target_lang": target_lang,
-                "output_text": f"(Translation error: {type(e).__name__})",
+                "output_text": "(Try again)",  # Phase 7.2: user-friendly error
                 "tone": tone or detected,
                 "detected_tone": detected,
             }

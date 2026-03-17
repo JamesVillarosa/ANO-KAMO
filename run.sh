@@ -91,7 +91,7 @@ start_ngrok() {
 start_frontend() {
     echo "Starting Frontend..."
     cd "$FRONTEND_DIR" || exit
-    npx expo start -c --tunnel
+    npx expo start -c
 }
 
 # Execution
