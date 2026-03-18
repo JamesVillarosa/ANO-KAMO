@@ -20,6 +20,7 @@ import {
 import { getHistory, toggleFavorite, deleteHistory, clearAllHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
 import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES, liquidGlass } from '../src/theme';
+import { getDeviceId } from '../src/utils/device';
 
 interface HistoryItem {
     translation_id: string;
@@ -72,7 +73,8 @@ export default function HistoryScreen() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await getHistory();
+            const deviceId = await getDeviceId();
+            const res = await getHistory(0, 100, deviceId);
             setItems(res || []);
         } catch {
             setItems([]);
@@ -96,7 +98,8 @@ export default function HistoryScreen() {
             'This will permanently remove this translation from your history.',
             async () => {
                 try {
-                    await deleteHistory(translationId);
+                    const deviceId = await getDeviceId();
+                    await deleteHistory(translationId, deviceId);
                     setItems(prev => prev.filter(h => h.translation_id !== translationId));
                 } catch { }
             },
@@ -107,11 +110,12 @@ export default function HistoryScreen() {
 
     const handleClearAll = async () => {
         showConfirm(
-            'Clear History?',
-            'This will permanently delete ALL entries in your history. This action cannot be undone.',
+            'Clear History',
+            'Are you sure you want to delete all translation history? This cannot be undone.',
             async () => {
                 try {
-                    await clearAllHistory();
+                    const deviceId = await getDeviceId();
+                    await clearAllHistory(deviceId);
                     setItems([]);
                 } catch { }
             },

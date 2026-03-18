@@ -1077,7 +1077,7 @@ export default function ConversationScreen() {
                         onPress={() => handleViewModeChange('two_way')}
                     >
                         <Text style={[styles.toggleText, viewMode === 'two_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            2-Way
+                            2-Wayhehe
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity

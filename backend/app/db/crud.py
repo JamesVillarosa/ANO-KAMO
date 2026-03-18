@@ -77,19 +77,17 @@ def create_translation_output(
     db.refresh(o)
     return o
 
-def get_all_translations(db: Session, skip: int = 0, limit: int = 100) -> List[Translation]:
-    return (
-        db.query(Translation)
-        .order_by(Translation.timestamp.desc())
-        .offset(skip).limit(limit).all()
-    )
+def get_all_translations(db: Session, skip: int = 0, limit: int = 100, device_id: Optional[str] = None) -> List[Translation]:
+    query = db.query(Translation).order_by(Translation.timestamp.desc())
+    if device_id:
+        query = query.filter(Translation.device_id == device_id)
+    return query.offset(skip).limit(limit).all()
 
-def get_favorites(db: Session, skip: int = 0, limit: int = 100) -> List[TranslationOutput]:
-    return (
-        db.query(TranslationOutput)
-        .filter(TranslationOutput.is_favorite == True)
-        .offset(skip).limit(limit).all()
-    )
+def get_favorites(db: Session, skip: int = 0, limit: int = 100, device_id: Optional[str] = None) -> List[TranslationOutput]:
+    query = db.query(TranslationOutput).filter(TranslationOutput.is_favorite == True)
+    if device_id:
+        query = query.join(Translation).filter(Translation.device_id == device_id)
+    return query.offset(skip).limit(limit).all()
 
 def toggle_favorite(db: Session, output_id: str) -> Optional[TranslationOutput]:
     o = db.query(TranslationOutput).filter(TranslationOutput.output_id == output_id).first()
@@ -99,19 +97,31 @@ def toggle_favorite(db: Session, output_id: str) -> Optional[TranslationOutput]:
         db.refresh(o)
     return o
 
-def delete_translation(db: Session, translation_id: str) -> bool:
-    t = db.query(Translation).filter(Translation.translation_id == translation_id).first()
+def delete_translation(db: Session, translation_id: str, device_id: Optional[str] = None) -> bool:
+    query = db.query(Translation).filter(Translation.translation_id == translation_id)
+    if device_id:
+        query = query.filter(Translation.device_id == device_id)
+    t = query.first()
     if t:
         db.delete(t)
         db.commit()
         return True
     return False
 
-def clear_all_history(db: Session) -> int:
-    """Delete all translations and their outputs. Returns count deleted."""
-    count = db.query(Translation).count()
-    db.query(TranslationOutput).delete()
-    db.query(Translation).delete()
+def clear_all_history(db: Session, device_id: Optional[str] = None) -> int:
+    """Delete all translations and their outputs for a device. Returns count deleted."""
+    if device_id:
+        # Get all translation IDs for this device
+        translation_ids = [t.translation_id for t in db.query(Translation).filter(Translation.device_id == device_id).all()]
+        count = len(translation_ids)
+        # Delete outputs for these translations
+        db.query(TranslationOutput).filter(TranslationOutput.translation_id.in_(translation_ids)).delete(synchronize_session=False)
+        # Delete translations
+        db.query(Translation).filter(Translation.device_id == device_id).delete(synchronize_session=False)
+    else:
+        count = db.query(Translation).count()
+        db.query(TranslationOutput).delete()
+        db.query(Translation).delete()
     db.commit()
     return count
 

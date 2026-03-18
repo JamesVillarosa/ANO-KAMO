@@ -18,10 +18,11 @@ router = APIRouter()
 async def get_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    device_id: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get all translation history with outputs."""
-    translations = get_all_translations(db, skip=skip, limit=limit)
+    """Get all translation history with outputs, optionally filtered by device_id."""
+    translations = get_all_translations(db, skip=skip, limit=limit, device_id=device_id)
     results = []
     for t in translations:
         results.append({
@@ -58,10 +59,11 @@ async def toggle_fav(request: FavoriteToggleRequest, db: Session = Depends(get_d
 async def get_favorites_list(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    device_id: str = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Get all favorited translation outputs."""
-    favs = get_favorites(db, skip=skip, limit=limit)
+    """Get all favorited translation outputs, optionally filtered by device_id."""
+    favs = get_favorites(db, skip=skip, limit=limit, device_id=device_id)
     results = []
     for o in favs:
         t = o.translation
@@ -78,16 +80,23 @@ async def get_favorites_list(
 
 
 @router.delete("/history/{translation_id}", status_code=204)
-async def delete_history(translation_id: str, db: Session = Depends(get_db)):
-    """Delete a translation from history."""
-    deleted = delete_translation(db, translation_id)
+async def delete_history(
+    translation_id: str,
+    device_id: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Delete a translation from history, optionally filtered by device_id."""
+    deleted = delete_translation(db, translation_id, device_id=device_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Translation not found")
     return None
 
 
 @router.delete("/history/clear-all")
-async def clear_all(db: Session = Depends(get_db)):
-    """Delete all translation history."""
-    count = clear_all_history(db)
+async def clear_all(
+    device_id: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Delete all translation history, optionally filtered by device_id."""
+    count = clear_all_history(db, device_id=device_id)
     return {"deleted": count}

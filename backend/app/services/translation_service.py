@@ -22,45 +22,73 @@ SUPPORTED_LANGUAGES = {
 }
 
 AVAILABLE_TONES = [
-    "neutral", "polite", "angry", "joking",
-    "sarcastic", "playful", "formal", "informal",
-    # Cultural tones (Phase 5.2)
-    "street", "taglish", "respectful", "direct",
+    "neutral", "formal", "respectful", "casual",
+    "street", "taglish", "bisaya_casual", "hiligaynon_casual",
+    "playful", "sarcastic", "angry", "urgent",
 ]
 
-# ─── Cultural Tone Strategy Injections ───
+# ─── 12 Filipino Cultural Tone Strategy Injections ───
 TONE_STRATEGIES: dict[str, str] = {
+    "neutral": (
+        "Translate naturally without any special tone. Plain, everyday Filipino."
+    ),
     "formal": (
-        "Use deep, formal regional vocabulary (e.g., 'mabulakon' not 'nindot' in Cebuano, "
+        "Use formal Filipino/Tagalog suited for professional or academic contexts. "
+        "Deep, formal regional vocabulary (e.g., 'mabulakon' not 'nindot' in Cebuano, "
         "'mapagmahal' not 'mahal' in Tagalog). "
         "Absolutely zero Taglish or slang. Use full, grammatically complete sentences."
     ),
+    "respectful": (
+        "Use highly respectful Filipino with po, opo, and proper honorifics as Filipinos use when speaking to elders or authority figures. "
+        "For Tagalog: force Po/Opo honorifics in every sentence. "
+        "For Cebuano/Hiligaynon: use soft, indirect phrasing — avoid direct commands. "
+        "Add 'kung maaari', 'nais kong', 'kung pwede po', 'pakisuyo'. Sound gentle and deferential."
+    ),
+    "casual": (
+        "Use casual, relaxed Filipino as used between friends. "
+        "Natural everyday conversation without excessive formality or slang."
+    ),
     "street": (
+        "Use Metro Manila street Filipino slang, including common Bekimon or Jejemon-influenced casual language. "
         "Inject tropa-slang naturally: use 'omsim', 'lodi', 'petmalu', 'lels', 'mars', 'bes', "
         "'grabe', 'charot', 'gets mo?', 'pak ganern' as appropriate for the regional language. "
         "Sound like a teenager from Manila or Cebu streets."
     ),
     "taglish": (
+        "Mix Tagalog and English naturally as educated urban Filipinos speak, inserting English words and phrases fluidly. "
         "Use natural Filipino code-switching: mix English nouns/verbs with Filipino affixes "
         "(e.g., 'i-print mo', 'na-receive ko na', 'mag-check ka'). "
         "English for technical terms, Filipino for connectors. Sound natural, not forced."
     ),
-    "respectful": (
-        "For Tagalog: force Po/Opo honorifics in every sentence. "
-        "For Cebuano/Hiligaynon: use soft, indirect phrasing — avoid direct commands. "
-        "Add 'kung maaari', 'nais kong', 'kung pwede po', 'pakisuyo'. Sound gentle and deferential."
+    "bisaya_casual": (
+        "Use casual Cebuano tone with natural Bisaya expressions and flow. "
+        "Sound like a friendly Cebuano speaker in everyday conversation."
     ),
-    "direct": (
-        "Maximum brevity — use the fewest words possible. "
-        "Imperatives only: no pleasantries, no filler words. "
-        "Ideal for emergencies and urgent commands. Every word must carry weight."
+    "hiligaynon_casual": (
+        "Use casual Hiligaynon/Ilonggo tone with natural expressions. "
+        "Sound like a friendly Ilonggo speaker in everyday conversation."
+    ),
+    "playful": (
+        "Use a playful, light, teasing tone as Filipinos use when joking with close friends. "
+        "Sound fun and lighthearted (makulit)."
+    ),
+    "sarcastic": (
+        "Use a sarcastic or ironic Filipino tone, the kind used in dry humor."
+    ),
+    "angry": (
+        "Use a direct, forceful, emotionally intense Filipino tone. "
+        "Sound frustrated or upset, as Filipinos do when expressing strong emotions."
+    ),
+    "urgent": (
+        "Use an urgent, pressing tone that conveys immediacy. "
+        "Time-sensitive, direct, action-oriented (apurahan)."
     ),
 }
 
 SYSTEM_INSTRUCTION = (
     "You are Ano-Kamo?, a Filipino-language translator. "
     'Reply ONLY with a JSON object: {"t":"<translated text>","tone":"<detected tone>"}. '
-    "Tones: neutral, polite, angry, joking, sarcastic, playful, formal, informal. "
+    "Tones: neutral, formal, respectful, casual, street, taglish, bisaya_casual, hiligaynon_casual, playful, sarcastic, angry, urgent. "
     "Rules: natural culturally-appropriate translation; handle Taglish/code-switching; "
     "preserve idiom meaning; never translate literally; no explanations."
 )

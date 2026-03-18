@@ -51,6 +51,7 @@ import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
+import { isValidTranslationInput, getValidationErrorMessage } from '../src/utils/validation';
 
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
@@ -73,6 +74,12 @@ export default function HomeScreen() {
   const [translationId2, setTranslationId2] = useState('');
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
+
+  // Track what changed to avoid unnecessary re-translations (PROMPT 7)
+  const prevSourceTextRef = useRef('');
+  const prevSourceLangRef = useRef(sourceLang);
+  const prevTargetLang1Ref = useRef(targetLang1);
+  const prevTargetLang2Ref = useRef(targetLang2);
 
   // Feedback state
   const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
@@ -135,6 +142,7 @@ export default function HomeScreen() {
     }
   }, [speech.isProcessing, speech.transcript]);
 
+  // PROMPT 7: Smart translation - only re-translate when necessary
   useEffect(() => {
     if (!sourceText.trim() || sourceText.length < 2) {
       setTranslated1('');
@@ -143,35 +151,75 @@ export default function HomeScreen() {
       setTranslationId2('');
       setFeedbackGiven1(null);
       setFeedbackGiven2(null);
+      prevSourceTextRef.current = '';
       return;
     }
-    const timer = setTimeout(async () => {
-      setLoading1(true);
+
+    // Validate input before translating
+    if (!isValidTranslationInput(sourceText)) {
+      const errorMsg = getValidationErrorMessage(sourceText);
+      setTranslated1(errorMsg);
+      if (mode === '3way') setTranslated2(errorMsg);
+      setTranslationId1('');
+      setTranslationId2('');
       setFeedbackGiven1(null);
       setFeedbackGiven2(null);
-      try {
-        const res1 = await translateSingle(sourceText, sourceLang, targetLang1);
-        setTranslated1(res1.output_text || '');
-        setTranslationId1(res1.translation_id || '');
-      } catch {
-        setTranslated1('Translation unavailable');
-      }
-      setLoading1(false);
+      return;
+    }
 
-      if (mode === '3way') {
-        setLoading2(true);
+    // Determine what changed
+    const sourceTextChanged = prevSourceTextRef.current !== sourceText;
+    const sourceLangChanged = prevSourceLangRef.current !== sourceLang;
+    const targetLang1Changed = prevTargetLang1Ref.current !== targetLang1;
+    const targetLang2Changed = prevTargetLang2Ref.current !== targetLang2;
+
+    // Update refs
+    prevSourceTextRef.current = sourceText;
+    prevSourceLangRef.current = sourceLang;
+    prevTargetLang1Ref.current = targetLang1;
+    prevTargetLang2Ref.current = targetLang2;
+
+    const timer = setTimeout(async () => {
+      // Panel 1: Re-translate if source text, source lang, or target1 lang changed
+      if (sourceTextChanged || sourceLangChanged || targetLang1Changed) {
+        setLoading1(true);
+        setFeedbackGiven1(null);
         try {
-          const res2 = await translateSingle(sourceText, sourceLang, targetLang2);
-          setTranslated2(res2.output_text || '');
-          setTranslationId2(res2.translation_id || '');
-        } catch {
-          setTranslated2('Translation unavailable');
+          const res1 = await translateSingle(sourceText, sourceLang, targetLang1);
+          setTranslated1(res1.output_text || '');
+          setTranslationId1(res1.translation_id || '');
+        } catch (error: any) {
+          const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
+            ? 'Translation service is temporarily unavailable. Please try again.'
+            : 'Translation unavailable. Please try again.';
+          setTranslated1(errorMsg);
         }
-        setLoading2(false);
+        setLoading1(false);
+      }
+
+      // Panel 2: Only re-translate if source changed, source lang changed, target2 lang changed, OR newly entering 3way mode with empty panel
+      if (mode === '3way') {
+        const needsPanel2Translation = sourceTextChanged || sourceLangChanged || targetLang2Changed || !translated2;
+
+        if (needsPanel2Translation) {
+          setLoading2(true);
+          setFeedbackGiven2(null);
+          try {
+            const res2 = await translateSingle(sourceText, sourceLang, targetLang2);
+            setTranslated2(res2.output_text || '');
+            setTranslationId2(res2.translation_id || '');
+          } catch (error: any) {
+            const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
+              ? 'Translation service is temporarily unavailable. Please try again.'
+              : 'Translation unavailable. Please try again.';
+            setTranslated2(errorMsg);
+          }
+          setLoading2(false);
+        }
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [sourceText, sourceLang, targetLang1, targetLang2, mode]);
+  }, [sourceText, sourceLang, targetLang1, targetLang2, mode, translated2]);
 
   const swapLanguages = () => {
     const oldSource = sourceLang;

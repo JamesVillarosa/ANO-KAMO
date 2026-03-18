@@ -4,6 +4,25 @@
 
 Translate between Tagalog, Cebuano, and Hiligaynon with text, voice, and OCR capabilities. Powered by AI with community-driven phrase submissions and history tracking.
 
+---
+
+## 🆕 Recent Updates (March 2026)
+
+**✅ Critical Fixes Implemented:**
+- ✅ **Fast Refresh** - Hot reload now works on web and iOS (Expo Go)
+- ✅ **Input Validation** - Empty/invalid input shows user-friendly messages
+- ✅ **Error Handling** - Translation errors show proper error messages (not raw JSON)
+- ✅ **Smart Translation** - 2-way → 3-way mode no longer re-translates unnecessarily
+
+**📋 See Documentation:**
+- `/COMPLETED_CHANGES.md` - Full list of changes made
+- `/IMPLEMENTATION_STATUS.md` - Detailed guide for remaining features
+- `/TESTING_GUIDE.md` - Step-by-step testing instructions
+
+**🧪 Test the fixes:** Run tests 1-5 in `/TESTING_GUIDE.md` (all should pass)
+
+---
+
 ## 🎯 Project Overview
 
 Ano-Kamo? is a full-stack application designed to break language barriers within the Philippines by providing seamless translation across three major Filipino languages:

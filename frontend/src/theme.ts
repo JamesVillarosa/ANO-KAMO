@@ -118,20 +118,40 @@ export const LANGUAGE_PLACEHOLDERS: Record<string, string> = {
 };
 
 export const TONE_OPTIONS = [
-    'neutral', 'formal', 'casual', 'friendly',
-    'polite', 'angry', 'joking', 'sarcastic', 'playful',
+    'neutral', 'formal', 'respectful', 'casual',
+    'street', 'taglish', 'bisaya_casual', 'hiligaynon_casual',
+    'playful', 'sarcastic', 'angry', 'urgent',
 ];
+
+// Tone display names with Filipino cultural descriptions
+export const TONE_LABELS: Record<string, { name: string; description: string }> = {
+    neutral: { name: 'Neutral', description: 'Plain, everyday Filipino' },
+    formal: { name: 'Formal / Pormal', description: 'Professional, academic, official' },
+    respectful: { name: 'Respectful / Magalang (Po/Opo)', description: 'Using po, opo, honorifics' },
+    casual: { name: 'Casual / Pang-araw-araw', description: 'Relaxed, everyday conversation' },
+    street: { name: 'Street / Kalye', description: 'Metro Manila street, Beki/Bekimon' },
+    taglish: { name: 'Taglish', description: 'Mixed Tagalog and English' },
+    bisaya_casual: { name: 'Bisaya Casual', description: 'Casual Cebuano-influenced' },
+    hiligaynon_casual: { name: 'Hiligaynon Casual', description: 'Casual Ilonggo-influenced' },
+    playful: { name: 'Playful / Makulit', description: 'Teasing, lighthearted' },
+    sarcastic: { name: 'Sarcastic / Sarkastiko', description: 'Dry humor, ironic' },
+    angry: { name: 'Angry / Galit', description: 'Direct, forceful, emotional' },
+    urgent: { name: 'Urgent / Apurahan', description: 'Time-sensitive, pressing' },
+};
 
 export const TONE_COLORS: Record<string, string> = {
     neutral: '#64748B',
     formal: '#3B82F6',
+    respectful: '#8B5CF6',
     casual: '#10B981',
-    friendly: '#F59E0B',
-    polite: '#8B5CF6',
-    angry: '#EF4444',
-    joking: '#EC4899',
-    sarcastic: '#F97316',
+    street: '#EC4899',
+    taglish: '#F59E0B',
+    bisaya_casual: '#14B8A6',
+    hiligaynon_casual: '#F97316',
     playful: '#06B6D4',
+    sarcastic: '#A855F7',
+    angry: '#EF4444',
+    urgent: '#DC2626',
 };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';

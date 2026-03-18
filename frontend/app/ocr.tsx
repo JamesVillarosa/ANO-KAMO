@@ -158,7 +158,7 @@ export default function OCRScreen() {
         if (scanning && !capturedUri && permission?.granted) {
             scanTimerRef.current = setInterval(() => {
                 performLiveScan();
-            }, 2500);
+            }, 800);
 
             return () => {
                 if (scanTimerRef.current) clearInterval(scanTimerRef.current);
