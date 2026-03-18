@@ -54,6 +54,22 @@ class TranslateMultiResponse(BaseModel):
     detected_tone: Optional[str]
 
 
+class RefineRequest(BaseModel):
+    original_text: str = Field(..., min_length=1, max_length=5000)
+    source_lang: str = Field(..., min_length=2, max_length=10)
+    target_langs: List[str] = Field(..., min_length=1, max_length=2)
+    new_tone: str
+    device_id: Optional[str] = None
+
+class RefineResponse(BaseModel):
+    original_text: str
+    refined_text: str
+    source_lang: str
+    target_langs: List[str]
+    output_texts: List[str]
+    tone: str
+
+
 # ──────────────────── Conversation ──────────────
 class ConversationCreateRequest(BaseModel):
     mode: str = Field("two_way", description="two_way or three_way")

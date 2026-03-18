@@ -6,7 +6,7 @@ import {
     TouchableOpacity,
     Modal,
 } from 'react-native';
-import { Text, ActivityIndicator } from 'react-native-paper';
+import { Text, ActivityIndicator, Snackbar, Portal, Modal as PaperModal } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
@@ -43,7 +43,31 @@ export default function HistoryScreen() {
     const [items, setItems] = useState<HistoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'favorites' | 'history'>('favorites');
-    const [clearModalVisible, setClearModalVisible] = useState(false);
+    const [confirmModal, setConfirmModal] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        confirmText: string;
+        isDestructive?: boolean;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        onConfirm: () => { },
+        confirmText: 'Confirm',
+    });
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = 'Confirm', isDestructive = true) => {
+        setConfirmModal({
+            visible: true,
+            title,
+            message,
+            onConfirm,
+            confirmText,
+            isDestructive,
+        });
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -67,20 +91,33 @@ export default function HistoryScreen() {
     };
 
     const handleDelete = async (translationId: string) => {
-        try {
-            await deleteHistory(translationId);
-            setItems(prev => prev.filter(h => h.translation_id !== translationId));
-        } catch { }
+        showConfirm(
+            'Delete Entry?',
+            'This will permanently remove this translation from your history.',
+            async () => {
+                try {
+                    await deleteHistory(translationId);
+                    setItems(prev => prev.filter(h => h.translation_id !== translationId));
+                } catch { }
+            },
+            'Delete',
+            true
+        );
     };
 
     const handleClearAll = async () => {
-        try {
-            await clearAllHistory();
-            setItems([]);
-            setClearModalVisible(false);
-        } catch {
-            setClearModalVisible(false);
-        }
+        showConfirm(
+            'Clear History?',
+            'This will permanently delete ALL entries in your history. This action cannot be undone.',
+            async () => {
+                try {
+                    await clearAllHistory();
+                    setItems([]);
+                } catch { }
+            },
+            'Clear All',
+            true
+        );
     };
 
     const filtered = activeTab === 'favorites'
@@ -176,7 +213,7 @@ export default function HistoryScreen() {
                                 <View style={styles.clearAllRow}>
                                     <TouchableOpacity
                                         style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
-                                        onPress={() => setClearModalVisible(true)}
+                                        onPress={handleClearAll}
                                     >
                                         <Trash2 size={14} color="#EF4444" />
                                         <Text style={styles.clearAllText}>Clear All</Text>
@@ -200,36 +237,46 @@ export default function HistoryScreen() {
                 )}
             </View>
 
-            {/* Glassmorphic Clear All Confirmation Modal */}
-            <Modal visible={clearModalVisible} transparent animationType="fade" onRequestClose={() => setClearModalVisible(false)}>
-                <View style={styles.modalOverlay}>
+            {/* Generic Glassmorphic Confirmation Modal */}
+            <Portal>
+                <PaperModal
+                    visible={confirmModal.visible}
+                    onDismiss={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                    contentContainerStyle={styles.glassModalContainer}
+                >
                     <BlurView
                         intensity={60}
                         tint={isDarkMode ? 'dark' : 'light'}
-                        style={[styles.clearModal, isDarkMode && styles.clearModalDark]}
+                        style={styles.glassModalBlur}
                     >
-                        <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setClearModalVisible(false)}>
-                            <X size={20} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                        </TouchableOpacity>
-                        <AlertTriangle size={36} color="#EF4444" style={{ marginBottom: 12 }} />
-                        <Text style={[styles.modalTitle, isDarkMode && { color: '#F8FAFC' }]}>Clear History?</Text>
-                        <Text style={[styles.modalSubtitle, isDarkMode && { color: '#94A3B8' }]}>This action cannot be undone.</Text>
-
+                        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                            <AlertTriangle size={32} color={confirmModal.isDestructive ? '#EF4444' : '#3B82F6'} />
+                        </View>
+                        <Text style={[styles.modalTitle, isDarkMode && { color: '#F8FAFC' }]}>{confirmModal.title}</Text>
+                        <Text style={[styles.modalSubtitle, isDarkMode && { color: '#94A3B8' }]}>{confirmModal.message}</Text>
                         <View style={styles.modalActions}>
                             <TouchableOpacity
-                                style={[styles.modalCancelBtn, isDarkMode && styles.modalCancelBtnDark]}
-                                onPress={() => setClearModalVisible(false)}
+                                onPress={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                                style={styles.modalBtnCancel}
                             >
-                                <Text style={[styles.modalCancelText, isDarkMode && { color: '#F8FAFC' }]}>Cancel</Text>
+                                <Text style={styles.modalBtnTextCancel}>Cancel</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalClearBtn} onPress={handleClearAll}>
-                                <Trash2 size={16} color="#FFF" />
-                                <Text style={styles.modalClearText}>Clear All</Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    confirmModal.onConfirm();
+                                    setConfirmModal(prev => ({ ...prev, visible: false }));
+                                }}
+                                style={[
+                                    styles.modalBtnAction,
+                                    confirmModal.isDestructive && { backgroundColor: '#EF4444' }
+                                ]}
+                            >
+                                <Text style={styles.modalBtnTextAction}>{confirmModal.confirmText}</Text>
                             </TouchableOpacity>
                         </View>
                     </BlurView>
-                </View>
-            </Modal>
+                </PaperModal>
+            </Portal>
         </View>
     );
 }
@@ -357,77 +404,59 @@ const styles = StyleSheet.create({
     center: { alignItems: 'center', marginTop: 60 },
     emptyText: { fontSize: 16, fontWeight: '600', color: '#94A3B8', marginTop: 12 },
 
-    /* Clear All Confirmation Modal */
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    /* Phase 8 Glass Modals */
+    glassModalContainer: {
+        margin: 20,
+        borderRadius: 28,
+        overflow: 'hidden',
     },
-    clearModal: {
-        ...liquidGlass,
-        width: '82%',
-        borderRadius: 24,
-        padding: 28,
-        alignItems: 'center',
-    },
-    clearModalDark: {
-        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-        borderColor: 'rgba(255,255,255,0.15)',
-    },
-    modalCloseBtn: {
-        position: 'absolute',
-        top: 14,
-        right: 14,
+    glassModalBlur: {
+        padding: 24,
     },
     modalTitle: {
         fontSize: 18,
         fontWeight: '800',
         color: '#1E293B',
-        marginBottom: 6,
+        marginBottom: 8,
+        textAlign: 'center',
     },
     modalSubtitle: {
         fontSize: 14,
+        lineHeight: 20,
         color: '#64748B',
         marginBottom: 24,
         textAlign: 'center',
     },
     modalActions: {
         flexDirection: 'row',
+        justifyContent: 'center',
         gap: 12,
-        width: '100%',
     },
-    modalCancelBtn: {
-        flex: 1,
+    modalBtnCancel: {
+        paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 16,
         backgroundColor: 'rgba(241,245,249,0.8)',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.06)',
-    },
-    modalCancelBtnDark: {
-        backgroundColor: 'rgba(51,65,85,0.6)',
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    modalCancelText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#1E293B',
-    },
-    modalClearBtn: {
         flex: 1,
-        flexDirection: 'row',
+    },
+    modalBtnAction: {
+        paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 16,
         backgroundColor: '#EF4444',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
+        flex: 1,
     },
-    modalClearText: {
+    modalBtnTextCancel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    modalBtnTextAction: {
         fontSize: 14,
         fontWeight: '700',
         color: '#FFF',
     },
+
 });

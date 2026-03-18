@@ -231,6 +231,91 @@ class TranslationService:
             "detected_tone": detected,
         }
 
+    # ────────────────── Refinement (Phase 12.1) ──────────────────
+
+    @staticmethod
+    def refine_and_translate(
+        original_text: str,
+        source_lang: str,
+        target_langs: List[str],
+        new_tone: str,
+    ) -> dict:
+        """
+        Phase 12.1 Refinement Pipeline:
+        Rewrite source text to match new_tone, then translate to target_langs.
+        """
+        api_key = TranslationService._get_api_key()
+        if not api_key:
+            res = TranslationService.translate_multi(original_text, source_lang, target_langs, new_tone)
+            return {
+                "original_text": original_text,
+                "refined_text": original_text,
+                "source_lang": source_lang,
+                "target_langs": target_langs,
+                "output_texts": res["output_texts"],
+                "tone": new_tone,
+            }
+
+        try:
+            strategy = TONE_STRATEGIES.get(new_tone, "natural expression")
+            src_name = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
+            tgt_names = [SUPPORTED_LANGUAGES.get(l, l) for l in target_langs]
+
+            prompt = (
+                f"SOURCE_LANG: {src_name}\n"
+                f"TONE_STRATEGY: {strategy}\n"
+                f"TEXT: {original_text}\n"
+                f"TARGET_LANGS: {', '.join(tgt_names)}\n\n"
+                "TASK:\n"
+                f"1. Rewrite the TEXT in {src_name} to perfectly match the TONE_STRATEGY.\n"
+                f"2. Translate that rewritten text into each of the TARGET_LANGS using the SAME strategy.\n\n"
+                "Reply ONLY with JSON: {\"refined\": \"...\", \"translations\": {\"lang_code\": \"text\", ...}}\n"
+                "Use provided lang_codes (tl, ceb, hil, en) as keys."
+            )
+
+            url = f"{API_BASE}/models/{MODEL}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 512,
+                    "responseMimeType": "application/json",
+                },
+            }
+
+            with httpx.Client(timeout=15.0) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+                raw = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed = json.loads(raw)
+                
+                refined = parsed.get("refined", original_text)
+                trans_map = parsed.get("translations", {})
+                
+                output_texts = []
+                for lang in target_langs:
+                    output_texts.append(trans_map.get(lang, "(Translation failed)"))
+
+                return {
+                    "original_text": original_text,
+                    "refined_text": refined,
+                    "source_lang": source_lang,
+                    "target_langs": target_langs,
+                    "output_texts": output_texts,
+                    "tone": new_tone,
+                }
+        except Exception as e:
+            logger.error(f"Refinement error: {e}")
+            res = TranslationService.translate_multi(original_text, source_lang, target_langs, new_tone)
+            return {
+                "original_text": original_text,
+                "refined_text": original_text,
+                "source_lang": source_lang,
+                "target_langs": target_langs,
+                "output_texts": res["output_texts"],
+                "tone": new_tone,
+            }
+
     # ────────────────── Tone Detection (local) ──────────────────
 
     @staticmethod
@@ -247,6 +332,7 @@ class TranslationService:
         if any(w in t for w in ["hey", "yo", "lol", "haha"]):
             return "joking"
         return "neutral"
+
 
     # ────────────────── Mock Fallback ──────────────────
 

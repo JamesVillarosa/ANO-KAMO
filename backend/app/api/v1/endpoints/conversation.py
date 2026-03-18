@@ -14,6 +14,7 @@ from app.db.schemas import (
     ConversationCreateRequest, ConversationResponse,
     MessageSendRequest, MessageResponse,
     ConversationTurnRequest, ConversationTurnResponse,
+    RefineRequest, RefineResponse,
 )
 from app.services.translation_service import TranslationService
 
@@ -109,6 +110,23 @@ async def get_conversation_messages(
             "timestamp": m.timestamp,
         })
     return results
+
+@router.post("/conversation/refine", response_model=RefineResponse)
+async def refine_message(
+    request: RefineRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Phase 12.1: Refinement Endpoint.
+    Rewrites source and regenerates all translations based on new tone.
+    """
+    result = TranslationService.refine_and_translate(
+        original_text=request.original_text,
+        source_lang=request.source_lang,
+        target_langs=request.target_langs,
+        new_tone=request.new_tone,
+    )
+    return result
 
 
 # Legacy endpoint for simple conversation turns (no session)

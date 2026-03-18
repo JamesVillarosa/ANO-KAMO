@@ -11,6 +11,7 @@ export interface Message {
     translations: Translation[];
     speaker: number;
     lang: string;
+    tone?: string; // Phase 6.1: bubble-specific tone
 }
 
 interface ConversationContextProps {
@@ -20,12 +21,14 @@ interface ConversationContextProps {
     langs: { 0: string; 1: string; 2: string };
     activeSpeaker: number;
     conversationId: string | null;
+    activeTone: string | null; // Phase 6.3: session-wide tone
     setViewMode: (mode: 'two_way' | 'three_way' | 'face_to_face') => void;
     setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
     setLangs: (speaker: number, code: string) => void;
     setActiveSpeaker: (speaker: number) => void;
     setConversationId: (id: string | null) => void;
     clearMessages: () => void;
+    setActiveTone: (tone: string | null) => void;
 }
 
 const ConversationContext = createContext<ConversationContextProps | undefined>(undefined);
@@ -41,6 +44,7 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
     });
     const [activeSpeaker, setActiveSpeaker] = useState(0);
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [activeTone, setActiveTone] = useState<string | null>(null);
 
     const setViewMode = useCallback((mode: 'two_way' | 'three_way' | 'face_to_face') => {
         if (mode !== 'face_to_face') {
@@ -67,12 +71,14 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
                 langs,
                 activeSpeaker,
                 conversationId,
+                activeTone,
                 setViewMode,
                 setMessages,
                 setLangs,
                 setActiveSpeaker,
                 setConversationId,
                 clearMessages,
+                setActiveTone,
             }}
         >
             {children}

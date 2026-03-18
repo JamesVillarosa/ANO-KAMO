@@ -32,12 +32,20 @@ import {
     ChevronLeft,
     Settings,
     ArrowLeft,
+    Sliders,
+    MoreVertical,
+    Copy,
+    RotateCw,
 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
+import { Snackbar, Portal, Modal as PaperModal } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import {
     createConversation,
     sendMessage as apiSendMessage,
     translateSingle,
+    refineTranslation,
 } from '../src/lib/api';
 import {
     gradientColors,
@@ -73,14 +81,71 @@ function ChatBubble({
     tts,
     openDictionary,
     isDarkMode,
+    onRetranslate,
+    isSyncShimmering,
 }: {
     msg: Message;
     alignment: 'left' | 'right' | 'center';
     tts: { speak: (text: string, lang: string) => void };
     openDictionary: (text: string, src: string, tgt: string) => void;
     isDarkMode: boolean;
+    onRetranslate?: (msgId: string, newTone: string) => void;
+    isSyncShimmering?: boolean;
 }) {
     const langColor = getColorForLang(msg.lang);
+    const [menuVisible, setMenuVisible] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
+    const shimmerAnim = useRef(new Animated.Value(0)).current;
+    const [toneMenuVisible, setToneMenuVisible] = useState(false);
+    const [toneMenuAnchor, setToneMenuAnchor] = useState({ x: 0, y: 0 });
+
+    const showShimmer = isSyncShimmering;
+
+    useEffect(() => {
+        if (showShimmer) {
+            const anim = Animated.loop(
+                Animated.timing(shimmerAnim, {
+                    toValue: 1,
+                    duration: 600, // Phase 11.2: 0.6s sweep
+                    useNativeDriver: true,
+                })
+            );
+            anim.start();
+            return () => anim.stop();
+        } else {
+            shimmerAnim.setValue(0);
+        }
+    }, [showShimmer]);
+
+    const shimmerTranslate = shimmerAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-width, width],
+    });
+
+    const openMenu = (event: any) => {
+        const { pageX, pageY } = event.nativeEvent;
+        setMenuAnchor({ x: pageX - 120, y: pageY + 10 });
+        setMenuVisible(true);
+    };
+
+    const copyToClipboard = async (text: string) => {
+        await Clipboard.setStringAsync(text);
+        setMenuVisible(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    };
+
+    const openToneMenu = (event: any) => {
+        const { pageX, pageY } = event.nativeEvent;
+        setToneMenuAnchor({ x: pageX - 120, y: pageY + 10 });
+        setToneMenuVisible(true);
+    };
+
+    const handleToneSelect = (tone: string) => {
+        setToneMenuVisible(false);
+        onRetranslate?.(msg.id, tone);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    };
+
     return (
         <View
             style={[
@@ -91,26 +156,73 @@ function ChatBubble({
             ]}
         >
             <View style={[styles.bubble, { backgroundColor: langColor.bg }]}>
+                {showShimmer && (
+                    <View style={StyleSheet.absoluteFill}>
+                        <Animated.View
+                            style={{
+                                ...StyleSheet.absoluteFillObject,
+                                transform: [{ translateX: shimmerTranslate }],
+                            }}
+                        >
+                            <LinearGradient
+                                colors={['transparent', 'rgba(255,255,255,0.3)', 'transparent']}
+                                start={{ x: 0, y: 0.5 }}
+                                end={{ x: 1, y: 0.5 }}
+                                style={{ flex: 1 }}
+                            />
+                        </Animated.View>
+                    </View>
+                )}
+
                 <View style={styles.bubbleHeader}>
                     <Text style={styles.bubbleSpeakerLabel}>
                         {SUPPORTED_LANGUAGES[msg.lang]}
                     </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        {msg.tone && (
+                            <Text style={[styles.bubbleToneLabel, { opacity: 0.6 }]}>
+                                {msg.tone}
+                            </Text>
+                        )}
+                        <TouchableOpacity onPress={openMenu} style={styles.moreBtn}>
+                            <MoreVertical size={14} color="rgba(255,255,255,0.7)" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <View style={styles.bubbleTextContainer}>
                     <Text style={[styles.bubbleText, { color: langColor.text, flex: 1 }]}>
                         {msg.text}
                     </Text>
+                </View>
+
+                {/* Phase 11.1: Source Utility Row (Right-Aligned) */}
+                <View style={styles.bubbleUtilityRow}>
                     <TouchableOpacity
                         onPress={() => tts.speak(msg.text, msg.lang)}
-                        style={styles.inlineTTS}
+                        style={styles.utilityBtn}
                     >
                         <Volume2 size={16} color="rgba(255,255,255,0.7)" />
                     </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => openDictionary(msg.text, msg.lang, msg.translations[0]?.lang || 'en')}
+                        style={styles.utilityBtn}
+                    >
+                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                    </TouchableOpacity>
+                    {onRetranslate && (
+                        <TouchableOpacity
+                            onPress={openToneMenu}
+                            style={styles.utilityBtn}
+                        >
+                            <RotateCw size={16} color="rgba(255,255,255,0.7)" />
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {msg.translations.map((tr, idx) => {
                     const trColor = getColorForLang(tr.lang);
+                    const isError = tr.text === '(Try again)';
                     return (
                         <View key={idx}>
                             <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
@@ -121,28 +233,116 @@ function ChatBubble({
                                 </Text>
                             </View>
                             <View style={styles.bubbleTextContainer}>
-                                <Text style={[styles.transText, { color: langColor.trans, flex: 1 }]}>
-                                    {tr.text}
+                                <Text style={[
+                                    styles.transText,
+                                    { color: langColor.trans, flex: 1 },
+                                    isError && {
+                                        color: isDarkMode ? '#F87171' : '#EF4444',
+                                        fontWeight: '500', // Medium weight
+                                        textAlign: alignment === 'center' ? 'center' : (alignment === 'left' ? 'left' : 'right'),
+                                        fontStyle: 'normal'
+                                    }
+                                ]}>
+                                    {isError ? 'Paki-ulit (Try again)' : tr.text}
                                 </Text>
-                                <View style={styles.inlineActionRow}>
-                                    <TouchableOpacity
-                                        onPress={() => tts.speak(tr.text, tr.lang)}
-                                        style={styles.inlineTTS}
-                                    >
-                                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
-                                        style={styles.inlineTTS}
-                                    >
-                                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
-                                    </TouchableOpacity>
-                                </View>
+                                {!isError && (
+                                    <View style={styles.inlineActionRow}>
+                                        <TouchableOpacity
+                                            onPress={() => tts.speak(tr.text, tr.lang)}
+                                            style={styles.inlineTTS}
+                                        >
+                                            <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                            style={styles.inlineTTS}
+                                        >
+                                            <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </View>
                         </View>
                     );
                 })}
             </View>
+
+            <Portal>
+                {menuVisible && (
+                    <>
+                        <TouchableOpacity
+                            style={StyleSheet.absoluteFill}
+                            onPress={() => setMenuVisible(false)}
+                        />
+                        <BlurView
+                            intensity={30}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[
+                                styles.bubbleMenu,
+                                { top: menuAnchor.y, left: menuAnchor.x },
+                                isDarkMode && styles.bubbleMenuDark
+                            ]}
+                        >
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => copyToClipboard(msg.translations[0]?.text || msg.text)}
+                            >
+                                <Copy size={16} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                                <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>Copy Text</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => {
+                                    setMenuVisible(false);
+                                    tts.speak(msg.translations[0]?.text || msg.text, msg.translations[0]?.lang || msg.lang);
+                                }}
+                            >
+                                <Volume2 size={16} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                                <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>Speak</Text>
+                            </TouchableOpacity>
+                        </BlurView>
+                    </>
+                )}
+
+                {toneMenuVisible && (
+                    <>
+                        <TouchableOpacity
+                            style={StyleSheet.absoluteFill}
+                            onPress={() => setToneMenuVisible(false)}
+                        />
+                        <BlurView
+                            intensity={50}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[
+                                styles.bubbleMenu,
+                                { top: toneMenuAnchor.y, left: toneMenuAnchor.x },
+                                isDarkMode && styles.bubbleMenuDark,
+                                { width: 160 }
+                            ]}
+                        >
+                            {['Formal', 'Street', 'Taglish', 'Respectful', 'Direct'].map(t => (
+                                <TouchableOpacity
+                                    key={t}
+                                    style={styles.menuItem}
+                                    onPress={() => handleToneSelect(t.toLowerCase())}
+                                >
+                                    <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>{t}</Text>
+                                </TouchableOpacity>
+                            ))}
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => {
+                                    setToneMenuVisible(false);
+                                    onRetranslate?.(msg.id, 'custom');
+                                }}
+                            >
+                                <Sliders size={16} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                                <Text style={[styles.menuText, isDarkMode && { color: '#60A5FA' }, !isDarkMode && { color: '#3B82F6' }]}>Custom...</Text>
+                            </TouchableOpacity>
+                        </BlurView>
+                    </>
+                )}
+            </Portal>
         </View>
     );
 }
@@ -166,11 +366,99 @@ export default function ConversationScreen() {
         setActiveSpeaker,
         setConversationId,
         clearMessages,
+        activeTone,
+        setActiveTone,
     } = useConversation();
 
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const tts = useTextToSpeech();
+
+    const [toneBarVisible, setToneBarVisible] = useState(false);
+    const [customToneInput, setCustomToneInput] = useState('');
+    const [isCustomMode, setIsCustomMode] = useState(false);
+
+    // Snackbar / Toast state
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMessage, setSnackbarMessage] = useState('');
+
+    const [isSyncShimmering, setIsSyncShimmering] = useState(false);
+
+    // Custom Glassmorphic Modal state (Phase 8.1)
+    const [confirmModal, setConfirmModal] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        confirmText: string;
+        isDestructive?: boolean;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        onConfirm: () => { },
+        confirmText: 'Confirm',
+    });
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = 'Confirm', isDestructive = false) => {
+        setConfirmModal({
+            visible: true,
+            title,
+            message,
+            onConfirm,
+            confirmText,
+            isDestructive,
+        });
+    };
+
+    const handleAutoRetranslate = async (msgId: string, newTone: string) => {
+        const msg = messages.find(m => m.id === msgId);
+        if (!msg) return;
+
+        setIsSyncShimmering(true);
+
+        try {
+            const targets = msg.translations.map(t => t.lang);
+            const res = await refineTranslation(msg.text, msg.lang, targets, newTone);
+
+            setMessages(prev => prev.map(m => {
+                if (m.id === msgId) {
+                    return {
+                        ...m,
+                        text: res.refined_text,
+                        tone: newTone,
+                        translations: m.translations.map((t, idx) => ({
+                            ...t,
+                            text: sanitizeTranslation(res.output_texts[idx])
+                        }))
+                    };
+                }
+                return m;
+            }));
+        } catch (err) {
+            console.error('Retranslate error:', err);
+            setSnackbarMessage('Paki-ulit (Try again)');
+            setSnackbarVisible(true);
+        } finally {
+            setTimeout(() => setIsSyncShimmering(false), 800);
+        }
+    };
+
+    const sanitizeTranslation = (text: string): string => {
+        if (!text) return 'Invalid Input';
+        // Phase 8.3: Anti-JSON Leak
+        if (text.includes('{') || text.includes('}') || text.includes(':')) {
+            try {
+                // If it's valid JSON but leaked, try to extract 't'
+                const parsed = JSON.parse(text);
+                if (parsed.t) return parsed.t;
+                return 'Invalid Input';
+            } catch {
+                return 'Invalid Input';
+            }
+        }
+        return text;
+    };
 
     const lang0 = langs[0];
     const lang1 = langs[1];
@@ -373,14 +661,14 @@ export default function ConversationScreen() {
             for (const tl of targetLangs) {
                 try {
                     if (conversationId) {
-                        const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, tl);
-                        translations.push({ text: res.translated_text || '', lang: tl });
+                        const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, tl, activeTone || undefined);
+                        translations.push({ text: sanitizeTranslation(res.translated_text) || '', lang: tl });
                     } else {
-                        const res = await translateSingle(text, fromLang, tl);
-                        translations.push({ text: res.output_text || '', lang: tl });
+                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined);
+                        translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
                     }
                 } catch {
-                    translations.push({ text: `(Translation to ${SUPPORTED_LANGUAGES[tl]} unavailable)`, lang: tl });
+                    translations.push({ text: '(Try again)', lang: tl });
                 }
             }
             const msg: Message = {
@@ -389,14 +677,16 @@ export default function ConversationScreen() {
                 translations,
                 speaker: activeSpeaker,
                 lang: fromLang,
+                tone: activeTone || undefined,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
+            lastMessageIdRef.current = msg.id;
         } catch {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
-                translations: [],
+                translations: targetLangs.map(tl => ({ text: '(Try again)', lang: tl })),
                 speaker: activeSpeaker,
                 lang: getLang(activeSpeaker),
             };
@@ -418,14 +708,14 @@ export default function ConversationScreen() {
             let translatedText = '';
             try {
                 if (conversationId) {
-                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang);
-                    translatedText = res.translated_text || '';
+                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang, activeTone || undefined);
+                    translatedText = sanitizeTranslation(res.translated_text) || '';
                 } else {
-                    const res = await translateSingle(text, fromLang, targetLang);
-                    translatedText = res.output_text || '';
+                    const res = await translateSingle(text, fromLang, targetLang, activeTone || undefined);
+                    translatedText = sanitizeTranslation(res.output_text) || '';
                 }
             } catch {
-                translatedText = `(Translation to ${SUPPORTED_LANGUAGES[targetLang]} unavailable)`;
+                translatedText = '(Try again)';
             }
             const msg: Message = {
                 id: Date.now().toString(),
@@ -433,13 +723,15 @@ export default function ConversationScreen() {
                 translations: [{ text: translatedText, lang: targetLang }],
                 speaker,
                 lang: fromLang,
+                tone: activeTone || undefined,
             };
             setMessages(prev => [...prev, msg]);
+            lastMessageIdRef.current = msg.id;
         } catch {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
-                translations: [],
+                translations: [{ text: '(Try again)', lang: targetLang }],
                 speaker,
                 lang: fromLang,
             };
@@ -471,40 +763,41 @@ export default function ConversationScreen() {
     };
 
     const clearConversation = () => {
-        Alert.alert('Clear Conversation', 'Remove all messages?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Clear', style: 'destructive', onPress: () => {
-                    clearMessages();
-                    setInputText('');
-                    lastMessageIdRef.current = null;
-                    const speakerCount = viewMode === 'three_way' ? 3 : 2;
-                    const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
-                    const participants = [
-                        { speaker_label: 'A', preferred_language: lang0 },
-                        { speaker_label: 'B', preferred_language: lang1 },
-                    ];
-                    if (speakerCount === 3) {
-                        participants.push({ speaker_label: 'C', preferred_language: lang2 });
-                    }
-                    createConversation(backendMode, participants, viewMode)
-                        .then(res => setConversationId(res.conversation_id))
-                        .catch(() => setConversationId(null));
-                },
+        showConfirm(
+            'Clear Conversation',
+            'Remove all messages? This action cannot be undone.',
+            () => {
+                clearMessages();
+                setInputText('');
+                lastMessageIdRef.current = null;
+                const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
+                const participants = [
+                    { speaker_label: 'A', preferred_language: lang0 },
+                    { speaker_label: 'B', preferred_language: lang1 },
+                ];
+                if (viewMode === 'three_way') {
+                    participants.push({ speaker_label: 'C', preferred_language: lang2 });
+                }
+                createConversation(backendMode, participants, viewMode)
+                    .then(res => setConversationId(res.conversation_id))
+                    .catch(() => setConversationId(null));
             },
-        ]);
+            'Clear All',
+            true
+        );
     };
 
     const clearSpeakerMessages = (speaker: number) => {
-        const speakerName = speaker === 0 ? 'A (bottom)' : 'B (top)';
-        Alert.alert(`Clear Speaker ${speakerName}`, `Remove all messages from Speaker ${speakerName}?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Clear', style: 'destructive', onPress: () => {
-                    setMessages((prev: Message[]) => prev.filter((m: Message) => m.speaker !== speaker));
-                },
+        const speakerName = speaker === 0 ? 'A (bottom)' : speaker === 1 ? 'B (top)' : 'C';
+        showConfirm(
+            `Clear Speaker ${speakerName}`,
+            `Remove all messages from Speaker ${speakerName}?`,
+            () => {
+                setMessages((prev: Message[]) => prev.filter((m: Message) => m.speaker !== speaker));
             },
-        ]);
+            'Clear',
+            true
+        );
     };
 
     const swapLanguages = () => {
@@ -561,6 +854,8 @@ export default function ConversationScreen() {
                                 tts={tts}
                                 openDictionary={openDictionary}
                                 isDarkMode={isDarkMode}
+                                onRetranslate={handleAutoRetranslate}
+                                isSyncShimmering={isSyncShimmering}
                             />
                         ))}
                     </ScrollView>
@@ -664,6 +959,8 @@ export default function ConversationScreen() {
                                 tts={tts}
                                 openDictionary={openDictionary}
                                 isDarkMode={isDarkMode}
+                                onRetranslate={handleAutoRetranslate}
+                                isSyncShimmering={isSyncShimmering}
                             />
                         ))}
                     </ScrollView>
@@ -755,6 +1052,12 @@ export default function ConversationScreen() {
                         <ArrowLeft size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
                     </BlurView>
                 </TouchableOpacity>
+
+                {/* Phase 9: Mode-Specific Branding */}
+                <Text style={[styles.headerModeBranding, isDarkMode && { color: '#F8FAFC' }]}>
+                    {viewMode === 'face_to_face' ? '' : 'Chat'}
+                </Text>
+
                 <TouchableOpacity onPress={() => router.push('/settings' as any)} style={styles.customHeaderBtn}>
                     <BlurView
                         intensity={20}
@@ -857,24 +1160,82 @@ export default function ConversationScreen() {
                     </View>
                 )}
 
-                {messages.map((msg) => {
-                    const isRight = msg.speaker === 0;
-                    const isCenter = viewMode === 'three_way' && msg.speaker === 1;
-                    const isLeft = (viewMode === 'two_way' && msg.speaker === 1) ||
-                        (viewMode === 'three_way' && msg.speaker === 2);
+                {messages.map((m) => {
+                    const isRight = m.speaker === 0;
+                    const isCenter = viewMode === 'three_way' && m.speaker === 1;
+                    const isLeft = (viewMode === 'two_way' && m.speaker === 1) ||
+                        (viewMode === 'three_way' && m.speaker === 2);
 
                     return (
                         <ChatBubble
-                            key={msg.id}
-                            msg={msg}
+                            key={m.id}
+                            msg={m}
                             alignment={isRight ? 'right' : isCenter ? 'center' : 'left'}
                             tts={tts}
                             openDictionary={openDictionary}
                             isDarkMode={isDarkMode}
+                            onRetranslate={handleAutoRetranslate}
+                            isSyncShimmering={isSyncShimmering}
                         />
                     );
                 })}
             </ScrollView>
+
+            {/* Tone Selector (Phase 5.1) */}
+            {toneBarVisible && (
+                <BlurView
+                    intensity={60}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={styles.toneBarFloat}
+                >
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toneScroll}>
+                        {['Formal', 'Kanto/Street', 'Taglish/Urban', 'Respectful', 'Direct'].map(t => (
+                            <TouchableOpacity
+                                key={t}
+                                style={[styles.tonePill, activeTone === t.toLowerCase() && styles.tonePillActive]}
+                                onPress={() => {
+                                    setActiveTone(t.toLowerCase());
+                                    setIsCustomMode(false);
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setToneBarVisible(false);
+                                }}
+                            >
+                                <Text style={[styles.toneText, activeTone === t.toLowerCase() && styles.toneTextActive]}>{t}</Text>
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                            style={[styles.tonePill, isCustomMode && styles.tonePillActive]}
+                            onPress={() => setIsCustomMode(true)}
+                        >
+                            <Sliders size={14} color={isCustomMode ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
+                            <Text style={[styles.toneText, isCustomMode && styles.toneTextActive]}>Custom</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+
+                    {isCustomMode && (
+                        <View style={styles.customToneRow}>
+                            <TextInput
+                                style={[styles.customToneInput, isDarkMode && styles.customToneInputDark]}
+                                placeholder="Enter tone..."
+                                placeholderTextColor={isDarkMode ? '#94A3B8' : '#64748B'}
+                                value={customToneInput}
+                                onChangeText={setCustomToneInput}
+                                onSubmitEditing={() => {
+                                    if (customToneInput.trim().length < 2) {
+                                        setSnackbarMessage('Please enter a clear tone (e.g. "Sarcastic")');
+                                        setSnackbarVisible(true);
+                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                                        return;
+                                    }
+                                    setActiveTone(customToneInput.trim());
+                                    setIsCustomMode(false);
+                                    setToneBarVisible(false);
+                                }}
+                            />
+                        </View>
+                    )}
+                </BlurView>
+            )}
 
             {/* Input Bar */}
             <KeyboardAvoidingView
@@ -886,7 +1247,14 @@ export default function ConversationScreen() {
                     tint={isDarkMode ? 'dark' : 'light'}
                     style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
                 >
-                    <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
+                    <TouchableOpacity
+                        style={styles.toneTrigger}
+                        onPress={() => setToneBarVisible(!toneBarVisible)}
+                    >
+                        <Sliders size={20} color={toneBarVisible ? '#8D5524' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
+                    </TouchableOpacity>
+
+                    <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light, marginLeft: 16 }]} />
 
                     <TouchableOpacity
                         style={[styles.micBtn, {
@@ -919,7 +1287,7 @@ export default function ConversationScreen() {
                         placeholder={
                             speech.isListening ? 'Listening...'
                                 : speech.isProcessing ? 'Transcribing...'
-                                    : LANGUAGE_PLACEHOLDERS[getActiveLang()] || 'Type a message...'
+                                    : (LANGUAGE_PLACEHOLDERS[getActiveLang()] || 'Type a message...')
                         }
                         placeholderTextColor={
                             (speech.isListening || speech.isProcessing)
@@ -977,6 +1345,54 @@ export default function ConversationScreen() {
                     setTimeout(() => setDictVisible(true), 300);
                 }}
             />
+
+            {/* Confirmation Modal (Phase 8.1) */}
+            <Portal>
+                <PaperModal
+                    visible={confirmModal.visible}
+                    onDismiss={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                    contentContainerStyle={styles.glassModalContainer}
+                >
+                    <BlurView
+                        intensity={60}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={styles.glassModalBlur}
+                    >
+                        <Text style={[styles.modalTitle, isDarkMode && { color: '#F8FAFC' }]}>{confirmModal.title}</Text>
+                        <Text style={[styles.modalMessage, isDarkMode && { color: '#CBD5E1' }]}>{confirmModal.message}</Text>
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity
+                                onPress={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                                style={styles.modalBtnCancel}
+                            >
+                                <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    confirmModal.onConfirm();
+                                    setConfirmModal(prev => ({ ...prev, visible: false }));
+                                }}
+                                style={[
+                                    styles.modalBtnAction,
+                                    confirmModal.isDestructive && { backgroundColor: '#EF4444' }
+                                ]}
+                            >
+                                <Text style={styles.modalBtnTextAction}>{confirmModal.confirmText}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </BlurView>
+                </PaperModal>
+            </Portal>
+
+            {/* Snackbar */}
+            <Snackbar
+                visible={snackbarVisible}
+                onDismiss={() => setSnackbarVisible(false)}
+                duration={3000}
+                style={styles.snackbar}
+            >
+                {snackbarMessage}
+            </Snackbar>
         </View>
     );
 }
@@ -1154,6 +1570,60 @@ const styles = StyleSheet.create({
         height: 5,
         borderRadius: 3,
     },
+    bubbleToneLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.7)',
+        textTransform: 'uppercase',
+    },
+    bubbleUtilityRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        gap: 12,
+        marginTop: 6,
+        paddingTop: 6,
+        borderTopWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.2)',
+    },
+    utilityBtn: {
+        padding: 4,
+        opacity: 0.8,
+    },
+    bubbleMenu: {
+        position: 'absolute',
+        width: 140,
+        borderRadius: 16,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 10,
+        zIndex: 1000,
+    },
+    bubbleMenuDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.9)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    menuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+        gap: 10,
+        borderRadius: 12,
+    },
+    menuText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    moreBtn: {
+        padding: 4,
+    },
 
     // ── Input Bar (Standard mode) ──
     inputBar: {
@@ -1330,4 +1800,129 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(30, 41, 59, 0.55)',
         borderColor: 'rgba(255, 255, 255, 0.15)',
     },
+    headerModeBranding: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#1E293B',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+    },
+
+    // ── Phase 5 Tone Selector ──
+    toneTrigger: {
+        padding: 6,
+        marginRight: 4,
+    },
+    toneBarFloat: {
+        position: 'absolute',
+        bottom: 165,
+        left: 20,
+        right: 20,
+        borderRadius: 24,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        padding: 10,
+        zIndex: 50,
+    },
+    toneScroll: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingRight: 10,
+    },
+    tonePill: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.4)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    tonePillActive: {
+        backgroundColor: '#8D5524',
+        borderColor: '#8D5524',
+    },
+    toneText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
+    toneTextActive: {
+        color: '#FFF',
+    },
+    customToneRow: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.2)',
+    },
+    customToneInput: {
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 13,
+        color: '#1E293B',
+    },
+    customToneInputDark: {
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        color: '#F8FAFC',
+    },
+
+    // ── Phase 8 Glass Modals ──
+    glassModalContainer: {
+        margin: 20,
+        borderRadius: 28,
+        overflow: 'hidden',
+    },
+    glassModalBlur: {
+        padding: 24,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#1E293B',
+        marginBottom: 8,
+    },
+    modalMessage: {
+        fontSize: 14,
+        lineHeight: 20,
+        color: '#64748B',
+        marginBottom: 24,
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 12,
+    },
+    modalBtnCancel: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    modalBtnAction: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor: '#1E293B',
+    },
+    modalBtnTextCancel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    modalBtnTextAction: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFF',
+    },
+    snackbar: {
+        borderRadius: 12,
+        backgroundColor: '#334155',
+    },
 });
+
