@@ -54,6 +54,9 @@ import {
     LANGUAGE_PLACEHOLDERS,
     LANGUAGE_COLORS,
     liquidGlass,
+    TONE_OPTIONS,
+    TONE_LABELS,
+    TONE_COLORS,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -180,9 +183,11 @@ function ChatBubble({
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         {msg.tone && (
-                            <Text style={[styles.bubbleToneLabel, { opacity: 0.6 }]}>
-                                {msg.tone}
-                            </Text>
+                            <View style={[styles.toneBadge, { backgroundColor: TONE_COLORS[msg.tone] || '#64748B' }]}>
+                                <Text style={styles.toneBadgeText}>
+                                    {TONE_LABELS[msg.tone]?.name || msg.tone}
+                                </Text>
+                            </View>
                         )}
                         <TouchableOpacity onPress={openMenu} style={styles.moreBtn}>
                             <MoreVertical size={14} color="rgba(255,255,255,0.7)" />
@@ -314,31 +319,30 @@ function ChatBubble({
                             intensity={50}
                             tint={isDarkMode ? 'dark' : 'light'}
                             style={[
-                                styles.bubbleMenu,
+                                styles.toneMenuScroll,
                                 { top: toneMenuAnchor.y, left: toneMenuAnchor.x },
                                 isDarkMode && styles.bubbleMenuDark,
-                                { width: 160 }
                             ]}
                         >
-                            {['Formal', 'Street', 'Taglish', 'Respectful', 'Direct'].map(t => (
-                                <TouchableOpacity
-                                    key={t}
-                                    style={styles.menuItem}
-                                    onPress={() => handleToneSelect(t.toLowerCase())}
-                                >
-                                    <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>{t}</Text>
-                                </TouchableOpacity>
-                            ))}
-                            <TouchableOpacity
-                                style={styles.menuItem}
-                                onPress={() => {
-                                    setToneMenuVisible(false);
-                                    onRetranslate?.(msg.id, 'custom');
-                                }}
-                            >
-                                <Sliders size={16} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
-                                <Text style={[styles.menuText, isDarkMode && { color: '#60A5FA' }, !isDarkMode && { color: '#3B82F6' }]}>Custom...</Text>
-                            </TouchableOpacity>
+                            <ScrollView style={{ maxHeight: 400 }}>
+                                {TONE_OPTIONS.map(tone => (
+                                    <TouchableOpacity
+                                        key={tone}
+                                        style={styles.menuItem}
+                                        onPress={() => handleToneSelect(tone)}
+                                    >
+                                        <View style={[styles.toneMenuDot, { backgroundColor: TONE_COLORS[tone] }]} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>
+                                                {TONE_LABELS[tone].name}
+                                            </Text>
+                                            <Text style={[styles.toneMenuDesc, isDarkMode && { color: '#94A3B8' }]}>
+                                                {TONE_LABELS[tone].description}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
                         </BlurView>
                     </>
                 )}
@@ -373,10 +377,6 @@ export default function ConversationScreen() {
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const tts = useTextToSpeech();
-
-    const [toneBarVisible, setToneBarVisible] = useState(false);
-    const [customToneInput, setCustomToneInput] = useState('');
-    const [isCustomMode, setIsCustomMode] = useState(false);
 
     // Snackbar / Toast state
     const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -427,6 +427,7 @@ export default function ConversationScreen() {
                         ...m,
                         text: res.refined_text,
                         tone: newTone,
+                        isNewMessage: false, // Retranslated messages should not auto-TTS
                         translations: m.translations.map((t, idx) => ({
                             ...t,
                             text: sanitizeTranslation(res.output_texts[idx])
@@ -584,6 +585,8 @@ export default function ConversationScreen() {
         if (messages.length === 0) return;
         const latest = messages[messages.length - 1];
         if (latest.id === lastMessageIdRef.current) return;
+        // Only auto-TTS if this is a NEW message (not a loaded message from history)
+        if (!latest.isNewMessage) return;
         lastMessageIdRef.current = latest.id;
         // Speak the translated text in the OTHER speaker's language
         if (latest.translations.length > 0) {
@@ -678,6 +681,7 @@ export default function ConversationScreen() {
                 speaker: activeSpeaker,
                 lang: fromLang,
                 tone: activeTone || undefined,
+                isNewMessage: true,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
@@ -689,6 +693,7 @@ export default function ConversationScreen() {
                 translations: targetLangs.map(tl => ({ text: '(Try again)', lang: tl })),
                 speaker: activeSpeaker,
                 lang: getLang(activeSpeaker),
+                isNewMessage: true,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
@@ -724,6 +729,7 @@ export default function ConversationScreen() {
                 speaker,
                 lang: fromLang,
                 tone: activeTone || undefined,
+                isNewMessage: true,
             };
             setMessages(prev => [...prev, msg]);
             lastMessageIdRef.current = msg.id;
@@ -734,6 +740,7 @@ export default function ConversationScreen() {
                 translations: [{ text: '(Try again)', lang: targetLang }],
                 speaker,
                 lang: fromLang,
+                isNewMessage: true,
             };
             setMessages(prev => [...prev, msg]);
         }
@@ -1077,7 +1084,7 @@ export default function ConversationScreen() {
                         onPress={() => handleViewModeChange('two_way')}
                     >
                         <Text style={[styles.toggleText, viewMode === 'two_way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                            2-Wayhehe
+                            2-Way
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -1181,61 +1188,6 @@ export default function ConversationScreen() {
                 })}
             </ScrollView>
 
-            {/* Tone Selector (Phase 5.1) */}
-            {toneBarVisible && (
-                <BlurView
-                    intensity={60}
-                    tint={isDarkMode ? 'dark' : 'light'}
-                    style={styles.toneBarFloat}
-                >
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toneScroll}>
-                        {['Formal', 'Kanto/Street', 'Taglish/Urban', 'Respectful', 'Direct'].map(t => (
-                            <TouchableOpacity
-                                key={t}
-                                style={[styles.tonePill, activeTone === t.toLowerCase() && styles.tonePillActive]}
-                                onPress={() => {
-                                    setActiveTone(t.toLowerCase());
-                                    setIsCustomMode(false);
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    setToneBarVisible(false);
-                                }}
-                            >
-                                <Text style={[styles.toneText, activeTone === t.toLowerCase() && styles.toneTextActive]}>{t}</Text>
-                            </TouchableOpacity>
-                        ))}
-                        <TouchableOpacity
-                            style={[styles.tonePill, isCustomMode && styles.tonePillActive]}
-                            onPress={() => setIsCustomMode(true)}
-                        >
-                            <Sliders size={14} color={isCustomMode ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
-                            <Text style={[styles.toneText, isCustomMode && styles.toneTextActive]}>Custom</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-
-                    {isCustomMode && (
-                        <View style={styles.customToneRow}>
-                            <TextInput
-                                style={[styles.customToneInput, isDarkMode && styles.customToneInputDark]}
-                                placeholder="Enter tone..."
-                                placeholderTextColor={isDarkMode ? '#94A3B8' : '#64748B'}
-                                value={customToneInput}
-                                onChangeText={setCustomToneInput}
-                                onSubmitEditing={() => {
-                                    if (customToneInput.trim().length < 2) {
-                                        setSnackbarMessage('Please enter a clear tone (e.g. "Sarcastic")');
-                                        setSnackbarVisible(true);
-                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                                        return;
-                                    }
-                                    setActiveTone(customToneInput.trim());
-                                    setIsCustomMode(false);
-                                    setToneBarVisible(false);
-                                }}
-                            />
-                        </View>
-                    )}
-                </BlurView>
-            )}
 
             {/* Input Bar */}
             <KeyboardAvoidingView
@@ -1247,14 +1199,7 @@ export default function ConversationScreen() {
                     tint={isDarkMode ? 'dark' : 'light'}
                     style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
                 >
-                    <TouchableOpacity
-                        style={styles.toneTrigger}
-                        onPress={() => setToneBarVisible(!toneBarVisible)}
-                    >
-                        <Sliders size={20} color={toneBarVisible ? '#8D5524' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
-                    </TouchableOpacity>
-
-                    <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light, marginLeft: 16 }]} />
+                    <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
 
                     <TouchableOpacity
                         style={[styles.micBtn, {
@@ -1576,6 +1521,19 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.7)',
         textTransform: 'uppercase',
     },
+    toneBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        marginLeft: 4,
+    },
+    toneBadgeText: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: '#FFF',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
     bubbleUtilityRow: {
         flexDirection: 'row',
         justifyContent: 'flex-end',
@@ -1608,6 +1566,32 @@ const styles = StyleSheet.create({
     bubbleMenuDark: {
         backgroundColor: 'rgba(30, 41, 59, 0.9)',
         borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    toneMenuScroll: {
+        position: 'absolute',
+        width: 240,
+        borderRadius: 16,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 10,
+        zIndex: 1000,
+    },
+    toneMenuDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 10,
+    },
+    toneMenuDesc: {
+        fontSize: 11,
+        color: '#64748B',
+        marginTop: 2,
     },
     menuItem: {
         flexDirection: 'row',

@@ -91,7 +91,9 @@ start_ngrok() {
 start_frontend() {
     echo "Starting Frontend..."
     cd "$FRONTEND_DIR" || exit
-    npx expo start -c
+    # Use tunnel mode for different Wi-Fi networks
+    # Add --max-workers 1 to reduce connection issues
+    npx expo start --tunnel --max-workers 1
 }
 
 # Execution

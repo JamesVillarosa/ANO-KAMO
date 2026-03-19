@@ -3,8 +3,15 @@
  * Manages unique device identification for history and favorites
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Application from 'expo-application';
 import { Platform } from 'react-native';
+
+// Dynamically import expo-application to avoid bundling errors
+let Application: any = null;
+try {
+  Application = require('expo-application');
+} catch (e) {
+  console.warn('expo-application not available, using fallback UUID generation');
+}
 
 const DEVICE_ID_KEY = '@ano_kamo_device_id';
 
@@ -23,12 +30,13 @@ export async function getDeviceId(): Promise<string> {
     // Generate or retrieve platform-specific ID
     let deviceId: string;
 
-    if (Platform.OS === 'android') {
+    if (Application && Platform.OS === 'android') {
       deviceId = Application.androidId || generateUUID();
-    } else if (Platform.OS === 'ios') {
-      deviceId = await Application.getIosIdForVendorAsync() || generateUUID();
+    } else if (Application && Platform.OS === 'ios') {
+      const iosId = await Application.getIosIdForVendorAsync();
+      deviceId = iosId || generateUUID();
     } else {
-      // Web or other platforms
+      // Web or other platforms, or if expo-application unavailable
       deviceId = generateUUID();
     }
 

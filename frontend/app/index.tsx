@@ -48,6 +48,7 @@ import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
+import AnchoredPopoverMenu from '../src/components/AnchoredPopoverMenu';
 
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
@@ -86,6 +87,12 @@ export default function HomeScreen() {
   const [feedbackGiven2, setFeedbackGiven2] = useState<'like' | 'dislike' | null>(null);
   const [showMenu1, setShowMenu1] = useState(false);
   const [showMenu2, setShowMenu2] = useState(false);
+
+  // Menu anchor positions for PROMPT 3
+  const menuButtonRef1 = useRef<View>(null);
+  const menuButtonRef2 = useRef<View>(null);
+  const [menuPosition1, setMenuPosition1] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [menuPosition2, setMenuPosition2] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [refineModal, setRefineModal] = useState<{ visible: boolean; translationId: string; originalText: string; target: 1 | 2 }>({
     visible: false, translationId: '', originalText: '', target: 1,
   });
@@ -370,44 +377,25 @@ export default function HomeScreen() {
           <MessageSquare size={18} color="#3B82F6" />
         </TouchableOpacity>
 
-        {/* 3-dot menu */}
-        <View>
-          <TouchableOpacity style={styles.iconCircle} onPress={() => setShowMenu(!showMenu)}>
+        {/* 3-dot menu - PROMPT 3: Anchored positioning */}
+        <View ref={target === 1 ? menuButtonRef1 : menuButtonRef2} collapsable={false}>
+          <TouchableOpacity
+            style={styles.iconCircle}
+            onPress={() => {
+              const ref = target === 1 ? menuButtonRef1 : menuButtonRef2;
+              ref.current?.measure((fx, fy, width, height, px, py) => {
+                if (target === 1) {
+                  setMenuPosition1({ x: px, y: py, width, height });
+                  setShowMenu1(true);
+                } else {
+                  setMenuPosition2({ x: px, y: py, width, height });
+                  setShowMenu2(true);
+                }
+              });
+            }}
+          >
             <MoreHorizontal size={18} color="#94A3B8" />
           </TouchableOpacity>
-          {showMenu && (
-            <Portal>
-              <TouchableOpacity
-                style={StyleSheet.absoluteFill}
-                onPress={() => setShowMenu(false)}
-              >
-                <View style={[styles.popoverMenu, isDarkMode && styles.popoverMenuDark, {
-                  top: Dimensions.get('window').height / 2, // Approximation
-                  right: 20
-                }]}>
-                  <TouchableOpacity
-                    style={styles.popoverItem}
-                    onPress={() => {
-                      setShowMenu(false);
-                      copyText(text);
-                    }}
-                  >
-                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.popoverItem}
-                    onPress={() => {
-                      setShowMenu(false);
-                      setRefineText(text);
-                      setRefineModal({ visible: true, translationId, originalText: text, target });
-                    }}
-                  >
-                    <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest a Translation</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            </Portal>
-          )}
         </View>
 
         <View style={{ flex: 1 }} />
@@ -755,6 +743,47 @@ export default function HomeScreen() {
               </BlurView>
             </View>
           </Modal>
+
+        {/* PROMPT 3: Anchored Popover Menus */}
+        <AnchoredPopoverMenu
+          visible={showMenu1}
+          onDismiss={() => setShowMenu1(false)}
+          anchorPosition={menuPosition1}
+          items={[
+            {
+              label: 'Copy',
+              onPress: () => copyText(translated1),
+            },
+            {
+              label: 'Suggest a Translation',
+              onPress: () => {
+                setRefineText(translated1);
+                setRefineModal({ visible: true, translationId: translationId1, originalText: translated1, target: 1 });
+              },
+            },
+          ]}
+          isDarkMode={isDarkMode}
+        />
+
+        <AnchoredPopoverMenu
+          visible={showMenu2}
+          onDismiss={() => setShowMenu2(false)}
+          anchorPosition={menuPosition2}
+          items={[
+            {
+              label: 'Copy',
+              onPress: () => copyText(translated2),
+            },
+            {
+              label: 'Suggest a Translation',
+              onPress: () => {
+                setRefineText(translated2);
+                setRefineModal({ visible: true, translationId: translationId2, originalText: translated2, target: 2 });
+              },
+            },
+          ]}
+          isDarkMode={isDarkMode}
+        />
         </View>
       </Portal.Host>
     </PaperProvider>

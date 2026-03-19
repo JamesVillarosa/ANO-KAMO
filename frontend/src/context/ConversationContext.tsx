@@ -12,6 +12,7 @@ export interface Message {
     speaker: number;
     lang: string;
     tone?: string; // Phase 6.1: bubble-specific tone
+    isNewMessage?: boolean; // Track if this is a new message (for auto-TTS)
 }
 
 interface ConversationContextProps {
