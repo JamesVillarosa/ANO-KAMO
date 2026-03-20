@@ -298,9 +298,19 @@ export default function HomeScreen() {
   };
 
   const handlePickerSelect = (code: string) => {
-    if (pickerTarget === 'source') setSourceLang(code);
-    else if (pickerTarget === 'target1') setTargetLang1(code);
-    else if (pickerTarget === 'target2') setTargetLang2(code);
+    if (pickerTarget === 'source') {
+      if (targetLang1 === code) setTargetLang1(sourceLang);
+      else if (mode === '3way' && targetLang2 === code) setTargetLang2(sourceLang);
+      setSourceLang(code);
+    } else if (pickerTarget === 'target1') {
+      if (sourceLang === code) setSourceLang(targetLang1);
+      else if (mode === '3way' && targetLang2 === code) setTargetLang2(targetLang1);
+      setTargetLang1(code);
+    } else if (pickerTarget === 'target2') {
+      if (sourceLang === code) setSourceLang(targetLang2);
+      else if (targetLang1 === code) setTargetLang1(targetLang2);
+      setTargetLang2(code);
+    }
     setPickerTarget(null);
   };
 
@@ -652,13 +662,6 @@ export default function HomeScreen() {
               pickerTarget === 'source' ? sourceLang
                 : pickerTarget === 'target1' ? targetLang1
                   : targetLang2
-            }
-            exclude={
-              pickerTarget === 'source'
-                ? (mode === '3way' ? [targetLang1, targetLang2] : [targetLang1])
-                : pickerTarget === 'target1'
-                ? (mode === '3way' ? [sourceLang, targetLang2] : [sourceLang])
-                : [sourceLang, targetLang1]
             }
           />
 

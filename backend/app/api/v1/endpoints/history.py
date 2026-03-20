@@ -80,6 +80,16 @@ async def get_favorites_list(
     return results
 
 
+@router.delete("/history/clear-all")
+async def clear_all(
+    device_id: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Delete all translation history, optionally filtered by device_id."""
+    count = clear_all_history(db, device_id=device_id)
+    return {"deleted": count}
+
+
 @router.delete("/history/{translation_id}", status_code=204)
 async def delete_history(
     translation_id: str,
@@ -91,13 +101,3 @@ async def delete_history(
     if not deleted:
         raise HTTPException(status_code=404, detail="Translation not found")
     return None
-
-
-@router.delete("/history/clear-all")
-async def clear_all(
-    device_id: str = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Delete all translation history, optionally filtered by device_id."""
-    count = clear_all_history(db, device_id=device_id)
-    return {"deleted": count}

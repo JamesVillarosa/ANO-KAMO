@@ -45,6 +45,7 @@ import {
     sendMessage as apiSendMessage,
     translateSingle,
     refineTranslation,
+    validateCustomTone,
 } from '../src/lib/api';
 import {
     gradientColors,
@@ -66,6 +67,7 @@ import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 import { useConversation, Message, Translation } from '../src/context/ConversationContext';
+import { getDeviceId } from '../src/utils/device';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -99,6 +101,10 @@ function ChatBubble({
     const [toneMenuVisible, setToneMenuVisible] = useState(false);
     const [toneMenuAnchor, setToneMenuAnchor] = useState({ x: 0, y: 0 });
     const [showToneTooltip, setShowToneTooltip] = useState(false);
+    const [showCustomInput, setShowCustomInput] = useState(false);
+    const [customToneInput, setCustomToneInput] = useState('');
+    const [customToneLoading, setCustomToneLoading] = useState(false);
+    const shakeAnim = useRef(new Animated.Value(0)).current;
 
     const showShimmer = isSyncShimmering;
 
@@ -130,13 +136,52 @@ function ChatBubble({
         const screenWidth = Dimensions.get('window').width;
         const popupX = Math.max(MARGIN, Math.min(screenWidth - MENU_WIDTH - MARGIN, pageX - MENU_WIDTH / 2));
         setToneMenuAnchor({ x: popupX, y: pageY + 10 });
+        setShowCustomInput(false);
+        setCustomToneInput('');
         setToneMenuVisible(true);
     };
 
+    const triggerShake = () => {
+        shakeAnim.setValue(0);
+        Animated.sequence([
+            Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+        ]).start();
+    };
+
     const handleToneSelect = (tone: string) => {
+        if (tone === 'custom') {
+            setShowCustomInput(true);
+            setCustomToneInput('');
+            return;
+        }
         setToneMenuVisible(false);
         onRetranslate?.(msg.id, tone);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    };
+
+    const handleCustomToneSubmit = async () => {
+        const trimmed = customToneInput.trim();
+        if (!trimmed) { triggerShake(); return; }
+        setCustomToneLoading(true);
+        try {
+            const res = await validateCustomTone(trimmed);
+            if (res.valid) {
+                setShowCustomInput(false);
+                setToneMenuVisible(false);
+                onRetranslate?.(msg.id, trimmed);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            } else {
+                triggerShake();
+            }
+        } catch {
+            triggerShake();
+        } finally {
+            setCustomToneLoading(false);
+        }
     };
 
     return (
@@ -224,7 +269,7 @@ function ChatBubble({
                     const isError = tr.text === '(Try again)';
                     return (
                         <View key={idx}>
-                            {idx > 0 && <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />}
+                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
                             <View style={[styles.transRow, idx === 0 && { marginTop: 8 }]}>
                                 <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
                                 <Text style={styles.transLangLabel}>
@@ -271,7 +316,7 @@ function ChatBubble({
                     <>
                         <TouchableOpacity
                             style={StyleSheet.absoluteFill}
-                            onPress={() => setToneMenuVisible(false)}
+                            onPress={() => { setToneMenuVisible(false); setShowCustomInput(false); setCustomToneInput(''); }}
                         />
                         <BlurView
                             intensity={50}
@@ -300,6 +345,30 @@ function ChatBubble({
                                         </View>
                                     </TouchableOpacity>
                                 ))}
+                                {showCustomInput && (
+                                    <View style={[styles.customToneRow, { paddingHorizontal: 10, paddingBottom: 8 }]}>
+                                        <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+                                            <TextInput
+                                                style={[styles.customToneInput, isDarkMode && styles.customToneInputDark]}
+                                                placeholder="e.g. poetic, baby talk..."
+                                                placeholderTextColor="#94A3B8"
+                                                value={customToneInput}
+                                                onChangeText={setCustomToneInput}
+                                                autoFocus
+                                                onSubmitEditing={handleCustomToneSubmit}
+                                            />
+                                        </Animated.View>
+                                        <TouchableOpacity
+                                            style={[styles.menuItem, { justifyContent: 'center', opacity: customToneLoading ? 0.5 : 1 }]}
+                                            onPress={handleCustomToneSubmit}
+                                            disabled={customToneLoading}
+                                        >
+                                            <Text style={[styles.menuText, { color: '#3B82F6' }]}>
+                                                {customToneLoading ? 'Validating...' : 'Apply Custom Tone'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </ScrollView>
                         </BlurView>
                     </>
@@ -336,6 +405,8 @@ export default function ConversationScreen() {
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const tts = useTextToSpeech();
+    const deviceIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => { getDeviceId().then(id => { deviceIdRef.current = id; }); }, []);
 
     // Snackbar / Toast state
     const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -378,7 +449,8 @@ export default function ConversationScreen() {
 
         try {
             const targets = msg.translations.map(t => t.lang);
-            const res = await refineTranslation(msg.text, msg.lang, targets, newTone);
+            const sourceText = msg.originalText || msg.text;
+            const res = await refineTranslation(sourceText, msg.lang, targets, newTone);
 
             setMessages(prev => prev.map(m => {
                 if (m.id === msgId) {
@@ -578,7 +650,7 @@ export default function ConversationScreen() {
         if (speakerCount === 3) {
             participants.push({ speaker_label: 'C', preferred_language: lang2 });
         }
-        createConversation(backendMode, participants, viewMode)
+        createConversation(backendMode, participants, viewMode, deviceIdRef.current)
             .then(res => setConversationId(res.conversation_id))
             .catch(() => setConversationId(null));
     }, [viewMode]);
@@ -586,6 +658,10 @@ export default function ConversationScreen() {
     const handleViewModeChange = (mode: 'two_way' | 'three_way' | 'face_to_face') => {
         if (Platform.OS === 'ios' || Platform.OS === 'android') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
+        // Prompt 5: switching to face_to_face from three_way clears only 3-way messages
+        if (mode === 'face_to_face' && viewMode === 'three_way') {
+            setMessages((prev: Message[]) => prev.filter((m: Message) => m.mode !== 'three_way'));
         }
         setViewMode(mode);
     };
@@ -636,11 +712,13 @@ export default function ConversationScreen() {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
+                originalText: text,
                 translations,
                 speaker: activeSpeaker,
                 lang: fromLang,
                 tone: activeTone || undefined,
                 isNewMessage: true,
+                mode: viewMode,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
@@ -649,10 +727,12 @@ export default function ConversationScreen() {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
+                originalText: text,
                 translations: targetLangs.map(tl => ({ text: '(Try again)', lang: tl })),
                 speaker: activeSpeaker,
                 lang: getLang(activeSpeaker),
                 isNewMessage: true,
+                mode: viewMode,
             };
             setMessages(prev => [...prev, msg]);
             setInputText('');
@@ -684,11 +764,13 @@ export default function ConversationScreen() {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
+                originalText: text,
                 translations: [{ text: translatedText, lang: targetLang }],
                 speaker,
                 lang: fromLang,
                 tone: activeTone || undefined,
                 isNewMessage: true,
+                mode: 'face_to_face',
             };
             setMessages(prev => [...prev, msg]);
             lastMessageIdRef.current = msg.id;
@@ -696,10 +778,12 @@ export default function ConversationScreen() {
             const msg: Message = {
                 id: Date.now().toString(),
                 text,
+                originalText: text,
                 translations: [{ text: '(Try again)', lang: targetLang }],
                 speaker,
                 lang: fromLang,
                 isNewMessage: true,
+                mode: 'face_to_face',
             };
             setMessages(prev => [...prev, msg]);
         }
@@ -744,7 +828,7 @@ export default function ConversationScreen() {
                 if (viewMode === 'three_way') {
                     participants.push({ speaker_label: 'C', preferred_language: lang2 });
                 }
-                createConversation(backendMode, participants, viewMode)
+                createConversation(backendMode, participants, viewMode, deviceIdRef.current)
                     .then(res => setConversationId(res.conversation_id))
                     .catch(() => setConversationId(null));
             },
@@ -1084,7 +1168,13 @@ export default function ConversationScreen() {
                                 ]}
                                 onPress={() => {
                                     if (activeSpeaker === i) {
-                                        setPickerFor(i);
+                                        const isLanguageLocked = viewMode === 'three_way' && messages.length > 0;
+                                        if (isLanguageLocked) {
+                                            setSnackbarMessage('Delete the chat to change language');
+                                            setSnackbarVisible(true);
+                                        } else {
+                                            setPickerFor(i);
+                                        }
                                     } else {
                                         setActiveSpeaker(i);
                                     }
@@ -1394,7 +1484,7 @@ const styles = StyleSheet.create({
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     // ── Shared bubble styles ──
-    msgRow: { marginBottom: 10, maxWidth: '85%' },
+    msgRow: { marginBottom: 10, maxWidth: '78%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
     msgRight: { alignSelf: 'flex-end' },
@@ -1402,7 +1492,7 @@ const styles = StyleSheet.create({
     bubble: {
         padding: 14,
         borderRadius: 22,
-        overflow: 'hidden',
+        overflow: 'visible',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
     },
@@ -1508,8 +1598,6 @@ const styles = StyleSheet.create({
         gap: 12,
         marginTop: 6,
         paddingTop: 6,
-        borderTopWidth: 0.5,
-        borderTopColor: 'rgba(255,255,255,0.2)',
     },
     utilityBtn: {
         padding: 4,
@@ -1825,7 +1913,6 @@ const styles = StyleSheet.create({
     glassModalContainer: {
         margin: 20,
         borderRadius: 28,
-        overflow: 'hidden',
     },
     glassModalBlur: {
         padding: 24,

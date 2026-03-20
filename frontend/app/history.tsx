@@ -55,8 +55,8 @@ interface Section {
 
 const TYPE_BADGE: Record<string, { label: string; color: string }> = {
     text: { label: 'Text', color: '#007AFF' },
-    ocr:  { label: 'OCR',  color: '#5856D6' },
-    chat: { label: 'Chat', color: '#34C759' },
+    ocr:  { label: 'OCR',  color: '#FF3B30' },
+    chat: { label: 'Chat', color: '#FF9500' },
 };
 
 function formatTimestamp(ts: string): string {
@@ -188,7 +188,6 @@ export default function HistoryScreen() {
         const isFav = item.outputs?.some(o => o.is_favorite) ?? false;
         const timestamp = formatTimestamp(item.timestamp);
         const srcLangName = SUPPORTED_LANGUAGES[item.input_language] || item.input_language.toUpperCase();
-        const tgtLangName = firstOutput ? (SUPPORTED_LANGUAGES[firstOutput.target_language] || firstOutput.target_language.toUpperCase()) : '';
 
         return (
             <TouchableOpacity onPress={() => setDetailItem(item)} activeOpacity={0.85}>
@@ -218,20 +217,23 @@ export default function HistoryScreen() {
                         {item.input_text}
                     </Text>
 
-                    {/* Output */}
-                    {firstOutput && (
-                        <>
-                            <Text style={[styles.tgtLangLabel, isDarkMode && { color: '#818CF8' }]}>
-                                {tgtLangName.toUpperCase()}
-                            </Text>
-                            <Text
-                                style={[styles.transText, isDarkMode && styles.textSecondary]}
-                                numberOfLines={1}
-                            >
-                                {firstOutput.output_text}
-                            </Text>
-                        </>
-                    )}
+                    {/* All Outputs */}
+                    {item.outputs?.map((output) => {
+                        const langName = SUPPORTED_LANGUAGES[output.target_language] || output.target_language.toUpperCase();
+                        return (
+                            <React.Fragment key={output.output_id}>
+                                <Text style={[styles.tgtLangLabel, isDarkMode && { color: '#818CF8' }]}>
+                                    {langName.toUpperCase()}
+                                </Text>
+                                <Text
+                                    style={[styles.transText, isDarkMode && styles.textSecondary]}
+                                    numberOfLines={1}
+                                >
+                                    {output.output_text}
+                                </Text>
+                            </React.Fragment>
+                        );
+                    })}
 
                     {/* Bottom row: fav + delete */}
                     <View style={styles.cardActions}>
@@ -657,7 +659,7 @@ const styles = StyleSheet.create({
     },
 
     /* Confirmation Modal */
-    glassModalContainer: { margin: 20, borderRadius: 28, overflow: 'hidden' },
+    glassModalContainer: { margin: 20, borderRadius: 28 },
     glassModalBlur: { padding: 24 },
     modalTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 8, textAlign: 'center' },
     modalSubtitle: { fontSize: 14, lineHeight: 20, color: '#64748B', marginBottom: 24, textAlign: 'center' },

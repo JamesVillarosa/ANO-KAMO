@@ -2,6 +2,7 @@
 Conversation Endpoints — Session management + messages with tone detection
 """
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import logging
@@ -152,6 +153,27 @@ async def refine_message(
         new_tone=request.new_tone,
     )
     return result
+
+
+class ValidateToneRequest(BaseModel):
+    tone: str
+
+
+@router.post("/tone/validate")
+async def validate_custom_tone(request: ValidateToneRequest):
+    """Validate a custom tone string for use in translation."""
+    tone = request.tone.strip()
+    if not tone:
+        return {"valid": False, "message": "Tone cannot be empty"}
+    if len(tone) > 60:
+        return {"valid": False, "message": "Tone must be 60 characters or less"}
+    if len(tone.split()) > 8:
+        return {"valid": False, "message": "Please use fewer words for the tone"}
+    # Basic sanity: tone should be descriptive, not a sentence
+    blocked = ['translate', 'ignore', 'system', 'prompt', 'instruction']
+    if any(w in tone.lower() for w in blocked):
+        return {"valid": False, "message": "Not a valid tone"}
+    return {"valid": True}
 
 
 # Legacy endpoint for simple conversation turns (no session)

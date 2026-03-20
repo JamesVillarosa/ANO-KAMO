@@ -8,11 +8,13 @@ export interface Translation {
 export interface Message {
     id: string;
     text: string;
+    originalText?: string; // Prompt 3: original input before toning
     translations: Translation[];
     speaker: number;
     lang: string;
     tone?: string; // Phase 6.1: bubble-specific tone
     isNewMessage?: boolean; // Track if this is a new message (for auto-TTS)
+    mode?: string; // Prompt 5: which view mode this message was created in
 }
 
 interface ConversationContextProps {
