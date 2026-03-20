@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
     StyleSheet,
     View,
@@ -129,6 +130,13 @@ export default function HistoryScreen() {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // Re-fetch every time the tab comes into focus so new translations appear immediately
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [fetchData])
+    );
 
     const handleToggleFav = async (outputId: string) => {
         try {

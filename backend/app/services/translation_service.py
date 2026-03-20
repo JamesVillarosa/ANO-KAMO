@@ -3,6 +3,7 @@ Translation Service — AI Translations via Google Gemini
 Uses direct Gemini REST API (v1beta) for reliability.
 Model: gemini-2.5-flash-lite (fast, cheap, accurate for Filipino languages)
 """
+import hashlib
 import json
 import logging
 import traceback
@@ -86,15 +87,57 @@ TONE_STRATEGIES: dict[str, str] = {
 }
 
 SYSTEM_INSTRUCTION = (
-    "You are Ano-Kamo?, a Filipino-language translator. "
-    'Reply ONLY with a JSON object: {"t":"<translated text>","tone":"<detected tone>"}. '
-    "Tones: neutral, formal, respectful, casual, street, taglish, bisaya_casual, hiligaynon_casual, playful, sarcastic, angry, urgent. "
-    "Rules: natural culturally-appropriate translation; handle Taglish/code-switching; "
-    "preserve idiom meaning; never translate literally; no explanations."
+    "You are a precise Filipino language translator.\n\n"
+    "ABSOLUTE RULES — never break these under any circumstance:\n"
+    "1. Output ONLY a JSON object: {\"t\":\"<translated text>\",\"tone\":\"<detected tone>\"}. Nothing else.\n"
+    "   No explanations, no alternatives, no notes, no markdown, no quotation marks around the output.\n"
+    "2. Translate into EXACTLY the specified target language.\n"
+    "   If target is Cebuano, output ONLY Cebuano.\n"
+    "   If target is Hiligaynon, output ONLY Hiligaynon.\n"
+    "   If target is Tagalog, output ONLY Tagalog.\n"
+    "   If target is English, output ONLY English.\n"
+    "3. Do not mix languages in the output unless the tone is explicitly 'taglish'.\n"
+    "4. Preserve the exact meaning — do not add, remove, or alter any meaning from the source text.\n"
+    "5. For Cebuano: use authentic Bisaya vocabulary. Do not substitute Tagalog words.\n"
+    "6. For Hiligaynon: use authentic Ilonggo vocabulary. Do not substitute Cebuano or Tagalog words.\n"
+    "7. Never invent content not present in the source text.\n"
+    "8. If a word has no direct translation, keep the original word — do not substitute random words.\n"
+    "9. The output language must match the target language.\n"
+    "Tones: neutral, formal, respectful, casual, street, taglish, bisaya_casual, hiligaynon_casual, playful, sarcastic, angry, urgent."
 )
+
+# Language markers for output validation
+LANGUAGE_MARKERS = {
+    "tl": ["ang", "ng", "mga", "sa", "ay", "na", "ko", "mo", "niya", "kami", "sila", "hindi", "ito"],
+    "ceb": ["nga", "ko", "ni", "kamo", "siya", "ako", "nako", "nato", "wala", "dili", "kini", "kanato"],
+    "hil": ["ang", "sang", "nga", "ko", "ikaw", "siya", "kita", "indi", "wala", "ini", "sina", "naton"],
+    "en": ["the", "is", "are", "was", "were", "and", "that", "this", "have", "for", "not", "with"],
+}
+
+
+def _validate_output_language(text: str, target_lang: str) -> bool:
+    """Check if translated text contains expected language markers."""
+    markers = LANGUAGE_MARKERS.get(target_lang, [])
+    if not markers:
+        return True
+    text_lower = text.lower()
+    matches = sum(1 for m in markers if f" {m} " in f" {text_lower} ")
+    return matches >= 2
 
 MODEL = "gemini-2.5-flash-lite"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+# In-memory translation cache: same input → same output within a session
+_translation_cache: dict[str, str] = {}
+
+
+def _make_cache_key(source_lang: str, target_lang: str, tone: Optional[str], text: str) -> str:
+    normalized = " ".join(text.lower().strip().split())
+    payload = json.dumps(
+        {"sl": source_lang, "tl": target_lang, "tone": tone or "", "text": normalized},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 class TranslationService:
@@ -134,6 +177,21 @@ class TranslationService:
             }
 
         try:
+            # Check in-memory cache first
+            cache_key = _make_cache_key(source_lang, target_lang, tone, text)
+            if cache_key in _translation_cache:
+                cached_text = _translation_cache[cache_key]
+                logger.info(f"Cache hit for {source_lang}→{target_lang}")
+                detected = TranslationService._heuristic_tone(text)
+                return {
+                    "input_text": text,
+                    "source_lang": source_lang,
+                    "target_lang": target_lang,
+                    "output_text": cached_text,
+                    "tone": tone or detected,
+                    "detected_tone": detected,
+                }
+
             src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
             tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
@@ -166,34 +224,70 @@ class TranslationService:
                     {"parts": [{"text": prompt}]}
                 ],
                 "generationConfig": {
-                    "temperature": 0.2,
+                    "temperature": 0.0,
+                    "top_p": 1,
+                    "top_k": 1,
                     "maxOutputTokens": 256,
                     "responseMimeType": "application/json",
                 },
             }
 
-            with httpx.Client(timeout=15.0) as client:
-                response = client.post(url, json=payload)
+            def _call_gemini(payload_data):
+                with httpx.Client(timeout=15.0) as client:
+                    resp = client.post(url, json=payload_data)
+                if resp.status_code != 200:
+                    raise Exception(f"API {resp.status_code}: {resp.text[:200]}")
+                raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                logger.info(f"Gemini raw response: {raw_text}")
+                parsed_data = _parse_response(raw_text)
+                t_text = parsed_data.get("t", "")
+                if not t_text:
+                    t_text = raw_text
+                    logger.warning(f"No 't' key in parsed response, using raw: {raw_text}")
+                tone_val = parsed_data.get("tone", "neutral")
+                if tone_val not in AVAILABLE_TONES:
+                    tone_val = "neutral"
+                return t_text, tone_val
 
-            if response.status_code != 200:
-                error_body = response.text
-                logger.error(f"Gemini API error {response.status_code}: {error_body[:300]}")
-                raise Exception(f"API {response.status_code}: {error_body[:200]}")
+            translated, detected = _call_gemini(payload)
 
-            result = response.json()
-            raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-            logger.info(f"Gemini raw response: {raw}")
+            # Validate output language; retry once if wrong language detected
+            tgt_name = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
+            if not _validate_output_language(translated, target_lang):
+                logger.warning(f"Output language validation failed for {target_lang}, retrying...")
+                retry_prompt = (
+                    f"Translate the following text into {tgt_name} ONLY. "
+                    f"Output exclusively in {tgt_name}.\nSource text: {text}"
+                )
+                retry_payload = {
+                    "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
+                    "contents": [{"parts": [{"text": f"{src}→{tgt}|{retry_prompt}"}]}],
+                    "generationConfig": {"temperature": 0.0, "top_p": 1, "top_k": 1, "maxOutputTokens": 256, "responseMimeType": "application/json"},
+                }
+                try:
+                    translated, detected = _call_gemini(retry_payload)
+                except Exception as retry_err:
+                    logger.warning(f"Retry also failed: {retry_err}")
 
-            parsed = _parse_response(raw)
-            translated = parsed.get("t", "")
-            detected = parsed.get("tone", "neutral")
+            # Also retry if output is identical to source (no translation happened)
+            if translated.strip().lower() == text.strip().lower() and source_lang != target_lang:
+                logger.warning("Output identical to source, retrying...")
+                retry_prompt = (
+                    f"Translate the following text into {tgt_name} ONLY. "
+                    f"Output exclusively in {tgt_name}.\nSource text: {text}"
+                )
+                retry_payload = {
+                    "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
+                    "contents": [{"parts": [{"text": f"{src}→{tgt}|{retry_prompt}"}]}],
+                    "generationConfig": {"temperature": 0.0, "top_p": 1, "top_k": 1, "maxOutputTokens": 256, "responseMimeType": "application/json"},
+                }
+                try:
+                    translated, detected = _call_gemini(retry_payload)
+                except Exception as retry_err:
+                    logger.warning(f"Identity retry also failed: {retry_err}")
 
-            if not translated:
-                translated = raw
-                logger.warning(f"No 't' key in parsed response, using raw: {raw}")
-
-            if detected not in AVAILABLE_TONES:
-                detected = "neutral"
+            # Store in cache
+            _translation_cache[cache_key] = translated
 
             return {
                 "input_text": text,

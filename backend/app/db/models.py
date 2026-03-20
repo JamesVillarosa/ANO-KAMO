@@ -206,6 +206,16 @@ class CommunitySubmission(Base):
     device = relationship("Device", back_populates="community_submissions")
 
 
+# ──────────────────────────── TRANSLATION CACHE ─────────────────
+class TranslationCache(Base):
+    __tablename__ = "translation_cache"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    cache_key = Column(String(64), unique=True, index=True, nullable=False)
+    translated_text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ──────────────────────────── TRANSLATION FEEDBACK ──────────────
 class TranslationFeedback(Base):
     __tablename__ = "translation_feedback"

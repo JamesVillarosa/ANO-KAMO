@@ -12,6 +12,7 @@ from app.db.models import (
     OcrRequest, OcrText,
     DictionaryEntry, DictionaryLookup,
     CommunitySubmission, TranslationFeedback,
+    TranslationCache,
 )
 
 
@@ -344,6 +345,27 @@ def get_feedback_counts(db: Session, translation_id: str) -> dict:
         TranslationFeedback.feedback_type == "dislike",
     ).count()
     return {"likes": likes, "dislikes": dislikes}
+
+
+# ──────────────────── Translation Cache ─────────
+def get_cache_entry(db: Session, cache_key: str) -> Optional[TranslationCache]:
+    return db.query(TranslationCache).filter(TranslationCache.cache_key == cache_key).first()
+
+
+def set_cache_entry(db: Session, cache_key: str, translated_text: str) -> TranslationCache:
+    entry = TranslationCache(cache_key=cache_key, translated_text=translated_text)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+def evict_old_cache(db: Session, days: int = 30) -> int:
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    count = db.query(TranslationCache).filter(TranslationCache.created_at < cutoff).delete()
+    db.commit()
+    return count
 
 
 # ──────────────────── Evolution Loop ────────────

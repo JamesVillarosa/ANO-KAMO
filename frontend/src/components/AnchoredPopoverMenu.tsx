@@ -28,7 +28,10 @@ interface AnchoredPopoverMenuProps {
     isDarkMode?: boolean;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const POPUP_WIDTH = 200;
+const POPUP_MARGIN = 8;
+const CARET_HALF = 8;
 
 export default function AnchoredPopoverMenu({
     visible,
@@ -38,19 +41,16 @@ export default function AnchoredPopoverMenu({
     isDarkMode = false,
 }: AnchoredPopoverMenuProps) {
     const [position, setPosition] = useState<'above' | 'below'>('above');
-    const menuHeight = items.length * 48 + 16; // Estimate menu height
+    const menuHeight = items.length * 48 + 16;
 
     useEffect(() => {
-        // Determine if menu should appear above or below anchor
         const spaceAbove = anchorPosition.y;
         const spaceBelow = SCREEN_HEIGHT - (anchorPosition.y + anchorPosition.height);
-
         if (spaceAbove >= menuHeight + 8) {
             setPosition('above');
         } else if (spaceBelow >= menuHeight + 8) {
             setPosition('below');
         } else {
-            // Default to above if neither fits perfectly
             setPosition(spaceAbove > spaceBelow ? 'above' : 'below');
         }
     }, [anchorPosition, menuHeight]);
@@ -61,7 +61,15 @@ export default function AnchoredPopoverMenu({
         ? anchorPosition.y - menuHeight - 8
         : anchorPosition.y + anchorPosition.height + 8;
 
-    const menuRight = Dimensions.get('window').width - anchorPosition.x - anchorPosition.width;
+    // Right-anchor: align popup's right edge with button's right edge, then clamp
+    const buttonRightEdge = anchorPosition.x + anchorPosition.width;
+    const idealLeft = buttonRightEdge - POPUP_WIDTH;
+    const menuLeft = Math.max(POPUP_MARGIN, Math.min(SCREEN_WIDTH - POPUP_WIDTH - POPUP_MARGIN, idealLeft));
+
+    // Caret: center it over the button
+    const buttonCenterX = anchorPosition.x + anchorPosition.width / 2;
+    const rawCaretLeft = buttonCenterX - menuLeft - CARET_HALF;
+    const caretLeft = Math.max(8, Math.min(POPUP_WIDTH - 24, rawCaretLeft));
 
     return (
         <Modal
@@ -78,10 +86,7 @@ export default function AnchoredPopoverMenu({
                 <View
                     style={[
                         styles.menuContainer,
-                        {
-                            top: menuTop,
-                            right: menuRight,
-                        },
+                        { top: menuTop, left: menuLeft },
                     ]}
                 >
                     <BlurView
@@ -114,13 +119,13 @@ export default function AnchoredPopoverMenu({
                         ))}
                     </BlurView>
 
-                    {/* Caret triangle */}
+                    {/* Caret triangle — points down toward the button */}
                     <View
                         style={[
                             styles.caret,
                             position === 'above' ? styles.caretDown : styles.caretUp,
                             {
-                                right: 16,
+                                left: caretLeft,
                                 [position === 'above' ? 'bottom' : 'top']: -8,
                             },
                         ]}
@@ -142,8 +147,7 @@ export default function AnchoredPopoverMenu({
 const styles = StyleSheet.create({
     menuContainer: {
         position: 'absolute',
-        minWidth: 200,
-        maxWidth: 280,
+        width: 200,
         borderRadius: 16,
         overflow: 'visible',
         ...Platform.select({

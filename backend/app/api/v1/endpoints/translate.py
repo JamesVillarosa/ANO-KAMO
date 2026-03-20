@@ -76,6 +76,7 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
             method="text",
             multi_target=False,
             device_id=request.device_id,
+            translation_type="text",
         )
         translation_id = t.translation_id
         create_translation_output(
@@ -154,6 +155,7 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
             method="text",
             multi_target=True,
             device_id=request.device_id,
+            translation_type="text",
         )
         translation_id = t.translation_id
         for lang, text_out in zip(request.target_langs, result["output_texts"]):

@@ -91,9 +91,11 @@ start_ngrok() {
 start_frontend() {
     echo "Starting Frontend..."
     cd "$FRONTEND_DIR" || exit
-    # Use tunnel mode for different Wi-Fi networks
-    # Add --max-workers 1 to reduce connection issues
-    npx expo start --tunnel --max-workers 1
+    # --tunnel: exposes dev server via ngrok for different Wi-Fi / external devices
+    # EXPO_USE_FAST_REFRESH=true: enables Fast Refresh so saved changes auto-reflect
+    #   on Expo Go (iPhone) without restarting the app.
+    #   You can also shake the phone → Reload, or press 'r' in this terminal.
+    EXPO_USE_FAST_REFRESH=true npx expo start --tunnel
 }
 
 # Execution

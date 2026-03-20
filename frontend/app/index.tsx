@@ -34,6 +34,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { translateSingle, submitFeedback } from '../src/lib/api';
+import { getDeviceId } from '../src/utils/device';
 import {
   gradientColors,
   darkGradientColors,
@@ -76,6 +77,12 @@ export default function HomeScreen() {
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
 
+  // Device ID for history tracking
+  const deviceIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    getDeviceId().then(id => { deviceIdRef.current = id; });
+  }, []);
+
   // Track what changed to avoid unnecessary re-translations (PROMPT 7)
   const prevSourceTextRef = useRef('');
   const prevSourceLangRef = useRef(sourceLang);
@@ -113,6 +120,46 @@ export default function HomeScreen() {
   const [dictSourceLang, setDictSourceLang] = useState('');
   const [dictTargetLang, setDictTargetLang] = useState('');
   const [breakdownVisible, setBreakdownVisible] = useState(false);
+
+  // Input ref for focus after clearing
+  const inputRef = useRef<any>(null);
+  // Guard to skip auto-clear on initial mount
+  const isFirstSourceLangRender = useRef(true);
+  // Debounce ref so we can cancel pending translation on source lang change
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // PROMPT 6: Auto-resolve language conflicts (safety net for swaps / mode changes)
+  useEffect(() => {
+    if (targetLang1 === sourceLang) {
+      const fallback = Object.keys(SUPPORTED_LANGUAGES).find(
+        code => code !== sourceLang && (mode !== '3way' || code !== targetLang2)
+      );
+      if (fallback) setTargetLang1(fallback);
+    }
+    if (mode === '3way' && (targetLang2 === sourceLang || targetLang2 === targetLang1)) {
+      const fallback = Object.keys(SUPPORTED_LANGUAGES).find(
+        code => code !== sourceLang && code !== targetLang1
+      );
+      if (fallback) setTargetLang2(fallback);
+    }
+  }, [sourceLang, targetLang1, targetLang2, mode]);
+
+  // PROMPT 7: Auto-clear input when source language changes
+  useEffect(() => {
+    if (isFirstSourceLangRender.current) {
+      isFirstSourceLangRender.current = false;
+      return;
+    }
+    setSourceText('');
+    setTranslated1('');
+    setTranslated2('');
+    setTranslationId1('');
+    setTranslationId2('');
+    setFeedbackGiven1(null);
+    setFeedbackGiven2(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [sourceLang]);
 
   // Speech Recognition
   const speech = useSpeechRecognition(sourceLang);
@@ -192,7 +239,7 @@ export default function HomeScreen() {
         setLoading1(true);
         setFeedbackGiven1(null);
         try {
-          const res1 = await translateSingle(sourceText, sourceLang, targetLang1);
+          const res1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceIdRef.current);
           setTranslated1(res1.output_text || '');
           setTranslationId1(res1.translation_id || '');
         } catch (error: any) {
@@ -212,7 +259,7 @@ export default function HomeScreen() {
           setLoading2(true);
           setFeedbackGiven2(null);
           try {
-            const res2 = await translateSingle(sourceText, sourceLang, targetLang2);
+            const res2 = await translateSingle(sourceText, sourceLang, targetLang2, undefined, deviceIdRef.current);
             setTranslated2(res2.output_text || '');
             setTranslationId2(res2.translation_id || '');
           } catch (error: any) {
@@ -605,6 +652,13 @@ export default function HomeScreen() {
               pickerTarget === 'source' ? sourceLang
                 : pickerTarget === 'target1' ? targetLang1
                   : targetLang2
+            }
+            exclude={
+              pickerTarget === 'source'
+                ? (mode === '3way' ? [targetLang1, targetLang2] : [targetLang1])
+                : pickerTarget === 'target1'
+                ? (mode === '3way' ? [sourceLang, targetLang2] : [sourceLang])
+                : [sourceLang, targetLang1]
             }
           />
 

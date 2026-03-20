@@ -35,12 +35,9 @@ import {
     Settings,
     ArrowLeft,
     Sliders,
-    MoreVertical,
-    Copy,
-    RotateCw,
+    SlidersHorizontal,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as Clipboard from 'expo-clipboard';
 import { Snackbar, Portal, Modal as PaperModal } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import {
@@ -98,11 +95,10 @@ function ChatBubble({
     isSyncShimmering?: boolean;
 }) {
     const langColor = getColorForLang(msg.lang);
-    const [menuVisible, setMenuVisible] = useState(false);
-    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
     const shimmerAnim = useRef(new Animated.Value(0)).current;
     const [toneMenuVisible, setToneMenuVisible] = useState(false);
     const [toneMenuAnchor, setToneMenuAnchor] = useState({ x: 0, y: 0 });
+    const [showToneTooltip, setShowToneTooltip] = useState(false);
 
     const showShimmer = isSyncShimmering;
 
@@ -127,21 +123,13 @@ function ChatBubble({
         outputRange: [-width, width],
     });
 
-    const openMenu = (event: any) => {
-        const { pageX, pageY } = event.nativeEvent;
-        setMenuAnchor({ x: pageX - 120, y: pageY + 10 });
-        setMenuVisible(true);
-    };
-
-    const copyToClipboard = async (text: string) => {
-        await Clipboard.setStringAsync(text);
-        setMenuVisible(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    };
-
     const openToneMenu = (event: any) => {
         const { pageX, pageY } = event.nativeEvent;
-        setToneMenuAnchor({ x: pageX - 120, y: pageY + 10 });
+        const MENU_WIDTH = 240;
+        const MARGIN = 16;
+        const screenWidth = Dimensions.get('window').width;
+        const popupX = Math.max(MARGIN, Math.min(screenWidth - MENU_WIDTH - MARGIN, pageX - MENU_WIDTH / 2));
+        setToneMenuAnchor({ x: popupX, y: pageY + 10 });
         setToneMenuVisible(true);
     };
 
@@ -183,18 +171,13 @@ function ChatBubble({
                     <Text style={styles.bubbleSpeakerLabel}>
                         {SUPPORTED_LANGUAGES[msg.lang]}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        {msg.tone && (
-                            <View style={[styles.toneBadge, { backgroundColor: TONE_COLORS[msg.tone] || '#64748B' }]}>
-                                <Text style={styles.toneBadgeText}>
-                                    {TONE_LABELS[msg.tone]?.name || msg.tone}
-                                </Text>
-                            </View>
-                        )}
-                        <TouchableOpacity onPress={openMenu} style={styles.moreBtn}>
-                            <MoreVertical size={14} color="rgba(255,255,255,0.7)" />
-                        </TouchableOpacity>
-                    </View>
+                    {msg.tone && (
+                        <View style={[styles.toneBadge, { backgroundColor: TONE_COLORS[msg.tone] || '#64748B' }]}>
+                            <Text style={styles.toneBadgeText}>
+                                {TONE_LABELS[msg.tone]?.name || msg.tone}
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 <View style={styles.bubbleTextContainer}>
@@ -220,9 +203,18 @@ function ChatBubble({
                     {onRetranslate && (
                         <TouchableOpacity
                             onPress={openToneMenu}
+                            onLongPress={() => {
+                                setShowToneTooltip(true);
+                                setTimeout(() => setShowToneTooltip(false), 1500);
+                            }}
                             style={styles.utilityBtn}
                         >
-                            <RotateCw size={16} color="rgba(255,255,255,0.7)" />
+                            <SlidersHorizontal size={14} color="rgba(255,255,255,0.7)" />
+                            {showToneTooltip && (
+                                <View style={styles.toneTooltip}>
+                                    <Text style={styles.toneTooltipText}>Tone</Text>
+                                </View>
+                            )}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -232,8 +224,8 @@ function ChatBubble({
                     const isError = tr.text === '(Try again)';
                     return (
                         <View key={idx}>
-                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-                            <View style={styles.transRow}>
+                            {idx > 0 && <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />}
+                            <View style={[styles.transRow, idx === 0 && { marginTop: 8 }]}>
                                 <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
                                 <Text style={styles.transLangLabel}>
                                     {SUPPORTED_LANGUAGES[tr.lang]}
@@ -275,42 +267,6 @@ function ChatBubble({
             </View>
 
             <Portal>
-                {menuVisible && (
-                    <>
-                        <TouchableOpacity
-                            style={StyleSheet.absoluteFill}
-                            onPress={() => setMenuVisible(false)}
-                        />
-                        <BlurView
-                            intensity={30}
-                            tint={isDarkMode ? 'dark' : 'light'}
-                            style={[
-                                styles.bubbleMenu,
-                                { top: menuAnchor.y, left: menuAnchor.x },
-                                isDarkMode && styles.bubbleMenuDark
-                            ]}
-                        >
-                            <TouchableOpacity
-                                style={styles.menuItem}
-                                onPress={() => copyToClipboard(msg.translations[0]?.text || msg.text)}
-                            >
-                                <Copy size={16} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
-                                <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>Copy Text</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.menuItem}
-                                onPress={() => {
-                                    setMenuVisible(false);
-                                    tts.speak(msg.translations[0]?.text || msg.text, msg.translations[0]?.lang || msg.lang);
-                                }}
-                            >
-                                <Volume2 size={16} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
-                                <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>Speak</Text>
-                            </TouchableOpacity>
-                        </BlurView>
-                    </>
-                )}
-
                 {toneMenuVisible && (
                     <>
                         <TouchableOpacity
@@ -832,7 +788,7 @@ export default function ConversationScreen() {
                 <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
                 {/* ═══ TOP SECTION (rotated 180°) — Speaker B ═══ */}
-                <View style={[styles.f2fSection, { transform: [{ rotate: '180deg' }] }]}>
+                <View style={[styles.f2fSection, { transform: [{ rotate: '180deg' }], paddingBottom: insets.top + 8 }]}>
                     {/* Language label + picker */}
                     <TouchableOpacity
                         style={[styles.f2fLangChip, { backgroundColor: topColor.bg, borderColor: topColor.light }]}
@@ -1020,6 +976,7 @@ export default function ConversationScreen() {
                         setPickerFor(null);
                     }}
                     selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
+                    exclude={pickerFor === 0 ? [lang1] : [lang0]}
                 />
                 <WordCardModal
                     visible={dictVisible}
@@ -1271,6 +1228,13 @@ export default function ConversationScreen() {
                     setPickerFor(null);
                 }}
                 selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
+                exclude={
+                    pickerFor === 0
+                        ? (viewMode === 'three_way' ? [lang1, lang2] : [lang1])
+                        : pickerFor === 1
+                        ? (viewMode === 'three_way' ? [lang0, lang2] : [lang0])
+                        : [lang0, lang1]
+                }
             />
 
             <WordCardModal
@@ -1551,20 +1515,20 @@ const styles = StyleSheet.create({
         padding: 4,
         opacity: 0.8,
     },
-    bubbleMenu: {
+    toneTooltip: {
         position: 'absolute',
-        width: 140,
-        borderRadius: 16,
-        padding: 4,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-        elevation: 10,
-        zIndex: 1000,
+        bottom: 22,
+        left: '50%',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        zIndex: 99,
+    },
+    toneTooltipText: {
+        color: '#FFF',
+        fontSize: 10,
+        fontWeight: '600',
     },
     bubbleMenuDark: {
         backgroundColor: 'rgba(30, 41, 59, 0.9)',
@@ -1607,9 +1571,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: '#1E293B',
-    },
-    moreBtn: {
-        padding: 4,
     },
 
     // ── Input Bar (Standard mode) ──
