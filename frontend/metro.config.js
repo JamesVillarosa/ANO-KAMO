@@ -1,21 +1,18 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// Enable Fast Refresh and HMR explicitly
-config.resetCache = false;
+// WSL2 fix: inotify doesn't fire on /mnt/c/ (Windows NTFS) paths.
+// Disabling recrawl prevents watchman from getting stuck and falling silent.
+process.env.WATCHMAN_DISABLE_RECRAWL = '1';
+
+// Explicitly tell Metro where to watch so it doesn't miss the project root.
+config.watchFolders = [path.resolve(__dirname)];
 
 config.transformer = {
   ...config.transformer,
-  minifierConfig: {
-    keep_classnames: true,
-    keep_fnames: true,
-    mangle: {
-      keep_classnames: true,
-      keep_fnames: true,
-    },
-  },
   getTransformOptions: async () => ({
     transform: {
       experimentalImportSupport: false,
@@ -24,7 +21,6 @@ config.transformer = {
   }),
 };
 
-// Ensure HMR and Fast Refresh work properly
 config.server = {
   ...config.server,
   port: 8081,
