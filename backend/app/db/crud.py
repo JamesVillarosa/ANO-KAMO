@@ -46,11 +46,13 @@ def create_translation(
     method: str = "text",
     multi_target: bool = False,
     device_id: str = None,
+    translation_type: str = "text",
 ) -> Translation:
     t = Translation(
         input_text=input_text,
         input_language=input_language,
         method=method,
+        translation_type=translation_type,
         multi_target=multi_target,
         device_id=device_id,
     )

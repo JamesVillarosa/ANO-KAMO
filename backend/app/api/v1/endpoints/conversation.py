@@ -4,11 +4,15 @@ Conversation Endpoints — Session management + messages with tone detection
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+import logging
 from app.db.crud import (
     create_conversation, get_conversation,
     add_message, get_messages,
     get_or_create_tone,
+    create_translation, create_translation_output,
 )
+
+logger = logging.getLogger(__name__)
 from app.db.session import get_db
 from app.db.schemas import (
     ConversationCreateRequest, ConversationResponse,
@@ -80,6 +84,27 @@ async def send_message(
         language=request.language,
         tone_id=tone_record.tone_id,
     )
+
+    # Also save to translation history so it appears in the History screen
+    try:
+        t = create_translation(
+            db,
+            input_text=request.text,
+            input_language=request.language,
+            method="text",
+            multi_target=False,
+            device_id=conv.device_id,
+            translation_type="chat",
+        )
+        create_translation_output(
+            db,
+            translation_id=t.translation_id,
+            target_language=request.target_lang,
+            output_text=result["output_text"],
+            detected_tone=tone_to_use,
+        )
+    except Exception as e:
+        logger.warning(f"Chat history save skipped: {e}")
 
     return {
         "message_id": msg.message_id,

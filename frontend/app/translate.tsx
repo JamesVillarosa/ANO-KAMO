@@ -35,6 +35,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { translateSingle, submitFeedback } from '../src/lib/api';
+import { getDeviceId } from '../src/utils/device';
 import {
     gradientColors,
     darkGradientColors,
@@ -80,6 +81,10 @@ export default function TranslateScreen() {
     const [feedbackGiven2, setFeedbackGiven2] = useState<'like' | 'dislike' | null>(null);
     const [showMenu1, setShowMenu1] = useState(false);
     const [showMenu2, setShowMenu2] = useState(false);
+    const menuRef1 = useRef<any>(null);
+    const menuRef2 = useRef<any>(null);
+    const [menuPos1, setMenuPos1] = useState({ top: 0, right: 20 });
+    const [menuPos2, setMenuPos2] = useState({ top: 0, right: 20 });
     const [refineModal, setRefineModal] = useState<{ visible: boolean; translationId: string; originalText: string; target: 1 | 2 }>({
         visible: false, translationId: '', originalText: '', target: 1,
     });
@@ -146,8 +151,9 @@ export default function TranslateScreen() {
             setLoading1(true);
             setFeedbackGiven1(null);
             setFeedbackGiven2(null);
+            const deviceId = await getDeviceId().catch(() => undefined);
             try {
-                const r1 = await translateSingle(sourceText, sourceLang, targetLang1);
+                const r1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceId);
                 setTranslated1(r1.output_text || '');
                 setTranslationId1(r1.translation_id || '');
             } catch {
@@ -158,7 +164,7 @@ export default function TranslateScreen() {
             if (mode === '3way') {
                 setLoading2(true);
                 try {
-                    const r2 = await translateSingle(sourceText, sourceLang, targetLang2);
+                    const r2 = await translateSingle(sourceText, sourceLang, targetLang2, undefined, deviceId);
                     setTranslated2(r2.output_text || '');
                     setTranslationId2(r2.translation_id || '');
                 } catch {
@@ -314,7 +320,26 @@ export default function TranslateScreen() {
                 <View style={{ flex: 1 }} />
 
                 <View>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => setShowMenu(!showMenu)}>
+                    <TouchableOpacity
+                        ref={target === 1 ? menuRef1 : menuRef2}
+                        style={styles.actionBtn}
+                        onPress={() => {
+                            const ref = target === 1 ? menuRef1 : menuRef2;
+                            const setPos = target === 1 ? setMenuPos1 : setMenuPos2;
+                            if (ref.current) {
+                                ref.current.measure((_x: number, _y: number, w: number, _h: number, pageX: number, pageY: number) => {
+                                    const screenWidth = Dimensions.get('window').width;
+                                    setPos({
+                                        top: pageY - 92, // popup height ~88px + 4px gap, so appear above button
+                                        right: screenWidth - (pageX + w),
+                                    });
+                                    setShowMenu(!showMenu);
+                                });
+                            } else {
+                                setShowMenu(!showMenu);
+                            }
+                        }}
+                    >
                         <MoreHorizontal size={18} color={isDarkMode ? '#64748B' : '#94A3B8'} />
                     </TouchableOpacity>
                     {showMenu && (
@@ -324,8 +349,8 @@ export default function TranslateScreen() {
                                 onPress={() => setShowMenu(false)}
                             >
                                 <View style={[styles.popoverMenu, isDarkMode && styles.popoverMenuDark, {
-                                    top: Dimensions.get('window').height / 2, // Approximation
-                                    right: 20
+                                    top: (target === 1 ? menuPos1 : menuPos2).top,
+                                    right: (target === 1 ? menuPos1 : menuPos2).right,
                                 }]}>
                                     <TouchableOpacity
                                         style={styles.popoverItem}
@@ -347,6 +372,8 @@ export default function TranslateScreen() {
                                     >
                                         <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest a Translation</Text>
                                     </TouchableOpacity>
+                                    {/* Caret pointing down toward the button */}
+                                    <View style={[styles.popoverCaret, isDarkMode && styles.popoverCaretDark]} />
                                 </View>
                             </TouchableOpacity>
                         </Portal>
@@ -843,12 +870,11 @@ const styles = StyleSheet.create({
     },
     popoverMenu: {
         position: 'absolute',
-        right: 0,
-        top: 38,
         backgroundColor: '#FFF',
         borderRadius: 14,
         paddingVertical: 4,
-        minWidth: 200,
+        paddingBottom: 16,
+        minWidth: 210,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.15,
@@ -878,6 +904,22 @@ const styles = StyleSheet.create({
         height: 1,
         backgroundColor: 'rgba(0,0,0,0.05)',
         marginHorizontal: 8,
+    },
+    popoverCaret: {
+        position: 'absolute',
+        bottom: -8,
+        right: 8,
+        width: 0,
+        height: 0,
+        borderLeftWidth: 8,
+        borderRightWidth: 8,
+        borderTopWidth: 8,
+        borderLeftColor: 'transparent',
+        borderRightColor: 'transparent',
+        borderTopColor: '#FFF',
+    },
+    popoverCaretDark: {
+        borderTopColor: '#1E293B',
     },
 
     /* Modal Overlay */

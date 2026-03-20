@@ -4,7 +4,6 @@ import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import {
-    User,
     Moon,
     ChevronRight,
     Heart,
@@ -105,22 +104,16 @@ export default function SettingsScreen() {
             <LinearGradient colors={[...activeGradient]} style={styles.bg} />
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-                {/* Profile Card */}
+                {/* App Logo Header */}
                 <BlurView
                     intensity={isDarkMode ? 30 : 50}
                     tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.profileCard, isDarkMode ? darkGlassCard : glassCard]}
+                    style={[styles.logoCard, isDarkMode ? darkGlassCard : glassCard]}
                 >
-                    <View style={[styles.avatar, isDarkMode && styles.avatarDark]}>
-                        <User size={32} color="#3B82F6" />
-                    </View>
-                    <View style={styles.profileInfo}>
-                        <Text style={[styles.profileName, isDarkMode && styles.textWhite]}>Guest User</Text>
-                        <Text style={[styles.profileEmail, isDarkMode && styles.textSecondary]}>guest@ano-kamo.dev</Text>
-                    </View>
-                    <TouchableOpacity style={[styles.editBtn, isDarkMode && styles.editBtnDark]}>
-                        <Text style={styles.editBtnText}>Edit</Text>
-                    </TouchableOpacity>
+                    <Text style={[styles.logoTitle, isDarkMode && styles.textWhite]}>ANO-KAMO?</Text>
+                    <Text style={[styles.logoTagline, isDarkMode && styles.textSecondary]}>
+                        AI-Powered Filipino Translation
+                    </Text>
                 </BlurView>
 
                 {/* Preferences */}
@@ -365,36 +358,27 @@ const styles = StyleSheet.create({
     bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     scroll: { paddingTop: 100, paddingHorizontal: 20, paddingBottom: 40 },
 
-    /* Profile */
-    profileCard: {
-        flexDirection: 'row',
+    /* Logo Header */
+    logoCard: {
         alignItems: 'center',
-        padding: 18,
+        paddingVertical: 24,
+        paddingHorizontal: 20,
         marginBottom: 24,
         overflow: 'hidden',
     },
-    avatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    logoTitle: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: '#1E293B',
+        letterSpacing: 2,
+        textTransform: 'uppercase',
     },
-    avatarDark: { backgroundColor: 'rgba(59, 130, 246, 0.15)' },
-    profileInfo: { flex: 1, marginLeft: 14 },
-    profileName: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
-    profileEmail: { fontSize: 13, color: '#64748B', marginTop: 2 },
-    editBtn: {
-        backgroundColor: 'rgba(255,255,255,0.4)',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
+    logoTagline: {
+        fontSize: 13,
+        color: '#64748B',
+        marginTop: 6,
+        letterSpacing: 0.5,
     },
-    editBtnDark: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' },
-    editBtnText: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
 
     /* Section */
     sectionLabel: {

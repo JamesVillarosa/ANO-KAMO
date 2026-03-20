@@ -30,6 +30,7 @@ async def get_history(
             "input_text": t.input_text,
             "input_language": t.input_language,
             "method": t.method,
+            "translation_type": t.translation_type or "text",
             "multi_target": t.multi_target,
             "timestamp": t.timestamp,
             "outputs": [

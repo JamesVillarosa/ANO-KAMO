@@ -44,6 +44,7 @@ import {
 import { useTheme } from '../src/context/ThemeContext';
 import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES, LANGUAGE_COLORS } from '../src/theme';
 import { ocrScanTranslate, ocrProcessFull } from '../src/lib/api';
+import { getDeviceId } from '../src/utils/device';
 import LanguagePicker from '../src/components/LanguagePicker';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -180,10 +181,12 @@ export default function OCRScreen() {
         setFullOcr(null);
 
         try {
+            const deviceId = await getDeviceId();
             const result = await ocrProcessFull(
                 b64,
                 tgtLang || targetLang,
                 sourceLang,
+                deviceId,
             );
             setFullOcr(result);
         } catch (err) {

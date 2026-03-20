@@ -54,6 +54,7 @@ class Translation(Base):
     input_text = Column(Text, nullable=False)
     input_language = Column(String(10), nullable=False)
     method = Column(String(10), nullable=False, default="text")   # text, voice, ocr
+    translation_type = Column(String(10), nullable=True, default="text")  # text, ocr, chat
     multi_target = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 

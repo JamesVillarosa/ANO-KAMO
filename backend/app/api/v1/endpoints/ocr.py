@@ -2,10 +2,13 @@
 OCR Endpoints — Text extraction, scanning, and full OCR processing with translation
 """
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from sqlalchemy.orm import Session
 from app.services.ocr_service import OcrService
+from app.db.session import get_db
+from app.db.crud import create_translation, create_translation_output
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,6 +55,7 @@ class OcrProcessFullRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image")
     source_lang: Optional[str] = Field(None, description="Source language code (null = auto-detect)")
     target_lang: str = Field(..., description="Target language code for translation")
+    device_id: Optional[str] = None
 
 
 class OcrFullBlock(BaseModel):
@@ -104,7 +108,7 @@ async def ocr_scan_translate(request: OcrScanTranslateRequest):
 
 
 @router.post("/ocr/process-full", response_model=OcrProcessFullResponse)
-async def ocr_process_full(request: OcrProcessFullRequest):
+async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends(get_db)):
     """
     Full OCR processing for captured/gallery images.
     Returns extracted text, translated text, and bounding box coordinates.
@@ -114,6 +118,26 @@ async def ocr_process_full(request: OcrProcessFullRequest):
         source_lang=request.source_lang,
         target_lang=request.target_lang,
     )
+    # Save extracted + translated text to history
+    if result.get("full_extracted_text"):
+        try:
+            t = create_translation(
+                db,
+                input_text=result["full_extracted_text"],
+                input_language=request.source_lang or "auto",
+                method="ocr",
+                multi_target=False,
+                device_id=request.device_id,
+                translation_type="ocr",
+            )
+            create_translation_output(
+                db,
+                translation_id=t.translation_id,
+                target_language=request.target_lang,
+                output_text=result.get("full_translated_text", ""),
+            )
+        except Exception as e:
+            logger.warning(f"OCR history save skipped: {e}")
     return result
 
 

@@ -162,6 +162,7 @@ class HistoryItemResponse(BaseModel):
     input_text: str
     input_language: str
     method: str
+    translation_type: Optional[str] = "text"
     multi_target: bool
     timestamp: datetime
     outputs: List[dict]

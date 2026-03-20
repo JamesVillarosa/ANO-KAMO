@@ -1,7 +1,7 @@
 """
 Database Session Management
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
@@ -32,5 +32,14 @@ def get_db() -> Session:
 
 
 def init_db():
-    """Initialize database - create all tables"""
+    """Initialize database - create all tables and run column migrations"""
     Base.metadata.create_all(bind=engine)
+    # Add translation_type column to existing databases that predate this column
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE translation ADD COLUMN translation_type VARCHAR(10) DEFAULT 'text'"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists

@@ -12,7 +12,9 @@ import {
     Animated,
     LayoutAnimation,
     UIManager,
+    StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -357,6 +359,7 @@ function ChatBubble({
 export default function ConversationScreen() {
     const { isDarkMode } = useTheme();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const {
         messages,
         viewMode,
@@ -1049,7 +1052,7 @@ export default function ConversationScreen() {
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
             {/* Custom Glass Header */}
-            <View style={styles.customHeader}>
+            <View style={[styles.customHeader, { top: insets.top + 10 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.customHeaderBtn}>
                     <BlurView
                         intensity={20}
@@ -1076,7 +1079,7 @@ export default function ConversationScreen() {
                 </TouchableOpacity>
             </View>
 
-            <View style={styles.headerArea}>
+            <View style={[styles.headerArea, { paddingTop: insets.top + 64 }]}>
                 {/* Mode Toggle */}
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
@@ -1768,7 +1771,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 54 : 34,
+        top: Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 10,
         left: 16,
         right: 16,
         zIndex: 10,
