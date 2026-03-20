@@ -41,6 +41,7 @@ import {
     Volume2,
     Check,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../src/context/ThemeContext';
 import {
     gradientColors,
@@ -88,6 +89,7 @@ function showToast(msg: string) {
 
 export default function OCRScreen() {
     const { isDarkMode } = useTheme();
+    const insets = useSafeAreaInsets();
     const tts = useTextToSpeech();
     const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
 
@@ -500,7 +502,7 @@ export default function OCRScreen() {
             />
 
             {/* Language selector bar */}
-            <View style={styles.langBarAbsolute}>
+            <View style={[styles.langBarAbsolute, { top: insets.top + 52 }]}>
                 <BlurView
                     intensity={50}
                     tint={isDarkMode ? 'dark' : 'light'}
@@ -665,7 +667,6 @@ const styles = StyleSheet.create({
     // Camera — language bar (absolute, above controls)
     langBarAbsolute: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 110 : 90,
         left: 16,
         right: 16,
         zIndex: 10,

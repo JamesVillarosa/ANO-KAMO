@@ -10,7 +10,7 @@ import io
 import re
 from typing import Optional, List
 
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 
 import google.generativeai as genai
@@ -29,10 +29,14 @@ TESSERACT_LANG_MAP = {
 
 # Minimum confidence threshold for Tesseract text detection
 MIN_CONFIDENCE_SCAN = 50      # For live scan (stricter to avoid noise)
-MIN_CONFIDENCE_FULL = 40      # For full OCR (slightly relaxed)
+MIN_CONFIDENCE_FULL = 55      # For full OCR (stricter to reduce noise)
 
 # Minimum character length for a valid text block
 MIN_TEXT_LENGTH = 2
+
+# Minimum block dimensions to filter tiny/noise blocks (in pixels)
+MIN_BLOCK_W = 15
+MIN_BLOCK_H = 8
 
 
 def _fix_base64_padding(b64_string: str) -> str:
@@ -251,6 +255,7 @@ class OcrService:
             fixed_b64 = _fix_base64_padding(image_base64)
             image_bytes = base64.b64decode(fixed_b64)
             image = Image.open(io.BytesIO(image_bytes))
+            image = ImageOps.exif_transpose(image)  # Fix EXIF rotation (portrait photos)
             img_width, img_height = image.size
 
             tess_lang = TESSERACT_LANG_MAP.get(source_lang or "tl", "eng+fil")
@@ -302,12 +307,17 @@ class OcrService:
                 if not _is_real_text(text):
                     continue
 
+                bw = line["x2"] - line["x"]
+                bh = line["y2"] - line["y"]
+                if bw < MIN_BLOCK_W or bh < MIN_BLOCK_H:
+                    continue
+
                 raw_blocks.append({
                     "text": text,
                     "x": line["x"],
                     "y": line["y"],
-                    "width": line["x2"] - line["x"],
-                    "height": line["y2"] - line["y"],
+                    "width": bw,
+                    "height": bh,
                     "confidence": round(avg_conf, 1),
                 })
                 all_texts.append(text)
