@@ -141,6 +141,55 @@ async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends
     return result
 
 
+class OcrTranslateBlocksRequest(BaseModel):
+    blocks: List[dict] = Field(..., description="Pre-extracted OCR blocks with text and box")
+    source_lang: str = Field("tl")
+    target_lang: str = Field("en")
+    device_id: Optional[str] = None
+
+
+class OcrTranslateBlocksResponse(BaseModel):
+    blocks: List[OcrFullBlock]
+    error: Optional[str] = None
+
+
+@router.post("/ocr/translate-blocks", response_model=OcrTranslateBlocksResponse)
+async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
+    """Translate pre-extracted OCR blocks without re-running Tesseract."""
+    if not request.blocks:
+        return {"blocks": []}
+
+    texts = [b.get("text", "") for b in request.blocks]
+
+    if request.source_lang == request.target_lang:
+        return {"blocks": [
+            {"text": b.get("text", ""), "translated_text": b.get("text", ""),
+             "box": b.get("box", [0, 0, 0, 0]), "confidence": b.get("confidence", 0)}
+            for b in request.blocks
+        ]}
+
+    try:
+        translated_texts = OcrService._batch_translate(
+            texts=texts,
+            source_lang=request.source_lang,
+            target_lang=request.target_lang,
+            context="signage, menu, label, or document",
+        )
+    except Exception as e:
+        logger.error(f"translate-blocks error: {e}")
+        translated_texts = texts[:]
+
+    result_blocks = []
+    for i, block in enumerate(request.blocks):
+        result_blocks.append({
+            "text": block.get("text", ""),
+            "translated_text": translated_texts[i] if i < len(translated_texts) else block.get("text", ""),
+            "box": block.get("box", [0, 0, 0, 0]),
+            "confidence": block.get("confidence", 0),
+        })
+    return {"blocks": result_blocks}
+
+
 @router.post("/ocr/extract")
 async def ocr_extract(request: OcrExtractRequest):
     """

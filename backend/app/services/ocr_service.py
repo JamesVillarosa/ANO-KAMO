@@ -402,16 +402,26 @@ class OcrService:
         )
 
         prompt = (
-            f"Translate the following {src_name} text lines to {tgt_name}. "
-            f"These are from a {context} context. Keep translations concise and natural. "
-            f"Return ONLY the translations as a numbered list matching the input order. "
-            f"Do not add explanations or notes.\n\n{numbered_lines}"
+            f"You are a precise Filipino language translator specializing in Philippine regional dialects.\n"
+            f"Task: Translate each numbered text from {src_name} into {tgt_name}.\n"
+            f"CRITICAL: {tgt_name} is a DISTINCT Philippine language/dialect — NOT Tagalog and NOT Filipino. "
+            f"Produce authentic, natural {tgt_name} translations that a native {tgt_name} speaker would use.\n"
+            f"Context: texts are from {context}.\n"
+            f"Rules:\n"
+            f"1. Output ONLY the translations as a numbered list in the exact same order as the input.\n"
+            f"2. One translation per line, prefixed with its number.\n"
+            f"3. Do NOT output the original text — always translate.\n"
+            f"4. Do not add explanations, notes, or any extra text.\n\n"
+            f"{numbered_lines}"
         )
 
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash-lite")
-            response = model.generate_content(prompt)
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(temperature=0.0),
+            )
             response_text = response.text.strip()
 
             translated = OcrService._parse_numbered_response(response_text, len(texts))
