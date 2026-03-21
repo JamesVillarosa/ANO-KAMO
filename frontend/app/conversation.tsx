@@ -4,6 +4,7 @@ import {
     View,
     ScrollView,
     KeyboardAvoidingView,
+    Keyboard,
     Platform,
     TouchableOpacity,
     TextInput,
@@ -36,6 +37,7 @@ import {
     ArrowLeft,
     Sliders,
     SlidersHorizontal,
+    Lock,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Snackbar, Portal, Modal as PaperModal } from 'react-native-paper';
@@ -63,6 +65,7 @@ import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
+import { computeSmartSwap } from '../src/hooks/useLanguageSelection';
 import TappableWord from '../src/components/TappableWord';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
@@ -87,6 +90,7 @@ function ChatBubble({
     isDarkMode,
     onRetranslate,
     isSyncShimmering,
+    onShowToast,
 }: {
     msg: Message;
     alignment: 'left' | 'right' | 'center';
@@ -95,6 +99,7 @@ function ChatBubble({
     isDarkMode: boolean;
     onRetranslate?: (msgId: string, newTone: string) => void;
     isSyncShimmering?: boolean;
+    onShowToast?: (msg: string) => void;
 }) {
     const langColor = getColorForLang(msg.lang);
     const shimmerAnim = useRef(new Animated.Value(0)).current;
@@ -176,9 +181,11 @@ function ChatBubble({
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             } else {
                 triggerShake();
+                onShowToast?.("That's not a valid tone. Try something like 'Poetic', 'Excited', or 'Disgusted'.");
             }
         } catch {
             triggerShake();
+            onShowToast?.("That's not a valid tone. Try something like 'Poetic', 'Excited', or 'Disgusted'.");
         } finally {
             setCustomToneLoading(false);
         }
@@ -400,6 +407,9 @@ export default function ConversationScreen() {
         clearMessages,
         activeTone,
         setActiveTone,
+        hasSpoken,
+        markHasSpoken,
+        resetUser3Spoken,
     } = useConversation();
 
     const [inputText, setInputText] = useState('');
@@ -636,6 +646,13 @@ export default function ConversationScreen() {
         scrollBottomRef.current?.scrollToEnd({ animated: true });
     }, [messages]);
 
+    useEffect(() => {
+        const sub = Keyboard.addListener('keyboardDidShow', () => {
+            scrollRef.current?.scrollToEnd({ animated: true });
+        });
+        return () => sub.remove();
+    }, []);
+
     // Create backend conversation session
     useEffect(() => {
         // Only create new session if none exists
@@ -663,6 +680,10 @@ export default function ConversationScreen() {
         if (mode === 'face_to_face' && viewMode === 'three_way') {
             setMessages((prev: Message[]) => prev.filter((m: Message) => m.mode !== 'three_way'));
         }
+        // Reset user3 hasSpoken when switching away from 3-way
+        if (viewMode === 'three_way' && mode !== 'three_way') {
+            resetUser3Spoken();
+        }
         setViewMode(mode);
     };
 
@@ -673,7 +694,10 @@ export default function ConversationScreen() {
     };
 
     const setLang = (speaker: number, code: string) => {
-        setLangs(speaker, code);
+        const current = [lang0, lang1, lang2];
+        const count: 2 | 3 = viewMode === 'three_way' ? 3 : 2;
+        const next = computeSmartSwap(current, speaker, code, count);
+        next.forEach((c, i) => { if (c !== current[i]) setLangs(i, c); });
     };
 
     const getTargetLangs = (speaker: number): string[] => {
@@ -721,6 +745,7 @@ export default function ConversationScreen() {
                 mode: viewMode,
             };
             setMessages(prev => [...prev, msg]);
+            markHasSpoken(activeSpeaker as 0 | 1 | 2);
             setInputText('');
             lastMessageIdRef.current = msg.id;
         } catch {
@@ -735,6 +760,7 @@ export default function ConversationScreen() {
                 mode: viewMode,
             };
             setMessages(prev => [...prev, msg]);
+            markHasSpoken(activeSpeaker as 0 | 1 | 2);
             setInputText('');
         }
         setLoading(false);
@@ -906,6 +932,7 @@ export default function ConversationScreen() {
                                 isDarkMode={isDarkMode}
                                 onRetranslate={handleAutoRetranslate}
                                 isSyncShimmering={isSyncShimmering}
+                                onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
                             />
                         ))}
                     </ScrollView>
@@ -1011,6 +1038,7 @@ export default function ConversationScreen() {
                                 isDarkMode={isDarkMode}
                                 onRetranslate={handleAutoRetranslate}
                                 isSyncShimmering={isSyncShimmering}
+                                onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
                             />
                         ))}
                     </ScrollView>
@@ -1089,7 +1117,11 @@ export default function ConversationScreen() {
     // Standard (Two-Way / Three-Way) Render
     // ─────────────────────────────────────────
     return (
-        <View style={[styles.container, isDarkMode && styles.containerDark]}>
+        <KeyboardAvoidingView
+            style={[styles.container, isDarkMode && styles.containerDark]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={insets.top + 44}
+        >
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
             {/* Custom Glass Header */}
@@ -1168,9 +1200,8 @@ export default function ConversationScreen() {
                                 ]}
                                 onPress={() => {
                                     if (activeSpeaker === i) {
-                                        const isLanguageLocked = viewMode === 'three_way' && messages.length > 0;
-                                        if (isLanguageLocked) {
-                                            setSnackbarMessage('Delete the chat to change language');
+                                        if (hasSpoken[i as 0 | 1 | 2]) {
+                                            setSnackbarMessage('Delete first the conversation.');
                                             setSnackbarVisible(true);
                                         } else {
                                             setPickerFor(i);
@@ -1184,10 +1215,14 @@ export default function ConversationScreen() {
                                 <Text style={[
                                     styles.speakerChipText,
                                     { color: isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B') },
+                                    hasSpoken[i as 0 | 1 | 2] && { opacity: 0.6 },
                                 ]}>
                                     {SUPPORTED_LANGUAGES[langCode]}
                                 </Text>
-                                <ChevronDown size={12} color={isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
+                                {hasSpoken[i as 0 | 1 | 2]
+                                    ? <Lock size={12} color={isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
+                                    : <ChevronDown size={12} color={isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B')} />
+                                }
                             </TouchableOpacity>
                         );
                     })}
@@ -1204,6 +1239,7 @@ export default function ConversationScreen() {
                 style={styles.chatArea}
                 contentContainerStyle={styles.chatContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
             >
                 {messages.length === 0 && (
                     <View style={styles.emptyState}>
@@ -1233,6 +1269,7 @@ export default function ConversationScreen() {
                             isDarkMode={isDarkMode}
                             onRetranslate={handleAutoRetranslate}
                             isSyncShimmering={isSyncShimmering}
+                            onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
                         />
                     );
                 })}
@@ -1240,15 +1277,11 @@ export default function ConversationScreen() {
 
 
             {/* Input Bar */}
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+            <BlurView
+                intensity={40}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
             >
-                <BlurView
-                    intensity={40}
-                    tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
-                >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
 
                     <TouchableOpacity
@@ -1305,8 +1338,7 @@ export default function ConversationScreen() {
                             <Send size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
                         </TouchableOpacity>
                     )}
-                </BlurView>
-            </KeyboardAvoidingView>
+            </BlurView>
 
             <BottomNav />
 
@@ -1395,7 +1427,7 @@ export default function ConversationScreen() {
             >
                 {snackbarMessage}
             </Snackbar>
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -1484,7 +1516,7 @@ const styles = StyleSheet.create({
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     // ── Shared bubble styles ──
-    msgRow: { marginBottom: 10, maxWidth: '78%' },
+    msgRow: { marginBottom: 10, maxWidth: '78%', flexShrink: 1 },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
     msgRight: { alignSelf: 'flex-end' },
@@ -1495,6 +1527,7 @@ const styles = StyleSheet.create({
         overflow: 'visible',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
+        flexShrink: 1,
     },
     bubbleSpeakerLabel: {
         fontSize: 10,
@@ -1513,6 +1546,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-start',
         gap: 8,
+        flexShrink: 1,
     },
     inlineTTS: {
         padding: 4,

@@ -25,6 +25,7 @@ interface ConversationContextProps {
     activeSpeaker: number;
     conversationId: string | null;
     activeTone: string | null; // Phase 6.3: session-wide tone
+    hasSpoken: { 0: boolean; 1: boolean; 2: boolean };
     setViewMode: (mode: 'two_way' | 'three_way' | 'face_to_face') => void;
     setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
     setLangs: (speaker: number, code: string) => void;
@@ -32,6 +33,8 @@ interface ConversationContextProps {
     setConversationId: (id: string | null) => void;
     clearMessages: () => void;
     setActiveTone: (tone: string | null) => void;
+    markHasSpoken: (speaker: 0 | 1 | 2) => void;
+    resetUser3Spoken: () => void;
 }
 
 const ConversationContext = createContext<ConversationContextProps | undefined>(undefined);
@@ -48,6 +51,15 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
     const [activeSpeaker, setActiveSpeaker] = useState(0);
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [activeTone, setActiveTone] = useState<string | null>(null);
+    const [hasSpoken, setHasSpokenState] = useState<{ 0: boolean; 1: boolean; 2: boolean }>({ 0: false, 1: false, 2: false });
+
+    const markHasSpoken = useCallback((speaker: 0 | 1 | 2) => {
+        setHasSpokenState(prev => ({ ...prev, [speaker]: true }));
+    }, []);
+
+    const resetUser3Spoken = useCallback(() => {
+        setHasSpokenState(prev => ({ ...prev, 2: false }));
+    }, []);
 
     const setViewMode = useCallback((mode: 'two_way' | 'three_way' | 'face_to_face') => {
         if (mode !== 'face_to_face') {
@@ -63,6 +75,7 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
     const clearMessages = useCallback(() => {
         setMessages([]);
         setConversationId(null);
+        setHasSpokenState({ 0: false, 1: false, 2: false });
     }, []);
 
     return (
@@ -75,6 +88,7 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
                 activeSpeaker,
                 conversationId,
                 activeTone,
+                hasSpoken,
                 setViewMode,
                 setMessages,
                 setLangs,
@@ -82,6 +96,8 @@ export const ConversationProvider = ({ children }: { children: ReactNode }) => {
                 setConversationId,
                 clearMessages,
                 setActiveTone,
+                markHasSpoken,
+                resetUser3Spoken,
             }}
         >
             {children}

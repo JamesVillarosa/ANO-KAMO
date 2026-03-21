@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import logging
+import httpx
+from app.core.config import settings
 from app.db.crud import (
     create_conversation, get_conversation,
     add_message, get_messages,
@@ -161,19 +163,48 @@ class ValidateToneRequest(BaseModel):
 
 @router.post("/tone/validate")
 async def validate_custom_tone(request: ValidateToneRequest):
-    """Validate a custom tone string for use in translation."""
+    """Validate a custom tone string using Gemini AI."""
     tone = request.tone.strip()
     if not tone:
         return {"valid": False, "message": "Tone cannot be empty"}
     if len(tone) > 60:
         return {"valid": False, "message": "Tone must be 60 characters or less"}
-    if len(tone.split()) > 8:
-        return {"valid": False, "message": "Please use fewer words for the tone"}
-    # Basic sanity: tone should be descriptive, not a sentence
-    blocked = ['translate', 'ignore', 'system', 'prompt', 'instruction']
-    if any(w in tone.lower() for w in blocked):
-        return {"valid": False, "message": "Not a valid tone"}
-    return {"valid": True}
+
+    api_key = settings.GEMINI_API_KEY
+    if not api_key:
+        # Fallback: basic word-count check
+        return {"valid": len(tone.split()) <= 5}
+
+    prompt = (
+        "You are evaluating whether a word or short phrase describes a speech style or emotional tone "
+        "suitable for adjusting how a translation sounds. "
+        "Valid tones are adjectives or short phrases describing style or emotion, "
+        "such as 'Poetic', 'Excited', 'Formal', 'Sarcastic', 'Disgusted', 'Childlike', 'Dramatic'. "
+        "Invalid inputs are random nouns, gibberish, full sentences, instructions, or words unrelated to speech style. "
+        f"Does the following input qualify as a valid tone? Input: \"{tone}\"\n"
+        "Reply with exactly one word: YES or NO."
+    )
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash-lite:generateContent?key={api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 8},
+    }
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(url, json=payload)
+        if resp.status_code != 200:
+            raise Exception(f"Gemini error {resp.status_code}")
+        answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
+        valid = answer.startswith("YES")
+        return {"valid": valid}
+    except Exception as e:
+        logger.warning(f"Tone validation Gemini call failed: {e}")
+        return {"valid": False}
 
 
 # Legacy endpoint for simple conversation turns (no session)

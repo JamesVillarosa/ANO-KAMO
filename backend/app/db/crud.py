@@ -80,6 +80,40 @@ def create_translation_output(
     db.refresh(o)
     return o
 
+def create_translation_with_outputs(
+    db: Session,
+    input_text: str,
+    input_language: str,
+    outputs: list,  # list of {"target_language": str, "output_text": str, "detected_tone": str|None}
+    method: str = "text",
+    multi_target: bool = False,
+    device_id: str = None,
+    translation_type: str = "text",
+) -> Translation:
+    """Create one Translation row + N TranslationOutput rows in one call."""
+    t = Translation(
+        input_text=input_text,
+        input_language=input_language,
+        method=method,
+        translation_type=translation_type,
+        multi_target=multi_target,
+        device_id=device_id,
+    )
+    db.add(t)
+    db.flush()  # get t.translation_id without committing
+    for out in outputs:
+        o = TranslationOutput(
+            translation_id=t.translation_id,
+            target_language=out["target_language"],
+            output_text=out["output_text"],
+            detected_tone=out.get("detected_tone"),
+        )
+        db.add(o)
+    db.commit()
+    db.refresh(t)
+    return t
+
+
 def get_all_translations(db: Session, skip: int = 0, limit: int = 100, device_id: Optional[str] = None) -> List[Translation]:
     query = db.query(Translation).order_by(Translation.timestamp.desc())
     if device_id:
@@ -130,6 +164,14 @@ def clear_all_history(db: Session, device_id: Optional[str] = None) -> int:
 
 
 # ──────────────────── Conversation ──────────────
+def get_conversations_for_device(db: Session, device_id: str = None, skip: int = 0, limit: int = 50) -> list:
+    """Return conversations with their messages, newest first."""
+    query = db.query(Conversation).order_by(Conversation.started_at.desc())
+    if device_id:
+        query = query.filter(Conversation.device_id == device_id)
+    return query.offset(skip).limit(limit).all()
+
+
 def create_conversation(
     db: Session,
     mode: str,

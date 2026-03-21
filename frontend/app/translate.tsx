@@ -83,8 +83,8 @@ export default function TranslateScreen() {
     const [showMenu2, setShowMenu2] = useState(false);
     const menuRef1 = useRef<any>(null);
     const menuRef2 = useRef<any>(null);
-    const [menuPos1, setMenuPos1] = useState({ top: 0, right: 20 });
-    const [menuPos2, setMenuPos2] = useState({ top: 0, right: 20 });
+    const [menuPos1, setMenuPos1] = useState({ top: 0, left: 20 });
+    const [menuPos2, setMenuPos2] = useState({ top: 0, left: 20 });
     const [refineModal, setRefineModal] = useState<{ visible: boolean; translationId: string; originalText: string; target: 1 | 2 }>({
         visible: false, translationId: '', originalText: '', target: 1,
     });
@@ -330,8 +330,8 @@ export default function TranslateScreen() {
                                 ref.current.measure((_x: number, _y: number, w: number, _h: number, pageX: number, pageY: number) => {
                                     const screenWidth = Dimensions.get('window').width;
                                     setPos({
-                                        top: pageY - 92, // popup height ~88px + 4px gap, so appear above button
-                                        right: screenWidth - (pageX + w),
+                                        top: pageY - 92,
+                                        left: Math.min(pageX, screenWidth - 220), // anchor from left, clamp to screen edge
                                     });
                                     setShowMenu(!showMenu);
                                 });
@@ -350,7 +350,7 @@ export default function TranslateScreen() {
                             >
                                 <View style={[styles.popoverMenu, isDarkMode && styles.popoverMenuDark, {
                                     top: (target === 1 ? menuPos1 : menuPos2).top,
-                                    right: (target === 1 ? menuPos1 : menuPos2).right,
+                                    left: (target === 1 ? menuPos1 : menuPos2).left,  // ← was `right`
                                 }]}>
                                     <TouchableOpacity
                                         style={styles.popoverItem}
@@ -908,7 +908,7 @@ const styles = StyleSheet.create({
     popoverCaret: {
         position: 'absolute',
         bottom: -8,
-        right: 8,
+        left: 8,        // ← was `right: 8`
         width: 0,
         height: 0,
         borderLeftWidth: 8,

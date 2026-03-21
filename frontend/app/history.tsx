@@ -9,7 +9,13 @@ import {
     ScrollView,
     Platform,
     StatusBar,
+    LayoutAnimation,
+    UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { Text, ActivityIndicator, Portal, Modal as PaperModal } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -22,9 +28,12 @@ import {
     AlertTriangle,
     Copy,
     BookOpen,
+    ChevronDown,
+    ChevronRight,
+    MessageSquare,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { getHistory, toggleFavorite, deleteHistory, clearAllHistory } from '../src/lib/api';
+import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
 import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES } from '../src/theme';
 import { getDeviceId } from '../src/utils/device';
@@ -80,6 +89,128 @@ function getSectionTitle(ts: string): string {
     return d.toLocaleDateString([], { month: 'long', day: 'numeric' });
 }
 
+interface ConvMessage {
+    message_id: string;
+    speaker_abc: string;
+    text: string;
+    translated_text: string;
+    language: string;
+    timestamp: string;
+}
+
+interface ConvParticipant {
+    speaker_label: string;
+    preferred_language: string;
+}
+
+interface ConversationGroup {
+    conversation_id: string;
+    mode: string;
+    started_at: string;
+    participants: ConvParticipant[];
+    messages: ConvMessage[];
+}
+
+function ConversationGroupCard({
+    group,
+    isExpanded,
+    onToggle,
+    isDarkMode,
+}: {
+    group: ConversationGroup;
+    isExpanded: boolean;
+    onToggle: () => void;
+    isDarkMode: boolean;
+}) {
+    const timestamp = formatTimestamp(group.started_at);
+    const langs = group.participants.map(p =>
+        (SUPPORTED_LANGUAGES as Record<string, string>)[p.preferred_language] || p.preferred_language.toUpperCase()
+    ).join(' · ');
+    const firstMsg = group.messages[0];
+    const msgCount = group.messages.length;
+
+    return (
+        <BlurView
+            intensity={isDarkMode ? 30 : 50}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.card, isDarkMode && styles.cardDark]}
+        >
+            {/* Collapsed header — always visible */}
+            <TouchableOpacity onPress={onToggle} activeOpacity={0.85}>
+                <View style={styles.cardTopRow}>
+                    <View style={[styles.typeBadge, { backgroundColor: '#FF9500' }]}>
+                        <MessageSquare size={10} color="#FFF" />
+                        <Text style={styles.typeBadgeText}>Chat</Text>
+                    </View>
+                    <Text style={[styles.timestampText, isDarkMode && styles.textSecondary]}>
+                        {timestamp}
+                    </Text>
+                </View>
+                <Text style={[styles.langLabel, { color: '#FF9500' }]} numberOfLines={1}>
+                    {langs}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text
+                        style={[styles.sourceText, isDarkMode && styles.textWhite, { flex: 1 }]}
+                        numberOfLines={1}
+                    >
+                        {firstMsg?.text ?? ''}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={[styles.timestampText, isDarkMode && styles.textSecondary]}>
+                            {msgCount} msg{msgCount !== 1 ? 's' : ''}
+                        </Text>
+                        {isExpanded
+                            ? <ChevronDown size={14} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                            : <ChevronRight size={14} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                        }
+                    </View>
+                </View>
+            </TouchableOpacity>
+
+            {/* Expanded: mini chat log */}
+            {isExpanded && (
+                <ScrollView
+                    style={styles.convChatLog}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                >
+                    {group.messages.map((msg) => {
+                        const isA = msg.speaker_abc === 'A';
+                        return (
+                            <View
+                                key={msg.message_id}
+                                style={[
+                                    styles.convMsgRow,
+                                    isA ? styles.convMsgRight : styles.convMsgLeft,
+                                ]}
+                            >
+                                <View style={[
+                                    styles.convBubble,
+                                    { backgroundColor: isA ? 'rgba(59,130,246,0.15)' : 'rgba(100,116,139,0.12)' },
+                                    isDarkMode && { backgroundColor: isA ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.07)' },
+                                ]}>
+                                    <Text style={[styles.convSpeakerLabel, { color: isA ? '#3B82F6' : '#64748B' }]}>
+                                        {msg.speaker_abc}
+                                    </Text>
+                                    <Text style={[styles.convMsgText, isDarkMode && styles.textWhite]}>
+                                        {msg.text}
+                                    </Text>
+                                    {!!msg.translated_text && (
+                                        <Text style={[styles.convMsgTrans, isDarkMode && styles.textSecondary]}>
+                                            {msg.translated_text}
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                        );
+                    })}
+                </ScrollView>
+            )}
+        </BlurView>
+    );
+}
+
 function groupBySections(items: HistoryItem[]): Section[] {
     const map = new Map<string, HistoryItem[]>();
     for (const item of items) {
@@ -95,8 +226,10 @@ export default function HistoryScreen() {
     const tts = useTextToSpeech();
     const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
     const [items, setItems] = useState<HistoryItem[]>([]);
+    const [convGroups, setConvGroups] = useState<ConversationGroup[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'favorites' | 'history'>('favorites');
+    const [activeTab, setActiveTab] = useState<'favorites' | 'history' | 'chats'>('favorites');
+    const [expandedConvId, setExpandedConvId] = useState<string | null>(null);
     const [detailItem, setDetailItem] = useState<HistoryItem | null>(null);
     const [confirmModal, setConfirmModal] = useState<{
         visible: boolean;
@@ -120,10 +253,15 @@ export default function HistoryScreen() {
         setLoading(true);
         try {
             const deviceId = await getDeviceId();
-            const res = await getHistory(0, 200, deviceId);
+            const [res, convRes] = await Promise.all([
+                getHistory(0, 200, deviceId),
+                getConversationHistory(deviceId).catch(() => []),
+            ]);
             setItems(res || []);
+            setConvGroups(convRes || []);
         } catch {
             setItems([]);
+            setConvGroups([]);
         } finally {
             setLoading(false);
         }
@@ -293,6 +431,14 @@ export default function HistoryScreen() {
                                 History
                             </Text>
                         </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.toggleBtn, activeTab === 'chats' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
+                            onPress={() => setActiveTab('chats')}
+                        >
+                            <Text style={[styles.toggleText, activeTab === 'chats' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
+                                Chats
+                            </Text>
+                        </TouchableOpacity>
                     </BlurView>
                 </View>
 
@@ -300,6 +446,38 @@ export default function HistoryScreen() {
                     <View style={styles.center}>
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
+                ) : activeTab === 'chats' ? (
+                    convGroups.length === 0 ? (
+                        <View style={styles.center}>
+                            <MessageSquare size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                            <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
+                                No conversations yet
+                            </Text>
+                            <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
+                                Start a chat to see your conversations here
+                            </Text>
+                        </View>
+                    ) : (
+                        <ScrollView
+                            contentContainerStyle={styles.list}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {convGroups.map(group => (
+                                <ConversationGroupCard
+                                    key={group.conversation_id}
+                                    group={group}
+                                    isExpanded={expandedConvId === group.conversation_id}
+                                    isDarkMode={isDarkMode}
+                                    onToggle={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setExpandedConvId(prev =>
+                                            prev === group.conversation_id ? null : group.conversation_id
+                                        );
+                                    }}
+                                />
+                            ))}
+                        </ScrollView>
+                    )
                 ) : filtered.length === 0 ? (
                     <View style={styles.center}>
                         <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
@@ -558,6 +736,9 @@ const styles = StyleSheet.create({
     cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
 
     typeBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 6,
@@ -586,6 +767,44 @@ const styles = StyleSheet.create({
     transText: { fontSize: 14, color: '#64748B', lineHeight: 20 },
     textWhite: { color: '#F8FAFC' },
     textSecondary: { color: '#94A3B8' },
+
+    // ── Conversation Group Card ──
+    convChatLog: {
+        maxHeight: 320,
+        marginTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.06)',
+        paddingTop: 8,
+    },
+    convMsgRow: { marginBottom: 8 },
+    convMsgLeft: { alignItems: 'flex-start' },
+    convMsgRight: { alignItems: 'flex-end' },
+    convBubble: {
+        maxWidth: '82%',
+        borderRadius: 14,
+        padding: 10,
+    },
+    convSpeakerLabel: {
+        fontSize: 9,
+        fontWeight: '800',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        marginBottom: 2,
+        opacity: 0.7,
+    },
+    convMsgText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#1E293B',
+        lineHeight: 18,
+    },
+    convMsgTrans: {
+        fontSize: 12,
+        color: '#64748B',
+        lineHeight: 17,
+        marginTop: 3,
+        fontStyle: 'italic',
+    },
 
     cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 10 },
     actionBtn: {

@@ -4,14 +4,57 @@ History & Favorites Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+from typing import List, Optional
+
 from app.db.crud import (
     get_all_translations, toggle_favorite,
     get_favorites, delete_translation, clear_all_history,
+    create_translation_with_outputs,
+    get_conversations_for_device,
 )
 from app.db.session import get_db
 from app.db.schemas import HistoryItemResponse, FavoriteToggleRequest
 
+
+class TranslationOutputIn(BaseModel):
+    target_language: str
+    output_text: str
+    detected_tone: Optional[str] = None
+
+
+class CreateTranslationRequest(BaseModel):
+    input_text: str
+    input_language: str
+    outputs: List[TranslationOutputIn]
+    method: str = "text"
+    multi_target: bool = False
+    device_id: Optional[str] = None
+    translation_type: str = "text"
+
 router = APIRouter()
+
+
+@router.post("/history")
+async def create_history_entry(request: CreateTranslationRequest, db: Session = Depends(get_db)):
+    """Create one Translation + N TranslationOutput rows in one call (used for 3-way bundled saves)."""
+    t = create_translation_with_outputs(
+        db,
+        input_text=request.input_text,
+        input_language=request.input_language,
+        outputs=[o.model_dump() for o in request.outputs],
+        method=request.method,
+        multi_target=request.multi_target,
+        device_id=request.device_id,
+        translation_type=request.translation_type,
+    )
+    return {
+        "translation_id": t.translation_id,
+        "outputs": [
+            {"output_id": o.output_id, "target_language": o.target_language, "output_text": o.output_text}
+            for o in t.outputs
+        ],
+    }
 
 
 @router.get("/history", response_model=list[HistoryItemResponse])
@@ -76,6 +119,42 @@ async def get_favorites_list(
             "input_text": t.input_text if t else "",
             "input_language": t.input_language if t else "",
             "is_favorite": True,
+        })
+    return results
+
+
+@router.get("/history/conversations")
+async def get_conversation_history(
+    device_id: str = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Get all conversation sessions with their messages, grouped by conversation_id."""
+    convs = get_conversations_for_device(db, device_id=device_id, skip=skip, limit=limit)
+    results = []
+    for c in convs:
+        if not c.messages:
+            continue
+        results.append({
+            "conversation_id": c.conversation_id,
+            "mode": c.mode,
+            "started_at": c.started_at,
+            "participants": [
+                {"speaker_label": p.speaker_label, "preferred_language": p.preferred_language}
+                for p in c.participants
+            ],
+            "messages": [
+                {
+                    "message_id": m.message_id,
+                    "speaker_abc": m.speaker_abc,
+                    "text": m.text,
+                    "translated_text": m.translated_text,
+                    "language": m.language,
+                    "timestamp": m.timestamp,
+                }
+                for m in sorted(c.messages, key=lambda x: x.timestamp)
+            ],
         })
     return results
 

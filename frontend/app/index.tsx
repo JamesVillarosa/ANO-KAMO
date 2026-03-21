@@ -33,7 +33,7 @@ import {
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { translateSingle, submitFeedback } from '../src/lib/api';
+import { translateSingle, translateMulti, submitFeedback } from '../src/lib/api';
 import { getDeviceId } from '../src/utils/device';
 import {
   gradientColors,
@@ -53,6 +53,7 @@ import AnchoredPopoverMenu from '../src/components/AnchoredPopoverMenu';
 
 import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
+import { useLanguageSelection } from '../src/hooks/useLanguageSelection';
 import { isValidTranslationInput, getValidationErrorMessage } from '../src/utils/validation';
 
 export default function HomeScreen() {
@@ -63,10 +64,14 @@ export default function HomeScreen() {
   // Mode toggle
   const [mode, setMode] = useState<'2way' | '3way'>('2way');
 
-  // Language state
-  const [sourceLang, setSourceLang] = useState('tl');
-  const [targetLang1, setTargetLang1] = useState('ceb');
-  const [targetLang2, setTargetLang2] = useState('hil');
+  // Language state via shared hook (smart swap built-in)
+  const { langs: langSelection, setLang: setLangSlot, swap: swapLangSlots } = useLanguageSelection(
+    mode === '3way' ? 3 : 2,
+    ['tl', 'ceb', 'hil'],
+  );
+  const sourceLang = langSelection[0];
+  const targetLang1 = langSelection[1];
+  const targetLang2 = langSelection[2];
 
   // Text state
   const [sourceText, setSourceText] = useState('');
@@ -128,23 +133,7 @@ export default function HomeScreen() {
   // Debounce ref so we can cancel pending translation on source lang change
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // PROMPT 6: Auto-resolve language conflicts (safety net for swaps / mode changes)
-  useEffect(() => {
-    if (targetLang1 === sourceLang) {
-      const fallback = Object.keys(SUPPORTED_LANGUAGES).find(
-        code => code !== sourceLang && (mode !== '3way' || code !== targetLang2)
-      );
-      if (fallback) setTargetLang1(fallback);
-    }
-    if (mode === '3way' && (targetLang2 === sourceLang || targetLang2 === targetLang1)) {
-      const fallback = Object.keys(SUPPORTED_LANGUAGES).find(
-        code => code !== sourceLang && code !== targetLang1
-      );
-      if (fallback) setTargetLang2(fallback);
-    }
-  }, [sourceLang, targetLang1, targetLang2, mode]);
-
-  // PROMPT 7: Auto-clear input when source language changes
+// PROMPT 7: Auto-clear input when source language changes
   useEffect(() => {
     if (isFirstSourceLangRender.current) {
       isFirstSourceLangRender.current = false;
@@ -234,41 +223,46 @@ export default function HomeScreen() {
     prevTargetLang2Ref.current = targetLang2;
 
     const timer = setTimeout(async () => {
-      // Panel 1: Re-translate if source text, source lang, or target1 lang changed
-      if (sourceTextChanged || sourceLangChanged || targetLang1Changed) {
-        setLoading1(true);
-        setFeedbackGiven1(null);
-        try {
-          const res1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceIdRef.current);
-          setTranslated1(res1.output_text || '');
-          setTranslationId1(res1.translation_id || '');
-        } catch (error: any) {
-          const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
-            ? 'Translation service is temporarily unavailable. Please try again.'
-            : 'Translation unavailable. Please try again.';
-          setTranslated1(errorMsg);
-        }
-        setLoading1(false);
-      }
-
-      // Panel 2: Only re-translate if source changed, source lang changed, target2 lang changed, OR newly entering 3way mode with empty panel
       if (mode === '3way') {
-        const needsPanel2Translation = sourceTextChanged || sourceLangChanged || targetLang2Changed || !translated2;
-
-        if (needsPanel2Translation) {
+        // 3-Way: one bundled call → one Translation + 2 outputs in history
+        const needsAny = sourceTextChanged || sourceLangChanged || targetLang1Changed || targetLang2Changed || !translated2;
+        if (needsAny) {
+          setLoading1(true);
           setLoading2(true);
+          setFeedbackGiven1(null);
           setFeedbackGiven2(null);
           try {
-            const res2 = await translateSingle(sourceText, sourceLang, targetLang2, undefined, deviceIdRef.current);
-            setTranslated2(res2.output_text || '');
-            setTranslationId2(res2.translation_id || '');
+            const res = await translateMulti(sourceText, sourceLang, [targetLang1, targetLang2], undefined, deviceIdRef.current);
+            setTranslated1(res.output_texts?.[0] || '');
+            setTranslated2(res.output_texts?.[1] || '');
+            setTranslationId1(res.translation_id || '');
+            setTranslationId2(res.translation_id || '');
           } catch (error: any) {
             const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
               ? 'Translation service is temporarily unavailable. Please try again.'
               : 'Translation unavailable. Please try again.';
+            setTranslated1(errorMsg);
             setTranslated2(errorMsg);
           }
+          setLoading1(false);
           setLoading2(false);
+        }
+      } else {
+        // 2-Way: single call
+        if (sourceTextChanged || sourceLangChanged || targetLang1Changed) {
+          setLoading1(true);
+          setFeedbackGiven1(null);
+          try {
+            const res1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceIdRef.current);
+            setTranslated1(res1.output_text || '');
+            setTranslationId1(res1.translation_id || '');
+          } catch (error: any) {
+            const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
+              ? 'Translation service is temporarily unavailable. Please try again.'
+              : 'Translation unavailable. Please try again.';
+            setTranslated1(errorMsg);
+          }
+          setLoading1(false);
         }
       }
     }, 800);
@@ -276,9 +270,7 @@ export default function HomeScreen() {
   }, [sourceText, sourceLang, targetLang1, targetLang2, mode, translated2]);
 
   const swapLanguages = () => {
-    const oldSource = sourceLang;
-    setSourceLang(targetLang1);
-    setTargetLang1(oldSource);
+    swapLangSlots(0, 1);
     if (translated1) {
       setSourceText(translated1);
       setTranslated1('');
@@ -287,9 +279,7 @@ export default function HomeScreen() {
   };
 
   const swapTarget2 = () => {
-    const oldSource = sourceLang;
-    setSourceLang(targetLang2);
-    setTargetLang2(oldSource);
+    swapLangSlots(0, 2);
     if (translated2) {
       setSourceText(translated2);
       setTranslated1('');
@@ -298,19 +288,8 @@ export default function HomeScreen() {
   };
 
   const handlePickerSelect = (code: string) => {
-    if (pickerTarget === 'source') {
-      if (targetLang1 === code) setTargetLang1(sourceLang);
-      else if (mode === '3way' && targetLang2 === code) setTargetLang2(sourceLang);
-      setSourceLang(code);
-    } else if (pickerTarget === 'target1') {
-      if (sourceLang === code) setSourceLang(targetLang1);
-      else if (mode === '3way' && targetLang2 === code) setTargetLang2(targetLang1);
-      setTargetLang1(code);
-    } else if (pickerTarget === 'target2') {
-      if (sourceLang === code) setSourceLang(targetLang2);
-      else if (targetLang1 === code) setTargetLang1(targetLang2);
-      setTargetLang2(code);
-    }
+    const slot = pickerTarget === 'source' ? 0 : pickerTarget === 'target1' ? 1 : 2;
+    setLangSlot(slot, code);
     setPickerTarget(null);
   };
 
@@ -440,12 +419,12 @@ export default function HomeScreen() {
             style={styles.iconCircle}
             onPress={() => {
               const ref = target === 1 ? menuButtonRef1 : menuButtonRef2;
-              ref.current?.measure((fx, fy, width, height, px, py) => {
+              ref.current?.measureInWindow((x, y, width, height) => {
                 if (target === 1) {
-                  setMenuPosition1({ x: px, y: py, width, height });
+                  setMenuPosition1({ x, y, width, height });
                   setShowMenu1(true);
                 } else {
-                  setMenuPosition2({ x: px, y: py, width, height });
+                  setMenuPosition2({ x, y, width, height });
                   setShowMenu2(true);
                 }
               });
