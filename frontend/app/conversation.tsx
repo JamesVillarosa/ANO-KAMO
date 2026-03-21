@@ -34,14 +34,14 @@ import {
     ArrowUpDown,
     ChevronLeft,
     Settings,
-    ArrowLeft,
+    AlignJustify,
     Sliders,
     SlidersHorizontal,
     Lock,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Snackbar, Portal, Modal as PaperModal } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
     createConversation,
     sendMessage as apiSendMessage,
@@ -533,6 +533,22 @@ export default function ConversationScreen() {
     // Auto-TTS flag — speak the translated text after each message
     const lastMessageIdRef = useRef<string | null>(null);
 
+    // Batch 5 Prompt 3: session-gated auto TTS
+    const sessionId = useRef<string | null>(null);
+    const prevModeRef = useRef(viewMode);
+
+    useFocusEffect(
+        useCallback(() => {
+            // New session when screen is focused
+            sessionId.current = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            return () => {
+                // Clear session when screen loses focus — stop any ongoing TTS
+                tts.stop();
+                sessionId.current = null;
+            };
+        }, [])
+    );
+
     // Pulse animation for standard mode mic
     useEffect(() => {
         if (viewMode === 'face_to_face') return;
@@ -626,8 +642,9 @@ export default function ConversationScreen() {
         if (messages.length === 0) return;
         const latest = messages[messages.length - 1];
         if (latest.id === lastMessageIdRef.current) return;
-        // Only auto-TTS if this is a NEW message (not a loaded message from history)
+        // Only auto-TTS if this is a NEW message in the CURRENT session
         if (!latest.isNewMessage) return;
+        if (!latest.sessionId || latest.sessionId !== sessionId.current) return;
         lastMessageIdRef.current = latest.id;
         // Speak the translated text in the OTHER speaker's language
         if (latest.translations.length > 0) {
@@ -687,6 +704,52 @@ export default function ConversationScreen() {
         setViewMode(mode);
     };
 
+    // Batch 5 Prompt 3: regenerate sessionId on mode switch so old bubbles don't re-play
+    // Batch 5 Prompt 4: detect 2-way → 3-way switch and retroactively add 3rd language
+    useEffect(() => {
+        const prevMode = prevModeRef.current;
+        prevModeRef.current = viewMode;
+        // Regenerate session so existing bubbles don't auto-TTS after mode switch
+        sessionId.current = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        // Retroactive 3rd language when switching into 3-way
+        if (prevMode !== 'three_way' && viewMode === 'three_way' && messages.length > 0) {
+            retroactivelyAdd3rdLanguage(lang2);
+        }
+    }, [viewMode]);
+
+    const retroactivelyAdd3rdLanguage = async (newTargetLang: string) => {
+        const currentMsgs = messages;
+        const deviceId = deviceIdRef.current;
+        // Mark bubbles that need the new lang as regenerating
+        setMessages(prev => prev.map(m =>
+            m.translations.some(t => t.lang === newTargetLang) ? m : { ...m, isRegenerating: true }
+        ));
+        const updates = currentMsgs.map(async (bubble) => {
+            if (bubble.translations.some(t => t.lang === newTargetLang)) return bubble;
+            try {
+                const res = await translateSingle(
+                    bubble.originalText || bubble.text,
+                    bubble.lang,
+                    newTargetLang,
+                    bubble.tone,
+                    deviceId,
+                );
+                return {
+                    ...bubble,
+                    translations: [
+                        ...bubble.translations,
+                        { lang: newTargetLang, text: sanitizeTranslation(res.output_text) },
+                    ],
+                    isRegenerating: false,
+                };
+            } catch {
+                return { ...bubble, isRegenerating: false };
+            }
+        });
+        const updatedBubbles = await Promise.all(updates);
+        setMessages(updatedBubbles);
+    };
+
     const getLang = (speaker: number) => {
         if (speaker === 0) return lang0;
         if (speaker === 1) return lang1;
@@ -743,6 +806,7 @@ export default function ConversationScreen() {
                 tone: activeTone || undefined,
                 isNewMessage: true,
                 mode: viewMode,
+                sessionId: sessionId.current,
             };
             setMessages(prev => [...prev, msg]);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
@@ -758,6 +822,7 @@ export default function ConversationScreen() {
                 lang: getLang(activeSpeaker),
                 isNewMessage: true,
                 mode: viewMode,
+                sessionId: sessionId.current,
             };
             setMessages(prev => [...prev, msg]);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
@@ -797,6 +862,7 @@ export default function ConversationScreen() {
                 tone: activeTone || undefined,
                 isNewMessage: true,
                 mode: 'face_to_face',
+                sessionId: sessionId.current,
             };
             setMessages(prev => [...prev, msg]);
             lastMessageIdRef.current = msg.id;
@@ -810,6 +876,7 @@ export default function ConversationScreen() {
                 lang: fromLang,
                 isNewMessage: true,
                 mode: 'face_to_face',
+                sessionId: sessionId.current,
             };
             setMessages(prev => [...prev, msg]);
         }
@@ -1088,7 +1155,7 @@ export default function ConversationScreen() {
                         setPickerFor(null);
                     }}
                     selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
-                    exclude={pickerFor === 0 ? [lang1] : [lang0]}
+                    otherSelectedLanguages={pickerFor === 0 ? [lang1] : [lang0]}
                 />
                 <WordCardModal
                     visible={dictVisible}
@@ -1126,13 +1193,17 @@ export default function ConversationScreen() {
 
             {/* Custom Glass Header */}
             <View style={[styles.customHeader, { top: insets.top + 10 }]}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.customHeaderBtn}>
+                <TouchableOpacity
+                    onPress={() => router.push('/history' as any)}
+                    style={styles.customHeaderBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                     <BlurView
                         intensity={20}
                         tint={isDarkMode ? 'dark' : 'light'}
                         style={[styles.customHeaderGlass, isDarkMode && styles.customHeaderGlassDark]}
                     >
-                        <ArrowLeft size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
+                        <AlignJustify size={20} color={isDarkMode ? '#F8FAFC' : '#1E293B'} />
                     </BlurView>
                 </TouchableOpacity>
 
@@ -1268,7 +1339,7 @@ export default function ConversationScreen() {
                             openDictionary={openDictionary}
                             isDarkMode={isDarkMode}
                             onRetranslate={handleAutoRetranslate}
-                            isSyncShimmering={isSyncShimmering}
+                            isSyncShimmering={isSyncShimmering || (m.isRegenerating === true)}
                             onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
                         />
                     );
@@ -1280,7 +1351,7 @@ export default function ConversationScreen() {
             <BlurView
                 intensity={40}
                 tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.inputBar, isDarkMode && styles.inputBarDark]}
+                style={[styles.inputBar, isDarkMode && styles.inputBarDark, { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 }]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
 
@@ -1350,7 +1421,7 @@ export default function ConversationScreen() {
                     setPickerFor(null);
                 }}
                 selected={pickerFor !== null ? getLang(pickerFor) : 'tl'}
-                exclude={
+                otherSelectedLanguages={
                     pickerFor === 0
                         ? (viewMode === 'three_way' ? [lang1, lang2] : [lang1])
                         : pickerFor === 1
@@ -1516,7 +1587,7 @@ const styles = StyleSheet.create({
     emptySubtext: { fontSize: 13, color: '#CBD5E1', textAlign: 'center', maxWidth: 260, marginTop: 6 },
 
     // ── Shared bubble styles ──
-    msgRow: { marginBottom: 10, maxWidth: '78%', flexShrink: 1 },
+    msgRow: { marginBottom: 10, maxWidth: '80%' },
     msgLeft: { alignSelf: 'flex-start' },
     msgCenter: { alignSelf: 'center' },
     msgRight: { alignSelf: 'flex-end' },
@@ -1524,10 +1595,8 @@ const styles = StyleSheet.create({
     bubble: {
         padding: 14,
         borderRadius: 22,
-        overflow: 'visible',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
-        flexShrink: 1,
     },
     bubbleSpeakerLabel: {
         fontSize: 10,
@@ -1541,12 +1610,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'baseline',
+        flexShrink: 0,
     },
     bubbleTextContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start',
         gap: 8,
-        flexShrink: 1,
+        flexShrink: 0,
     },
     inlineTTS: {
         padding: 4,
@@ -1556,21 +1626,26 @@ const styles = StyleSheet.create({
     inlineActionRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 0,
     },
     bubbleText: {
         fontSize: 15,
         lineHeight: 21,
         fontWeight: '600',
+        flexShrink: 1,
+        flexWrap: 'wrap',
     },
     bubbleDivider: {
         height: 1,
         marginVertical: 8,
+        flexShrink: 0,
     },
     transRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
         marginBottom: 3,
+        flexShrink: 0,
     },
     transLangDot: {
         width: 6,
@@ -1588,6 +1663,8 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontStyle: 'italic',
         lineHeight: 19,
+        flexShrink: 1,
+        flexWrap: 'wrap',
     },
     bubbleFooter: {
         flexDirection: 'row',
@@ -1632,6 +1709,8 @@ const styles = StyleSheet.create({
         gap: 12,
         marginTop: 6,
         paddingTop: 6,
+        flexShrink: 0,
+        flexWrap: 'wrap',
     },
     utilityBtn: {
         padding: 4,
@@ -1704,7 +1783,7 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         backgroundColor: 'rgba(255,255,255,0.3)',
         borderRadius: 32,
-        marginBottom: 100,
+        marginBottom: 8,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.4)',
         overflow: 'hidden',

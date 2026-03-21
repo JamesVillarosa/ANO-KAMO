@@ -175,7 +175,15 @@ function ConversationGroupCard({
                     showsVerticalScrollIndicator={false}
                     nestedScrollEnabled
                 >
-                    {group.messages.map((msg) => {
+                    {(() => {
+                        // Deduplicate by message_id to prevent doubled messages
+                        const seenIds = new Set<string>();
+                        return group.messages.filter(m => {
+                            if (seenIds.has(m.message_id)) return false;
+                            seenIds.add(m.message_id);
+                            return true;
+                        });
+                    })().map((msg) => {
                         const isA = msg.speaker_abc === 'A';
                         return (
                             <View
@@ -228,7 +236,7 @@ export default function HistoryScreen() {
     const [items, setItems] = useState<HistoryItem[]>([]);
     const [convGroups, setConvGroups] = useState<ConversationGroup[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'favorites' | 'history' | 'chats'>('favorites');
+    const [activeTab, setActiveTab] = useState<'favorites' | 'history'>('favorites');
     const [expandedConvId, setExpandedConvId] = useState<string | null>(null);
     const [detailItem, setDetailItem] = useState<HistoryItem | null>(null);
     const [confirmModal, setConfirmModal] = useState<{
@@ -431,14 +439,6 @@ export default function HistoryScreen() {
                                 History
                             </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.toggleBtn, activeTab === 'chats' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                            onPress={() => setActiveTab('chats')}
-                        >
-                            <Text style={[styles.toggleText, activeTab === 'chats' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                                Chats
-                            </Text>
-                        </TouchableOpacity>
                     </BlurView>
                 </View>
 
@@ -446,72 +446,114 @@ export default function HistoryScreen() {
                     <View style={styles.center}>
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
-                ) : activeTab === 'chats' ? (
-                    convGroups.length === 0 ? (
+                ) : activeTab === 'favorites' ? (
+                    filtered.length === 0 ? (
                         <View style={styles.center}>
-                            <MessageSquare size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                            <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
                             <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
-                                No conversations yet
+                                No favorites yet
                             </Text>
                             <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
-                                Start a chat to see your conversations here
+                                Star a translation to save it here
                             </Text>
                         </View>
                     ) : (
-                        <ScrollView
+                        <SectionList
+                            sections={sections}
+                            renderItem={renderItem}
+                            renderSectionHeader={renderSectionHeader}
+                            keyExtractor={item => item.translation_id}
                             contentContainerStyle={styles.list}
                             showsVerticalScrollIndicator={false}
-                        >
-                            {convGroups.map(group => (
-                                <ConversationGroupCard
-                                    key={group.conversation_id}
-                                    group={group}
-                                    isExpanded={expandedConvId === group.conversation_id}
-                                    isDarkMode={isDarkMode}
-                                    onToggle={() => {
-                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                        setExpandedConvId(prev =>
-                                            prev === group.conversation_id ? null : group.conversation_id
-                                        );
-                                    }}
-                                />
+                            stickySectionHeadersEnabled={false}
+                        />
+                    )
+                ) : (() => {
+                    // Build unified history: non-chat items + conversation groups, sorted by date
+                    type MixedItem =
+                        | { type: 'single'; item: HistoryItem; timestamp: string }
+                        | { type: 'conversation'; group: ConversationGroup; timestamp: string };
+
+                    const singleItems: MixedItem[] = items
+                        .filter(i => i.translation_type !== 'chat')
+                        .map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp }));
+
+                    const convItems: MixedItem[] = convGroups.map(g => ({
+                        type: 'conversation' as const,
+                        group: g,
+                        timestamp: g.messages.length > 0
+                            ? g.messages[g.messages.length - 1].timestamp
+                            : g.started_at,
+                    }));
+
+                    const all: MixedItem[] = [...singleItems, ...convItems].sort(
+                        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    );
+
+                    if (all.length === 0) {
+                        return (
+                            <View style={styles.center}>
+                                <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                                <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
+                                    No translation history yet
+                                </Text>
+                                <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
+                                    Start translating to see your history here
+                                </Text>
+                            </View>
+                        );
+                    }
+
+                    // Group into date sections
+                    const sectionMap = new Map<string, MixedItem[]>();
+                    for (const item of all) {
+                        const key = getSectionTitle(item.timestamp);
+                        if (!sectionMap.has(key)) sectionMap.set(key, []);
+                        sectionMap.get(key)!.push(item);
+                    }
+
+                    return (
+                        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+                            <View style={styles.clearAllRow}>
+                                <TouchableOpacity
+                                    style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
+                                    onPress={handleClearAll}
+                                >
+                                    <Trash2 size={14} color="#EF4444" />
+                                    <Text style={styles.clearAllText}>Clear All</Text>
+                                </TouchableOpacity>
+                            </View>
+                            {Array.from(sectionMap.entries()).map(([sectionTitle, sectionItems]) => (
+                                <View key={sectionTitle}>
+                                    <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
+                                        {sectionTitle.toUpperCase()}
+                                    </Text>
+                                    {sectionItems.map((displayItem) => {
+                                        if (displayItem.type === 'conversation') {
+                                            return (
+                                                <ConversationGroupCard
+                                                    key={displayItem.group.conversation_id}
+                                                    group={displayItem.group}
+                                                    isExpanded={expandedConvId === displayItem.group.conversation_id}
+                                                    isDarkMode={isDarkMode}
+                                                    onToggle={() => {
+                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                        setExpandedConvId(prev =>
+                                                            prev === displayItem.group.conversation_id
+                                                                ? null
+                                                                : displayItem.group.conversation_id
+                                                        );
+                                                    }}
+                                                />
+                                            );
+                                        }
+                                        return renderItem({ item: displayItem.item } as any);
+                                    })}
+                                </View>
                             ))}
                         </ScrollView>
-                    )
-                ) : filtered.length === 0 ? (
-                    <View style={styles.center}>
-                        <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
-                        <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
-                            No translation history yet
-                        </Text>
-                        <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
-                            Start translating to see your history here
-                        </Text>
-                    </View>
-                ) : (
-                    <SectionList
-                        sections={sections}
-                        renderItem={renderItem}
-                        renderSectionHeader={renderSectionHeader}
-                        keyExtractor={item => item.translation_id}
-                        contentContainerStyle={styles.list}
-                        showsVerticalScrollIndicator={false}
-                        stickySectionHeadersEnabled={false}
-                        ListHeaderComponent={
-                            activeTab === 'history' && items.length > 0 ? (
-                                <View style={styles.clearAllRow}>
-                                    <TouchableOpacity
-                                        style={[styles.clearAllBtn, isDarkMode && styles.clearAllBtnDark]}
-                                        onPress={handleClearAll}
-                                    >
-                                        <Trash2 size={14} color="#EF4444" />
-                                        <Text style={styles.clearAllText}>Clear All</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ) : null
-                        }
-                    />
-                )}
+                    );
+                })()}
             </View>
 
             {/* Detail Modal */}

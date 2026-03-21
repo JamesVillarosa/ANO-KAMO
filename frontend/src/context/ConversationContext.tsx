@@ -15,6 +15,8 @@ export interface Message {
     tone?: string; // Phase 6.1: bubble-specific tone
     isNewMessage?: boolean; // Track if this is a new message (for auto-TTS)
     mode?: string; // Prompt 5: which view mode this message was created in
+    sessionId?: string | null; // Batch 5 Prompt 3: session-gated auto TTS
+    isRegenerating?: boolean; // Batch 5 Prompt 4: retroactive 3-way translation loading
 }
 
 interface ConversationContextProps {

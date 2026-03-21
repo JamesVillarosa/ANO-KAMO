@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal } from 'react-native';
 import { Text } from 'react-native-paper';
-import { Check, X } from 'lucide-react-native';
+import { Check, X, ArrowLeftRight } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { SUPPORTED_LANGUAGES } from '../theme';
 import { useTheme } from '../context/ThemeContext';
@@ -12,6 +12,7 @@ interface LanguagePickerProps {
     onSelect: (langCode: string) => void;
     selected: string;
     exclude?: string[];
+    otherSelectedLanguages?: string[];
     title?: string;
 }
 
@@ -21,12 +22,12 @@ export default function LanguagePicker({
     onSelect,
     selected,
     exclude = [],
+    otherSelectedLanguages = [],
     title = 'Select Language',
 }: LanguagePickerProps) {
     const { isDarkMode } = useTheme();
-    const languages = Object.entries(SUPPORTED_LANGUAGES).filter(
-        ([code]) => !exclude.includes(code)
-    );
+    // Show ALL languages — no filtering by exclude (smart swap handles conflicts)
+    const languages = Object.entries(SUPPORTED_LANGUAGES);
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
@@ -42,25 +43,37 @@ export default function LanguagePicker({
                             <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                         </TouchableOpacity>
                     </View>
-                    {languages.map(([code, name]) => (
-                        <TouchableOpacity
-                            key={code}
-                            style={[
-                                styles.option,
-                                selected === code && (isDarkMode ? styles.optionSelectedDark : styles.optionSelected)
-                            ]}
-                            onPress={() => { onSelect(code); onDismiss(); }}
-                        >
-                            <Text style={[
-                                styles.optionText,
-                                isDarkMode && styles.textSecondary,
-                                selected === code && (isDarkMode ? styles.optionTextSelectedDark : styles.optionTextSelected)
-                            ]}>
-                                {name}
-                            </Text>
-                            {selected === code && <Check size={18} color="#3B82F6" />}
-                        </TouchableOpacity>
-                    ))}
+                    {languages.map(([code, name]) => {
+                        const isSelected = selected === code;
+                        const isUsedElsewhere = otherSelectedLanguages.includes(code);
+                        return (
+                            <TouchableOpacity
+                                key={code}
+                                style={[
+                                    styles.option,
+                                    isSelected && (isDarkMode ? styles.optionSelectedDark : styles.optionSelected)
+                                ]}
+                                onPress={() => { onSelect(code); onDismiss(); }}
+                            >
+                                <Text style={[
+                                    styles.optionText,
+                                    isDarkMode && styles.textSecondary,
+                                    isSelected && (isDarkMode ? styles.optionTextSelectedDark : styles.optionTextSelected)
+                                ]}>
+                                    {name}
+                                </Text>
+                                <View style={styles.optionRight}>
+                                    {isUsedElsewhere && !isSelected && (
+                                        <View style={styles.swapHintRow}>
+                                            <ArrowLeftRight size={11} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                                            <Text style={[styles.swapHint, isDarkMode && { color: '#60A5FA' }]}>swap</Text>
+                                        </View>
+                                    )}
+                                    {isSelected && <Check size={18} color="#3B82F6" />}
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </BlurView>
             </TouchableOpacity>
         </Modal>
@@ -108,6 +121,21 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderRadius: 16,
         marginBottom: 6,
+    },
+    optionRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    swapHintRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+    },
+    swapHint: {
+        fontSize: 10,
+        color: '#3B82F6',
+        fontWeight: '600',
     },
     optionSelected: {
         backgroundColor: 'rgba(59, 130, 246, 0.12)',
