@@ -3,7 +3,7 @@
  * Fixed: audio session awaited before playback, shouldPlay:false + separate playAsync,
  * proper unload before re-use, and state tracking (idle/loading/playing).
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 
@@ -24,9 +24,22 @@ export function useTextToSpeech(): TextToSpeechHook {
     const soundRef = useRef<Audio.Sound | null>(null);
     const [ttsState, setTtsState] = useState<TtsState>('idle');
     const [playingText, setPlayingText] = useState('');
+    // Prevents concurrent speak() calls (double-tap protection)
+    const isLoadingRef = useRef(false);
     const isSupported = true;
 
+    // Set up audio session once at mount so the first speak() has no setup delay
+    useEffect(() => {
+        Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: true,
+            staysActiveInBackground: false,
+        }).catch(() => {});
+    }, []);
+
     const stop = useCallback(async () => {
+        isLoadingRef.current = false;
         if (soundRef.current) {
             try {
                 await soundRef.current.stopAsync();
@@ -40,6 +53,9 @@ export function useTextToSpeech(): TextToSpeechHook {
 
     const speak = useCallback(async (text: string, langCode: string) => {
         if (!text.trim()) return;
+        // Double-tap guard: reject if a load is already in progress
+        if (isLoadingRef.current) return;
+        isLoadingRef.current = true;
 
         try {
             // Unload any previous sound first
@@ -54,13 +70,7 @@ export function useTextToSpeech(): TextToSpeechHook {
             setTtsState('loading');
             setPlayingText(text);
 
-            // Audio session MUST be fully awaited before loading/playing
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: false,
-                playsInSilentModeIOS: true,
-                shouldDuckAndroid: true,
-                staysActiveInBackground: false,
-            });
+            // Audio session is already configured at mount — no await needed here
 
             const ttsUrl = `${API}/speech/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(langCode)}`;
             const isWeb = Platform.OS === 'web';
@@ -133,6 +143,9 @@ export function useTextToSpeech(): TextToSpeechHook {
             if (Platform.OS === 'web') {
                 _webSpeechFallback(text, langCode);
             }
+        } finally {
+            // Release the guard once loading is done (playback continues independently)
+            isLoadingRef.current = false;
         }
     }, []);
 

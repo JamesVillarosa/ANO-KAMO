@@ -385,6 +385,16 @@ function ChatBubble({
     );
 }
 
+// Memoize ChatBubble so re-renders triggered by typing (setInputText) don't
+// re-render all existing bubbles. Only re-render when the message data,
+// alignment, theme, or shimmer state actually changes.
+const MemoizedChatBubble = React.memo(ChatBubble, (prev, next) =>
+    prev.msg === next.msg &&
+    prev.alignment === next.alignment &&
+    prev.isDarkMode === next.isDarkMode &&
+    prev.isSyncShimmering === next.isSyncShimmering
+);
+
 // ─────────────────────────────────────────
 // Main Screen
 // ─────────────────────────────────────────
@@ -703,6 +713,11 @@ export default function ConversationScreen() {
     }, [viewMode, deviceId]);
 
     const handleViewModeChange = (mode: 'two_way' | 'three_way' | 'face_to_face') => {
+        // Invalidate session immediately (synchronously) so existing bubbles
+        // don't trigger auto-TTS when the mode-change effects fire
+        sessionId.current = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        tts.stop();
+
         if (Platform.OS === 'ios' || Platform.OS === 'android') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
@@ -949,6 +964,12 @@ export default function ConversationScreen() {
         }
         setLoading(false);
     };
+
+    // Stable callback for bubble toast — prevents MemoizedChatBubble re-renders on each keystroke
+    const showBubbleToast = useCallback((msg: string) => {
+        setSnackbarMessage(msg);
+        setSnackbarVisible(true);
+    }, []);
 
     const openDictionary = (text: string, src: string, tgt: string) => {
         if (!text.trim()) return;
@@ -1398,7 +1419,7 @@ export default function ConversationScreen() {
                         (viewMode === 'three_way' && m.speaker === 2);
 
                     return (
-                        <ChatBubble
+                        <MemoizedChatBubble
                             key={m.id}
                             msg={m}
                             alignment={isRight ? 'right' : isCenter ? 'center' : 'left'}
@@ -1407,7 +1428,7 @@ export default function ConversationScreen() {
                             isDarkMode={isDarkMode}
                             onRetranslate={handleAutoRetranslate}
                             isSyncShimmering={isSyncShimmering || (m.isRegenerating === true)}
-                            onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
+                            onShowToast={showBubbleToast}
                         />
                     );
                 })}
