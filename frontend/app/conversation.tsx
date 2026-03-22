@@ -514,6 +514,10 @@ export default function ConversationScreen() {
 
     const [pickerFor, setPickerFor] = useState<number | null>(null);
 
+    // Track language state at last full regeneration (for smart regen on send)
+    const lastRegenLangsRef = useRef<{ 0: string; 1: string; 2: string } | null>(null);
+    const lastRegenModeRef = useRef<'two_way' | 'three_way' | 'face_to_face' | null>(null);
+
     // Dictionary
     const [dictVisible, setDictVisible] = useState(false);
     const [dictWord, setDictWord] = useState('');
@@ -699,6 +703,16 @@ export default function ConversationScreen() {
         if (Platform.OS === 'ios' || Platform.OS === 'android') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
+        // Switching from 3-way to 2-way: immediately trim lang2 translations from all bubbles
+        if (mode === 'two_way' && viewMode === 'three_way') {
+            setMessages((prev: Message[]) => prev.map((m: Message) => ({
+                ...m,
+                translations: m.translations.filter(t => t.lang !== lang2),
+            })));
+            // Sync regen refs so next send does not trigger a redundant regen
+            lastRegenLangsRef.current = { 0: lang0, 1: lang1, 2: lang2 };
+            lastRegenModeRef.current = 'two_way';
+        }
         // Prompt 5: switching to face_to_face from three_way clears only 3-way messages
         if (mode === 'face_to_face' && viewMode === 'three_way') {
             setMessages((prev: Message[]) => prev.filter((m: Message) => m.mode !== 'three_way'));
@@ -711,46 +725,64 @@ export default function ConversationScreen() {
     };
 
     // Batch 5 Prompt 3: regenerate sessionId on mode switch so old bubbles don't re-play
-    // Batch 5 Prompt 4: detect 2-way → 3-way switch and retroactively add 3rd language
+    // Retroactive 3rd language is now deferred: triggered on next send via regenerateAllBubbles
     useEffect(() => {
-        const prevMode = prevModeRef.current;
         prevModeRef.current = viewMode;
         // Regenerate session so existing bubbles don't auto-TTS after mode switch
         sessionId.current = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        // Retroactive 3rd language when switching into 3-way
-        if (prevMode !== 'three_way' && viewMode === 'three_way' && messages.length > 0) {
-            retroactivelyAdd3rdLanguage(lang2);
-        }
     }, [viewMode]);
 
-    const retroactivelyAdd3rdLanguage = async (newTargetLang: string) => {
-        const currentMsgs = messages;
-        const deviceId = deviceIdRef.current;
-        // Mark bubbles that need the new lang as regenerating
+    // Recompute expected target languages for a given speaker in a given mode/langs config
+    const getExpectedTargets = (
+        speakerIndex: number,
+        currentLangs: { 0: string; 1: string; 2: string },
+        currentMode: 'two_way' | 'three_way' | 'face_to_face',
+    ): string[] => {
+        const activeSpeakers = currentMode === 'three_way' ? [0, 1, 2] : [0, 1];
+        const targets = activeSpeakers
+            .filter(i => i !== speakerIndex)
+            .map(i => currentLangs[i as 0 | 1 | 2]);
+        // Deduplicate
+        return targets.filter((l, idx, arr) => arr.indexOf(l) === idx);
+    };
+
+    // Regenerate all existing bubbles to match currentLangs/currentMode
+    // Removes stale translations, adds missing ones via API
+    const regenerateAllBubbles = async (
+        currentLangs: { 0: string; 1: string; 2: string },
+        currentMode: 'two_way' | 'three_way' | 'face_to_face',
+        snapshotMsgs: Message[],
+    ) => {
+        const devId = deviceIdRef.current;
+        // Mark all non-F2F bubbles as regenerating
         setMessages(prev => prev.map(m =>
-            m.translations.some(t => t.lang === newTargetLang) ? m : { ...m, isRegenerating: true }
+            m.mode === 'face_to_face' ? m : { ...m, isRegenerating: true }
         ));
-        const updates = currentMsgs.map(async (bubble) => {
-            if (bubble.translations.some(t => t.lang === newTargetLang)) return bubble;
-            try {
-                const res = await translateSingle(
-                    bubble.originalText || bubble.text,
-                    bubble.lang,
-                    newTargetLang,
-                    bubble.tone,
-                    deviceId,
-                );
-                return {
-                    ...bubble,
-                    translations: [
-                        ...bubble.translations,
-                        { lang: newTargetLang, text: sanitizeTranslation(res.output_text) },
-                    ],
-                    isRegenerating: false,
-                };
-            } catch {
+        const updates = snapshotMsgs.map(async (bubble) => {
+            if (bubble.mode === 'face_to_face') return bubble;
+            const expectedTargets = getExpectedTargets(bubble.speaker, currentLangs, currentMode);
+            const existingLangs = bubble.translations.map(t => t.lang);
+            const toRemove = existingLangs.filter(l => !expectedTargets.includes(l));
+            const toAdd = expectedTargets.filter(l => !existingLangs.includes(l));
+            if (toRemove.length === 0 && toAdd.length === 0) {
                 return { ...bubble, isRegenerating: false };
             }
+            let updatedTranslations = bubble.translations.filter(t => !toRemove.includes(t.lang));
+            for (const targetLang of toAdd) {
+                try {
+                    const res = await translateSingle(
+                        bubble.originalText || bubble.text,
+                        bubble.lang,
+                        targetLang,
+                        bubble.tone,
+                        devId,
+                    );
+                    updatedTranslations.push({ lang: targetLang, text: sanitizeTranslation(res.output_text) });
+                } catch {
+                    updatedTranslations.push({ lang: targetLang, text: '(Try again)' });
+                }
+            }
+            return { ...bubble, translations: updatedTranslations, isRegenerating: false };
         });
         const updatedBubbles = await Promise.all(updates);
         setMessages(updatedBubbles);
@@ -766,6 +798,15 @@ export default function ConversationScreen() {
         const current = [lang0, lang1, lang2];
         const count: 2 | 3 = viewMode === 'three_way' ? 3 : 2;
         const next = computeSmartSwap(current, speaker, code, count);
+        // Lock guard: if any speaker whose language would change has already spoken, block the swap
+        for (let i = 0; i < count; i++) {
+            if (next[i] !== current[i] && hasSpoken[i as 0 | 1 | 2]) {
+                const lockedLang = SUPPORTED_LANGUAGES[current[i]] || current[i];
+                setSnackbarMessage(`Cannot change — ${lockedLang} is already locked in conversation.`);
+                setSnackbarVisible(true);
+                return;
+            }
+        }
         next.forEach((c, i) => { if (c !== current[i]) setLangs(i, c); });
     };
 
@@ -782,6 +823,23 @@ export default function ConversationScreen() {
     // Standard mode send
     const handleAutoSend = async (text: string) => {
         if (!text.trim()) return;
+
+        // Smart bubble regeneration: if langs or mode changed since last send, regenerate first
+        const currentLangs = { 0: lang0, 1: lang1, 2: lang2 };
+        const currentMode = viewMode;
+        const snapshotMsgs = messages; // capture before any state update
+        if (lastRegenLangsRef.current !== null && snapshotMsgs.length > 0) {
+            const prev = lastRegenLangsRef.current;
+            const langsChanged = prev[0] !== currentLangs[0] || prev[1] !== currentLangs[1] || prev[2] !== currentLangs[2];
+            const modeChanged = lastRegenModeRef.current !== currentMode;
+            if (langsChanged || modeChanged) {
+                await regenerateAllBubbles(currentLangs, currentMode, snapshotMsgs);
+            }
+        }
+        // Update regen refs to current state
+        lastRegenLangsRef.current = currentLangs;
+        lastRegenModeRef.current = currentMode;
+
         const fromLang = getLang(activeSpeaker);
         const targetLangs = getTargetLangs(activeSpeaker);
         const speakerLabel = ['A', 'B', 'C'][activeSpeaker];
