@@ -55,6 +55,7 @@ interface HistoryItem {
     translation_type: string;
     outputs: HistoryOutput[];
     timestamp: string;
+    _allIds?: string[]; // merged translation_ids (for 3-way chat dedup)
 }
 
 interface Section {
@@ -232,6 +233,41 @@ function ConversationGroupCard({
     );
 }
 
+// Merge duplicate chat items that share the same input_text/input_language
+// and were created within 5 seconds of each other (3-way chat creates one record per target lang)
+function mergeChatDuplicates(items: HistoryItem[]): HistoryItem[] {
+    const result: HistoryItem[] = [];
+    for (const item of items) {
+        if (item.translation_type !== 'chat') {
+            result.push(item);
+            continue;
+        }
+        const existing = result.find(r =>
+            r.translation_type === 'chat' &&
+            r.input_text === item.input_text &&
+            r.input_language === item.input_language &&
+            Math.abs(
+                normalizeTimestamp(r.timestamp).getTime() -
+                normalizeTimestamp(item.timestamp).getTime()
+            ) < 5000
+        );
+        if (existing) {
+            // Merge outputs, skipping duplicate target languages
+            for (const out of item.outputs) {
+                if (!existing.outputs.some(o => o.target_language === out.target_language)) {
+                    existing.outputs.push(out);
+                }
+            }
+            // Track all merged IDs so delete can remove all underlying records
+            if (!existing._allIds) existing._allIds = [existing.translation_id];
+            existing._allIds.push(item.translation_id);
+        } else {
+            result.push({ ...item, outputs: [...item.outputs] });
+        }
+    }
+    return result;
+}
+
 function groupBySections(items: HistoryItem[]): Section[] {
     const map = new Map<string, HistoryItem[]>();
     for (const item of items) {
@@ -278,7 +314,7 @@ export default function HistoryScreen() {
                 getHistory(0, 200, deviceId),
                 getConversationHistory(deviceId).catch(() => []),
             ]);
-            setItems(res || []);
+            setItems(mergeChatDuplicates(res || []));
             setConvGroups(convRes || []);
         } catch {
             setItems([]);
@@ -304,15 +340,16 @@ export default function HistoryScreen() {
         } catch {}
     };
 
-    const handleDelete = (translationId: string) => {
+    const handleDelete = (item: HistoryItem) => {
         showConfirm(
             'Delete Entry?',
             'This will permanently remove this translation from your history.',
             async () => {
                 try {
                     const deviceId = await getDeviceId();
-                    await deleteHistory(translationId, deviceId);
-                    setItems(prev => prev.filter(h => h.translation_id !== translationId));
+                    const idsToDelete = item._allIds ?? [item.translation_id];
+                    await Promise.all(idsToDelete.map(id => deleteHistory(id, deviceId)));
+                    setItems(prev => prev.filter(h => h.translation_id !== item.translation_id));
                 } catch {}
             },
             'Delete', true,
@@ -409,7 +446,7 @@ export default function HistoryScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]}
-                            onPress={() => handleDelete(item.translation_id)}
+                            onPress={() => handleDelete(item)}
                         >
                             <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
                         </TouchableOpacity>

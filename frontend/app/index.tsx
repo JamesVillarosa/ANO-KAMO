@@ -421,6 +421,8 @@ export default function HomeScreen() {
           <MessageSquare size={18} color="#3B82F6" />
         </TouchableOpacity>
 
+        <View style={{ flex: 1 }} />
+
         {/* 3-dot menu - PROMPT 3: Anchored positioning */}
         <View ref={target === 1 ? menuButtonRef1 : menuButtonRef2} collapsable={false}>
           <TouchableOpacity
@@ -441,8 +443,6 @@ export default function HomeScreen() {
             <MoreHorizontal size={18} color="#94A3B8" />
           </TouchableOpacity>
         </View>
-
-        <View style={{ flex: 1 }} />
       </Animated.View>
     );
   };
