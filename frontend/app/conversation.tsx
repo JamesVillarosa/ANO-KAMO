@@ -414,6 +414,7 @@ export default function ConversationScreen() {
 
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
     const tts = useTextToSpeech();
     const deviceIdRef = useRef<string | undefined>(undefined);
     const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
@@ -674,10 +675,12 @@ export default function ConversationScreen() {
     }, [messages]);
 
     useEffect(() => {
-        const sub = Keyboard.addListener('keyboardDidShow', () => {
+        const onShow = Keyboard.addListener('keyboardWillShow', () => {
+            setKeyboardVisible(true);
             scrollRef.current?.scrollToEnd({ animated: true });
         });
-        return () => sub.remove();
+        const onHide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
+        return () => { onShow.remove(); onHide.remove(); };
     }, []);
 
     // Create backend conversation session — waits for deviceId to be loaded
@@ -1251,7 +1254,7 @@ export default function ConversationScreen() {
         <KeyboardAvoidingView
             style={[styles.container, isDarkMode && styles.containerDark]}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={insets.top + 44}
+            keyboardVerticalOffset={0}
         >
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
@@ -1372,7 +1375,7 @@ export default function ConversationScreen() {
             <ScrollView
                 ref={scrollRef}
                 style={styles.chatArea}
-                contentContainerStyle={styles.chatContent}
+                contentContainerStyle={[styles.chatContent, keyboardVisible && { paddingBottom: 100 }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
@@ -1415,7 +1418,12 @@ export default function ConversationScreen() {
             <BlurView
                 intensity={40}
                 tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.inputBar, isDarkMode && styles.inputBarDark, { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 }]}
+                style={[
+                    styles.inputBar,
+                    isDarkMode && styles.inputBarDark,
+                    { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 },
+                    { marginBottom: keyboardVisible ? 0 : 100 },
+                ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
 
@@ -1847,7 +1855,6 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         backgroundColor: 'rgba(255,255,255,0.3)',
         borderRadius: 32,
-        marginBottom: 100,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.4)',
         overflow: 'hidden',
