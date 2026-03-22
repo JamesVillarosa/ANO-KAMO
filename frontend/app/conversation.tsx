@@ -416,7 +416,13 @@ export default function ConversationScreen() {
     const [loading, setLoading] = useState(false);
     const tts = useTextToSpeech();
     const deviceIdRef = useRef<string | undefined>(undefined);
-    useEffect(() => { getDeviceId().then(id => { deviceIdRef.current = id; }); }, []);
+    const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        getDeviceId().then(id => {
+            deviceIdRef.current = id;
+            setDeviceId(id);
+        });
+    }, []);
 
     // Snackbar / Toast state
     const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -670,10 +676,10 @@ export default function ConversationScreen() {
         return () => sub.remove();
     }, []);
 
-    // Create backend conversation session
+    // Create backend conversation session — waits for deviceId to be loaded
     useEffect(() => {
-        // Only create new session if none exists
-        if (conversationId) return;
+        // Only create new session if none exists and deviceId is ready
+        if (conversationId || !deviceId) return;
 
         const speakerCount = viewMode === 'three_way' ? 3 : 2;
         const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
@@ -684,10 +690,10 @@ export default function ConversationScreen() {
         if (speakerCount === 3) {
             participants.push({ speaker_label: 'C', preferred_language: lang2 });
         }
-        createConversation(backendMode, participants, viewMode, deviceIdRef.current)
+        createConversation(backendMode, participants, viewMode, deviceId)
             .then(res => setConversationId(res.conversation_id))
             .catch(() => setConversationId(null));
-    }, [viewMode]);
+    }, [viewMode, deviceId]);
 
     const handleViewModeChange = (mode: 'two_way' | 'three_way' | 'face_to_face') => {
         if (Platform.OS === 'ios' || Platform.OS === 'android') {

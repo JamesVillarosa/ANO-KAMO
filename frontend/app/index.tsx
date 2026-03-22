@@ -93,6 +93,8 @@ export default function HomeScreen() {
   const prevSourceLangRef = useRef(sourceLang);
   const prevTargetLang1Ref = useRef(targetLang1);
   const prevTargetLang2Ref = useRef(targetLang2);
+  // Guard against concurrent translateMulti calls (prevents double-save in Strict Mode)
+  const isTranslatingRef = useRef(false);
 
   // Feedback state
   const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
@@ -227,6 +229,9 @@ export default function HomeScreen() {
         // 3-Way: one bundled call → one Translation + 2 outputs in history
         const needsAny = sourceTextChanged || sourceLangChanged || targetLang1Changed || targetLang2Changed || !translated2;
         if (needsAny) {
+          // Guard: prevent duplicate saves if this timer fires more than once (Strict Mode)
+          if (isTranslatingRef.current) return;
+          isTranslatingRef.current = true;
           setLoading1(true);
           setLoading2(true);
           setFeedbackGiven1(null);
@@ -243,6 +248,8 @@ export default function HomeScreen() {
               : 'Translation unavailable. Please try again.';
             setTranslated1(errorMsg);
             setTranslated2(errorMsg);
+          } finally {
+            isTranslatingRef.current = false;
           }
           setLoading1(false);
           setLoading2(false);
@@ -267,7 +274,8 @@ export default function HomeScreen() {
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [sourceText, sourceLang, targetLang1, targetLang2, mode, translated2]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceText, sourceLang, targetLang1, targetLang2, mode]);
 
   const swapLanguages = () => {
     swapLangSlots(0, 1);

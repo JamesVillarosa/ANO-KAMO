@@ -68,11 +68,23 @@ const TYPE_BADGE: Record<string, { label: string; color: string }> = {
     chat: { label: 'Chat', color: '#FF9500' },
 };
 
+function normalizeTimestamp(ts: string): Date {
+    // SQLite returns naive datetimes (no timezone suffix). JavaScript on iOS
+    // interprets those as local time, but they are actually stored in UTC.
+    // Append 'Z' so they are correctly parsed as UTC.
+    if (!ts.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(ts)) {
+        return new Date(ts + 'Z');
+    }
+    return new Date(ts);
+}
+
 function formatTimestamp(ts: string): string {
-    const d = new Date(ts);
+    const d = normalizeTimestamp(ts);
     const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    // Compare calendar dates (not elapsed ms) to correctly handle "Today"/"Yesterday"
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const itemMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((todayMidnight.getTime() - itemMidnight.getTime()) / (1000 * 60 * 60 * 24));
     const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (diffDays === 0) return `Today ${timeStr}`;
     if (diffDays === 1) return `Yesterday ${timeStr}`;
@@ -80,10 +92,11 @@ function formatTimestamp(ts: string): string {
 }
 
 function getSectionTitle(ts: string): string {
-    const d = new Date(ts);
+    const d = normalizeTimestamp(ts);
     const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const itemMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((todayMidnight.getTime() - itemMidnight.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     return d.toLocaleDateString([], { month: 'long', day: 'numeric' });
@@ -547,7 +560,11 @@ export default function HistoryScreen() {
                                                 />
                                             );
                                         }
-                                        return renderItem({ item: displayItem.item } as any);
+                                        return (
+                                            <React.Fragment key={displayItem.item.translation_id}>
+                                                {renderItem({ item: displayItem.item } as any)}
+                                            </React.Fragment>
+                                        );
                                     })}
                                 </View>
                             ))}
