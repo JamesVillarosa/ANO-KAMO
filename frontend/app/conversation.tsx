@@ -283,36 +283,34 @@ function ChatBubble({
                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                 </Text>
                             </View>
-                            <View style={styles.bubbleTextContainer}>
-                                <Text style={[
-                                    styles.transText,
-                                    { color: langColor.trans, flex: 1 },
-                                    isError && {
-                                        color: isDarkMode ? '#F87171' : '#EF4444',
-                                        fontWeight: '500', // Medium weight
-                                        textAlign: alignment === 'center' ? 'center' : (alignment === 'left' ? 'left' : 'right'),
-                                        fontStyle: 'normal'
-                                    }
-                                ]}>
-                                    {isError ? 'Paki-ulit (Try again)' : tr.text}
-                                </Text>
-                                {!isError && (
-                                    <View style={styles.inlineActionRow}>
-                                        <TouchableOpacity
-                                            onPress={() => tts.speak(tr.text, tr.lang)}
-                                            style={styles.inlineTTS}
-                                        >
-                                            <Volume2 size={16} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
-                                            style={styles.inlineTTS}
-                                        >
-                                            <BookOpen size={16} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            </View>
+                            <Text style={[
+                                styles.transText,
+                                { color: langColor.trans },
+                                isError && {
+                                    color: isDarkMode ? '#F87171' : '#EF4444',
+                                    fontWeight: '500',
+                                    textAlign: alignment === 'center' ? 'center' : (alignment === 'left' ? 'left' : 'right'),
+                                    fontStyle: 'normal'
+                                }
+                            ]}>
+                                {isError ? 'Paki-ulit (Try again)' : tr.text}
+                            </Text>
+                            {!isError && (
+                                <View style={[styles.bubbleUtilityRow, { marginTop: 4 }]}>
+                                    <TouchableOpacity
+                                        onPress={() => tts.speak(tr.text, tr.lang)}
+                                        style={styles.utilityBtn}
+                                    >
+                                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                        style={styles.utilityBtn}
+                                    >
+                                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </View>
                     );
                 })}
@@ -865,17 +863,30 @@ export default function ConversationScreen() {
         setLoading(true);
         try {
             const translations: Translation[] = [];
-            for (const tl of targetLangs) {
+            if (conversationId) {
+                // One API call with all target langs — avoids duplicate DB records for 3-way
                 try {
-                    if (conversationId) {
-                        const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, tl, activeTone || undefined);
-                        translations.push({ text: sanitizeTranslation(res.translated_text) || '', lang: tl });
+                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLangs, activeTone || undefined);
+                    if (res.translations && Array.isArray(res.translations) && res.translations.length > 0) {
+                        res.translations.forEach((t: { lang: string; text: string }) => {
+                            translations.push({ text: sanitizeTranslation(t.text) || '', lang: t.lang });
+                        });
                     } else {
-                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined);
-                        translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
+                        // Fallback: old single-target response
+                        translations.push({ text: sanitizeTranslation(res.translated_text) || '', lang: targetLangs[0] || fromLang });
                     }
                 } catch {
-                    translations.push({ text: '(Try again)', lang: tl });
+                    targetLangs.forEach(tl => translations.push({ text: '(Try again)', lang: tl }));
+                }
+            } else {
+                // No conversation session — translate locally one at a time
+                for (const tl of targetLangs) {
+                    try {
+                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined);
+                        translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
+                    } catch {
+                        translations.push({ text: '(Try again)', lang: tl });
+                    }
                 }
             }
             const msg: Message = {
@@ -1275,7 +1286,7 @@ export default function ConversationScreen() {
         <KeyboardAvoidingView
             style={[styles.container, isDarkMode && styles.containerDark]}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={0}
+            keyboardVerticalOffset={100}
         >
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
@@ -1443,7 +1454,7 @@ export default function ConversationScreen() {
                     styles.inputBar,
                     isDarkMode && styles.inputBarDark,
                     { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 },
-                    { marginBottom: keyboardVisible ? 0 : 100 },
+                    { marginBottom: 100 },
                 ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />

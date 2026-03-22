@@ -108,9 +108,15 @@ interface ConvMessage {
     speaker_abc: string;
     text: string;
     translated_text: string;
+    translations?: { lang: string; text: string }[];
     language: string;
     timestamp: string;
 }
+
+// Single-letter language initials shown in the mini bubble header
+const LANG_INITIALS: Record<string, string> = {
+    tl: 'T', en: 'E', ceb: 'C', hil: 'H',
+};
 
 interface ConvParticipant {
     speaker_label: string;
@@ -190,7 +196,6 @@ function ConversationGroupCard({
                     nestedScrollEnabled
                 >
                     {(() => {
-                        // Deduplicate by message_id to prevent doubled messages
                         const seenIds = new Set<string>();
                         return group.messages.filter(m => {
                             if (seenIds.has(m.message_id)) return false;
@@ -199,6 +204,14 @@ function ConversationGroupCard({
                         });
                     })().map((msg) => {
                         const isA = msg.speaker_abc === 'A';
+                        const srcInitial = LANG_INITIALS[msg.language] ?? msg.language.slice(0, 1).toUpperCase();
+                        // Use parsed translations array; fall back to translated_text for old records
+                        const transList: { lang: string; text: string }[] =
+                            msg.translations && msg.translations.length > 0
+                                ? msg.translations
+                                : msg.translated_text
+                                    ? [{ lang: '?', text: msg.translated_text }]
+                                    : [];
                         return (
                             <View
                                 key={msg.message_id}
@@ -212,17 +225,25 @@ function ConversationGroupCard({
                                     { backgroundColor: isA ? 'rgba(59,130,246,0.15)' : 'rgba(100,116,139,0.12)' },
                                     isDarkMode && { backgroundColor: isA ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.07)' },
                                 ]}>
+                                    {/* Source language initial */}
                                     <Text style={[styles.convSpeakerLabel, { color: isA ? '#3B82F6' : '#64748B' }]}>
-                                        {msg.speaker_abc}
+                                        {srcInitial}
                                     </Text>
+                                    {/* Source text — bold */}
                                     <Text style={[styles.convMsgText, isDarkMode && styles.textWhite]}>
                                         {msg.text}
                                     </Text>
-                                    {!!msg.translated_text && (
-                                        <Text style={[styles.convMsgTrans, isDarkMode && styles.textSecondary]}>
-                                            {msg.translated_text}
-                                        </Text>
-                                    )}
+                                    {/* One row per translation */}
+                                    {transList.map((tr, idx) => (
+                                        <View key={idx} style={styles.convTransRow}>
+                                            <Text style={[styles.convTransInitial, isDarkMode && { color: '#8E8E93' }]}>
+                                                {LANG_INITIALS[tr.lang] ?? tr.lang.slice(0, 1).toUpperCase()}
+                                            </Text>
+                                            <Text style={[styles.convMsgTrans, { flex: 1, flexWrap: 'wrap' }, isDarkMode && styles.textSecondary]}>
+                                                {tr.text}
+                                            </Text>
+                                        </View>
+                                    ))}
                                 </View>
                             </View>
                         );
@@ -898,8 +919,20 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#64748B',
         lineHeight: 17,
-        marginTop: 3,
         fontStyle: 'italic',
+    },
+    convTransRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 5,
+        marginTop: 3,
+    },
+    convTransInitial: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: '#8E8E93',
+        minWidth: 10,
+        marginTop: 2,
     },
 
     cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 10 },

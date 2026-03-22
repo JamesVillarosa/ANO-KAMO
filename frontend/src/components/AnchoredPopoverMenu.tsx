@@ -61,10 +61,9 @@ export default function AnchoredPopoverMenu({
         ? anchorPosition.y - menuHeight - 8
         : anchorPosition.y + anchorPosition.height + 8;
 
-    // Right-anchor: align popup's right edge with button's right edge, then clamp
-    const buttonRightEdge = anchorPosition.x + anchorPosition.width;
-    const idealLeft = buttonRightEdge - POPUP_WIDTH;
-    const menuLeft = Math.max(POPUP_MARGIN, Math.min(SCREEN_WIDTH - POPUP_WIDTH - POPUP_MARGIN, idealLeft));
+    // Always anchor to the right edge of the screen so the menu never
+    // drifts left and covers the translated text.
+    const menuLeft = SCREEN_WIDTH - POPUP_WIDTH - POPUP_MARGIN;
 
     // Caret: center it over the button
     const buttonCenterX = anchorPosition.x + anchorPosition.width / 2;

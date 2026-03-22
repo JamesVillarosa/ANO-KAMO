@@ -4,6 +4,7 @@ Conversation Endpoints — Session management + messages with tone detection
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+import json
 
 import logging
 import httpx
@@ -63,17 +64,34 @@ async def send_message(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Detect tone
+    # Detect tone once
     detected_tone = TranslationService.detect_tone(request.text)
     tone_to_use = request.tone or detected_tone
 
-    # Translate
-    result = TranslationService.translate_text(
-        text=request.text,
-        source_lang=request.language,
-        target_lang=request.target_lang,
-        tone=tone_to_use,
-    )
+    # Resolve target language list (support both single and multi-target)
+    if request.target_langs:
+        target_langs = request.target_langs
+    elif request.target_lang:
+        target_langs = [request.target_lang]
+    else:
+        raise HTTPException(status_code=400, detail="target_lang or target_langs is required")
+
+    # Translate to each target language
+    translations = []
+    for tl in target_langs:
+        result = TranslationService.translate_text(
+            text=request.text,
+            source_lang=request.language,
+            target_lang=tl,
+            tone=tone_to_use,
+        )
+        translations.append({"lang": tl, "text": result["output_text"]})
+
+    # Store single target as plain string, multi-target as JSON array
+    if len(translations) == 1:
+        translated_text_stored = translations[0]["text"]
+    else:
+        translated_text_stored = json.dumps(translations, ensure_ascii=False)
 
     # Get/create tone record
     tone_record = get_or_create_tone(db, tone_to_use)
@@ -83,29 +101,30 @@ async def send_message(
         conversation_id=conversation_id,
         speaker_abc=request.speaker_abc,
         text=request.text,
-        translated_text=result["output_text"],
+        translated_text=translated_text_stored,
         language=request.language,
         tone_id=tone_record.tone_id,
     )
 
-    # Also save to translation history so it appears in the History screen
+    # Save ONE translation record to history (not one per target)
     try:
         t = create_translation(
             db,
             input_text=request.text,
             input_language=request.language,
             method="text",
-            multi_target=False,
+            multi_target=len(translations) > 1,
             device_id=conv.device_id,
             translation_type="chat",
         )
-        create_translation_output(
-            db,
-            translation_id=t.translation_id,
-            target_language=request.target_lang,
-            output_text=result["output_text"],
-            detected_tone=tone_to_use,
-        )
+        for tr in translations:
+            create_translation_output(
+                db,
+                translation_id=t.translation_id,
+                target_language=tr["lang"],
+                output_text=tr["text"],
+                detected_tone=tone_to_use,
+            )
     except Exception as e:
         logger.warning(f"Chat history save skipped: {e}")
 
@@ -114,6 +133,7 @@ async def send_message(
         "speaker_abc": msg.speaker_abc,
         "text": msg.text,
         "translated_text": msg.translated_text,
+        "translations": translations,
         "language": msg.language,
         "detected_tone": tone_to_use,
         "timestamp": msg.timestamp,

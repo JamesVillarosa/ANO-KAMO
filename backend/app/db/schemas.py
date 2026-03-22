@@ -90,7 +90,8 @@ class MessageSendRequest(BaseModel):
     speaker_abc: str = Field(..., max_length=1, description="A, B, or C")
     text: str = Field(..., min_length=1, max_length=5000)
     language: str = Field(..., min_length=2, max_length=10)
-    target_lang: str = Field(..., min_length=2, max_length=10)
+    target_lang: Optional[str] = None          # single target (2-way / legacy)
+    target_langs: Optional[List[str]] = None   # multi-target (3-way)
     tone: Optional[str] = None
 
 class MessageResponse(BaseModel):
@@ -98,6 +99,7 @@ class MessageResponse(BaseModel):
     speaker_abc: str
     text: str
     translated_text: Optional[str]
+    translations: Optional[list] = None        # [{"lang": "en", "text": "..."}]
     language: str
     detected_tone: Optional[str]
     timestamp: datetime

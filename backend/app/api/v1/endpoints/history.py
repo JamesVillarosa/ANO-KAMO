@@ -1,6 +1,7 @@
 """
 History & Favorites Endpoints
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -123,6 +124,19 @@ async def get_favorites_list(
     return results
 
 
+def _parse_msg_translations(translated_text: str | None) -> list:
+    """Parse translated_text: if JSON array return it, otherwise return empty list."""
+    if not translated_text:
+        return []
+    try:
+        data = json.loads(translated_text)
+        if isinstance(data, list):
+            return data
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return []
+
+
 @router.get("/history/conversations")
 async def get_conversation_history(
     device_id: str = Query(None),
@@ -150,6 +164,7 @@ async def get_conversation_history(
                     "speaker_abc": m.speaker_abc,
                     "text": m.text,
                     "translated_text": m.translated_text,
+                    "translations": _parse_msg_translations(m.translated_text),
                     "language": m.language,
                     "timestamp": m.timestamp,
                 }
