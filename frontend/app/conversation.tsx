@@ -1586,7 +1586,7 @@ const styles = StyleSheet.create({
 
     // ── Chat (Standard mode) ──
     chatArea: { flex: 1 },
-    chatContent: { padding: 16, paddingBottom: 160 },
+    chatContent: { padding: 16, paddingBottom: 220 },
 
     emptyState: { alignItems: 'center', marginTop: 60 },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
@@ -1789,7 +1789,7 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         backgroundColor: 'rgba(255,255,255,0.3)',
         borderRadius: 32,
-        marginBottom: 8,
+        marginBottom: 100,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.4)',
         overflow: 'hidden',

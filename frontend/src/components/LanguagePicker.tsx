@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Modal } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Check, X, ArrowLeftRight } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
@@ -32,49 +32,54 @@ export default function LanguagePicker({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
             <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onDismiss}>
-                <BlurView
-                    intensity={60}
-                    tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.container, isDarkMode && styles.containerDark]}
-                >
-                    <View style={styles.header}>
-                        <Text style={[styles.title, isDarkMode && styles.textWhite]}>{title}</Text>
-                        <TouchableOpacity onPress={onDismiss}>
-                            <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                        </TouchableOpacity>
-                    </View>
-                    {languages.map(([code, name]) => {
-                        const isSelected = selected === code;
-                        const isUsedElsewhere = otherSelectedLanguages.includes(code);
-                        return (
-                            <TouchableOpacity
-                                key={code}
-                                style={[
-                                    styles.option,
-                                    isSelected && (isDarkMode ? styles.optionSelectedDark : styles.optionSelected)
-                                ]}
-                                onPress={() => { onSelect(code); onDismiss(); }}
-                            >
-                                <Text style={[
-                                    styles.optionText,
-                                    isDarkMode && styles.textSecondary,
-                                    isSelected && (isDarkMode ? styles.optionTextSelectedDark : styles.optionTextSelected)
-                                ]}>
-                                    {name}
-                                </Text>
-                                <View style={styles.optionRight}>
-                                    {isUsedElsewhere && !isSelected && (
-                                        <View style={styles.swapHintRow}>
-                                            <ArrowLeftRight size={11} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
-                                            <Text style={[styles.swapHint, isDarkMode && { color: '#60A5FA' }]}>swap</Text>
-                                        </View>
-                                    )}
-                                    {isSelected && <Check size={18} color="#3B82F6" />}
-                                </View>
+                {/* Outer View owns borderRadius + overflow so iOS properly clips the blur */}
+                <View style={[styles.containerWrapper, isDarkMode && styles.containerWrapperDark]}>
+                    <BlurView
+                        intensity={60}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.blurFill, isDarkMode && styles.blurFillDark]}
+                    >
+                        <View style={styles.header}>
+                            <Text style={[styles.title, isDarkMode && styles.textWhite]}>{title}</Text>
+                            <TouchableOpacity onPress={onDismiss}>
+                                <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                             </TouchableOpacity>
-                        );
-                    })}
-                </BlurView>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                            {languages.map(([code, name]) => {
+                                const isSelected = selected === code;
+                                const isUsedElsewhere = otherSelectedLanguages.includes(code);
+                                return (
+                                    <TouchableOpacity
+                                        key={code}
+                                        style={[
+                                            styles.option,
+                                            isSelected && (isDarkMode ? styles.optionSelectedDark : styles.optionSelected)
+                                        ]}
+                                        onPress={() => { onSelect(code); onDismiss(); }}
+                                    >
+                                        <Text style={[
+                                            styles.optionText,
+                                            isDarkMode && styles.textSecondary,
+                                            isSelected && (isDarkMode ? styles.optionTextSelectedDark : styles.optionTextSelected)
+                                        ]}>
+                                            {name}
+                                        </Text>
+                                        <View style={styles.optionRight}>
+                                            {isUsedElsewhere && !isSelected && (
+                                                <View style={styles.swapHintRow}>
+                                                    <ArrowLeftRight size={11} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                                                    <Text style={[styles.swapHint, isDarkMode && { color: '#60A5FA' }]}>swap</Text>
+                                                </View>
+                                            )}
+                                            {isSelected && <Check size={18} color="#3B82F6" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </BlurView>
+                </View>
             </TouchableOpacity>
         </Modal>
     );
@@ -87,19 +92,26 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    container: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        borderRadius: 32,
-        padding: 24,
+    // Outer View — owns the rounded clipping (BlurView ignores overflow on iOS)
+    containerWrapper: {
         width: '85%',
         maxWidth: 360,
+        maxHeight: '75%',
+        borderRadius: 32,
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
     },
-    containerDark: {
-        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    containerWrapperDark: {
         borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    // BlurView fills the rounded wrapper
+    blurFill: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        padding: 24,
+    },
+    blurFillDark: {
+        backgroundColor: 'rgba(30, 41, 59, 0.7)',
     },
     header: {
         flexDirection: 'row',
