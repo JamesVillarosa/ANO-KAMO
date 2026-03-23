@@ -388,8 +388,8 @@ export default function OCRScreen() {
                     </View>
                 )}
 
-                {/* Top bar: close + language picker + (spacer) */}
-                <View style={styles.capturedTopBar}>
+                {/* Top bar: close + language picker — top matches live camera langBar using insets */}
+                <View style={[styles.capturedTopBar, { top: insets.top + 56 }]}>
                     <TouchableOpacity style={styles.iconBtn} onPress={resetCapture}>
                         <X size={22} color="#FFF" />
                     </TouchableOpacity>

@@ -1008,7 +1008,7 @@ const styles = StyleSheet.create({
 
     /* Confirmation Modal */
     glassModalContainer: { margin: 20, borderRadius: 28 },
-    glassModalBlur: { padding: 24 },
+    glassModalBlur: { padding: 24, borderRadius: 28, overflow: 'hidden' },
     modalTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 8, textAlign: 'center' },
     modalSubtitle: { fontSize: 14, lineHeight: 20, color: '#64748B', marginBottom: 24, textAlign: 'center' },
     modalActions: { flexDirection: 'row', justifyContent: 'center', gap: 12 },

@@ -28,6 +28,7 @@ class TranslateRequest(BaseModel):
     target_lang: str = Field(..., min_length=2, max_length=10)
     tone: Optional[str] = None
     device_id: Optional[str] = None
+    skip_history: bool = False
 
 class TranslateResponse(BaseModel):
     translation_id: str

@@ -66,28 +66,29 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
             detail="Translation service is temporarily unavailable. Please try again."
         )
 
-    # Persist to DB (gracefully handle schema drift)
+    # Persist to DB unless caller requests skip (e.g. conversation retranslation should not create text history)
     translation_id = None
-    try:
-        t = create_translation(
-            db,
-            input_text=request.text,
-            input_language=request.source_lang,
-            method="text",
-            multi_target=False,
-            device_id=request.device_id,
-            translation_type="text",
-        )
-        translation_id = t.translation_id
-        create_translation_output(
-            db,
-            translation_id=t.translation_id,
-            target_language=request.target_lang,
-            output_text=result["output_text"],
-            detected_tone=result.get("detected_tone"),
-        )
-    except Exception as e:
-        logger.warning(f"DB persist skipped: {e}")
+    if not request.skip_history:
+        try:
+            t = create_translation(
+                db,
+                input_text=request.text,
+                input_language=request.source_lang,
+                method="text",
+                multi_target=False,
+                device_id=request.device_id,
+                translation_type="text",
+            )
+            translation_id = t.translation_id
+            create_translation_output(
+                db,
+                translation_id=t.translation_id,
+                target_language=request.target_lang,
+                output_text=result["output_text"],
+                detected_tone=result.get("detected_tone"),
+            )
+        except Exception as e:
+            logger.warning(f"DB persist skipped: {e}")
 
     return {
         "translation_id": translation_id or 0,

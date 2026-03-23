@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
     StyleSheet,
     View,
@@ -74,6 +74,19 @@ import { getDeviceId } from '../src/utils/device';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Unique message ID generator — uses crypto.randomUUID() (RN 0.73+) with UUID v4 fallback
+const generateMsgId = (): string => {
+    try {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+    } catch {}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+};
+
 // interfaces moved to ConversationContext
 
 const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
@@ -91,6 +104,7 @@ function ChatBubble({
     onRetranslate,
     isSyncShimmering,
     onShowToast,
+    currentMode,
 }: {
     msg: Message;
     alignment: 'left' | 'right' | 'center';
@@ -99,6 +113,7 @@ function ChatBubble({
     isDarkMode: boolean;
     onRetranslate?: (msgId: string, newTone: string) => void;
     isSyncShimmering?: boolean;
+    currentMode?: string;
     onShowToast?: (msg: string) => void;
 }) {
     const langColor = getColorForLang(msg.lang);
@@ -271,7 +286,8 @@ function ChatBubble({
                     )}
                 </View>
 
-                {msg.translations.map((tr, idx) => {
+                {/* In non-3-way modes, only show the first translation — 3rd-participant row is hidden, not deleted */}
+                {(currentMode === 'three_way' ? msg.translations : msg.translations.slice(0, 1)).map((tr, idx) => {
                     const trColor = getColorForLang(tr.lang);
                     const isError = tr.text === '(Try again)';
                     return (
@@ -390,7 +406,8 @@ const MemoizedChatBubble = React.memo(ChatBubble, (prev, next) =>
     prev.msg === next.msg &&
     prev.alignment === next.alignment &&
     prev.isDarkMode === next.isDarkMode &&
-    prev.isSyncShimmering === next.isSyncShimmering
+    prev.isSyncShimmering === next.isSyncShimmering &&
+    prev.currentMode === next.currentMode
 );
 
 // ─────────────────────────────────────────
@@ -423,6 +440,17 @@ export default function ConversationScreen() {
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+    // Duplicate-message guard — prevents the same message ID from being added twice
+    const addedMessageIds = useRef(new Set<string>());
+    const addMessageToState = useCallback((newMessage: Message) => {
+        if (addedMessageIds.current.has(newMessage.id)) {
+            console.warn('Prevented duplicate message add:', newMessage.id);
+            return;
+        }
+        addedMessageIds.current.add(newMessage.id);
+        setMessages(prev => [...prev, newMessage]);
+    }, [setMessages]);
     const tts = useTextToSpeech();
     const deviceIdRef = useRef<string | undefined>(undefined);
     const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
@@ -688,7 +716,13 @@ export default function ConversationScreen() {
             scrollRef.current?.scrollToEnd({ animated: true });
         });
         const onHide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
-        return () => { onShow.remove(); onHide.remove(); };
+        // Android fires keyboardDidShow/keyboardDidHide instead of Will
+        const onShowAndroid = Keyboard.addListener('keyboardDidShow', () => {
+            setKeyboardVisible(true);
+            scrollRef.current?.scrollToEnd({ animated: true });
+        });
+        const onHideAndroid = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+        return () => { onShow.remove(); onHide.remove(); onShowAndroid.remove(); onHideAndroid.remove(); };
     }, []);
 
     // Create backend conversation session — waits for deviceId to be loaded
@@ -719,20 +753,13 @@ export default function ConversationScreen() {
         if (Platform.OS === 'ios' || Platform.OS === 'android') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
-        // Switching from 3-way to 2-way: immediately trim lang2 translations from all bubbles
+        // 3-way → 2-way: do NOT delete translations — ChatBubble hides the 3rd row via currentMode prop
         if (mode === 'two_way' && viewMode === 'three_way') {
-            setMessages((prev: Message[]) => prev.map((m: Message) => ({
-                ...m,
-                translations: m.translations.filter(t => t.lang !== lang2),
-            })));
             // Sync regen refs so next send does not trigger a redundant regen
             lastRegenLangsRef.current = { 0: lang0, 1: lang1, 2: lang2 };
             lastRegenModeRef.current = 'two_way';
         }
-        // Prompt 5: switching to face_to_face from three_way clears only 3-way messages
-        if (mode === 'face_to_face' && viewMode === 'three_way') {
-            setMessages((prev: Message[]) => prev.filter((m: Message) => m.mode !== 'three_way'));
-        }
+        // face_to_face ↔ 3-way: messages are fully retained — ChatBubble hides 3rd row in non-3-way mode
         // Reset user3 hasSpoken when switching away from 3-way
         if (viewMode === 'three_way' && mode !== 'three_way') {
             resetUser3Spoken();
@@ -792,6 +819,7 @@ export default function ConversationScreen() {
                         targetLang,
                         bubble.tone,
                         devId,
+                        true, // skip_history — retranslation must not create text history entries
                     );
                     updatedTranslations.push({ lang: targetLang, text: sanitizeTranslation(res.output_text) });
                 } catch {
@@ -882,7 +910,7 @@ export default function ConversationScreen() {
                 // No conversation session — translate locally one at a time
                 for (const tl of targetLangs) {
                     try {
-                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined);
+                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined, undefined, true);
                         translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
                     } catch {
                         translations.push({ text: '(Try again)', lang: tl });
@@ -890,7 +918,7 @@ export default function ConversationScreen() {
                 }
             }
             const msg: Message = {
-                id: Date.now().toString(),
+                id: generateMsgId(),
                 text,
                 originalText: text,
                 translations,
@@ -901,13 +929,13 @@ export default function ConversationScreen() {
                 mode: viewMode,
                 sessionId: sessionId.current,
             };
-            setMessages(prev => [...prev, msg]);
+            addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
             setInputText('');
             lastMessageIdRef.current = msg.id;
         } catch {
             const msg: Message = {
-                id: Date.now().toString(),
+                id: generateMsgId(),
                 text,
                 originalText: text,
                 translations: targetLangs.map(tl => ({ text: '(Try again)', lang: tl })),
@@ -917,7 +945,7 @@ export default function ConversationScreen() {
                 mode: viewMode,
                 sessionId: sessionId.current,
             };
-            setMessages(prev => [...prev, msg]);
+            addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
             setInputText('');
         }
@@ -939,14 +967,14 @@ export default function ConversationScreen() {
                     const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang, activeTone || undefined);
                     translatedText = sanitizeTranslation(res.translated_text) || '';
                 } else {
-                    const res = await translateSingle(text, fromLang, targetLang, activeTone || undefined);
+                    const res = await translateSingle(text, fromLang, targetLang, activeTone || undefined, undefined, true);
                     translatedText = sanitizeTranslation(res.output_text) || '';
                 }
             } catch {
                 translatedText = '(Try again)';
             }
             const msg: Message = {
-                id: Date.now().toString(),
+                id: generateMsgId(),
                 text,
                 originalText: text,
                 translations: [{ text: translatedText, lang: targetLang }],
@@ -957,11 +985,11 @@ export default function ConversationScreen() {
                 mode: 'face_to_face',
                 sessionId: sessionId.current,
             };
-            setMessages(prev => [...prev, msg]);
+            addMessageToState(msg);
             lastMessageIdRef.current = msg.id;
         } catch {
             const msg: Message = {
-                id: Date.now().toString(),
+                id: generateMsgId(),
                 text,
                 originalText: text,
                 translations: [{ text: '(Try again)', lang: targetLang }],
@@ -971,7 +999,7 @@ export default function ConversationScreen() {
                 mode: 'face_to_face',
                 sessionId: sessionId.current,
             };
-            setMessages(prev => [...prev, msg]);
+            addMessageToState(msg);
         }
         setLoading(false);
     };
@@ -1012,6 +1040,7 @@ export default function ConversationScreen() {
                 clearMessages();
                 setInputText('');
                 lastMessageIdRef.current = null;
+                addedMessageIds.current.clear();
                 const backendMode = viewMode === 'three_way' ? 'three_way' : 'two_way';
                 const participants = [
                     { speaker_label: 'A', preferred_language: lang0 },
@@ -1049,6 +1078,16 @@ export default function ConversationScreen() {
     };
 
     const speakerCount = viewMode === 'three_way' ? 3 : 2;
+
+    // Deduplicate messages by id before render — safety net for duplicate-key errors
+    const uniqueMessages = useMemo(() => {
+        const seen = new Set<string>();
+        return messages.filter(m => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+        });
+    }, [messages]);
 
     // ─────────────────────────────────────────
     // Face-to-Face Render
@@ -1099,6 +1138,7 @@ export default function ConversationScreen() {
                                 onRetranslate={handleAutoRetranslate}
                                 isSyncShimmering={isSyncShimmering}
                                 onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
+                                currentMode="face_to_face"
                             />
                         ))}
                     </ScrollView>
@@ -1205,6 +1245,7 @@ export default function ConversationScreen() {
                                 onRetranslate={handleAutoRetranslate}
                                 isSyncShimmering={isSyncShimmering}
                                 onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
+                                currentMode="face_to_face"
                             />
                         ))}
                     </ScrollView>
@@ -1283,10 +1324,11 @@ export default function ConversationScreen() {
     // Standard (Two-Way / Three-Way) Render
     // ─────────────────────────────────────────
     return (
+        // DO NOT wrap this in SafeAreaView or add absolute positioning to inputBar — keyboard fix depends on this structure
         <KeyboardAvoidingView
             style={[styles.container, isDarkMode && styles.containerDark]}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={100}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         >
             <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
 
@@ -1423,7 +1465,7 @@ export default function ConversationScreen() {
                     </View>
                 )}
 
-                {messages.map((m) => {
+                {uniqueMessages.map((m) => {
                     const isRight = m.speaker === 0;
                     const isCenter = viewMode === 'three_way' && m.speaker === 1;
                     const isLeft = (viewMode === 'two_way' && m.speaker === 1) ||
@@ -1440,6 +1482,7 @@ export default function ConversationScreen() {
                             onRetranslate={handleAutoRetranslate}
                             isSyncShimmering={isSyncShimmering || (m.isRegenerating === true)}
                             onShowToast={showBubbleToast}
+                            currentMode={viewMode}
                         />
                     );
                 })}
@@ -1454,7 +1497,7 @@ export default function ConversationScreen() {
                     styles.inputBar,
                     isDarkMode && styles.inputBarDark,
                     { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 },
-                    { marginBottom: 100 },
+                    { marginBottom: keyboardVisible ? 0 : 90 },
                 ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
@@ -2132,6 +2175,8 @@ const styles = StyleSheet.create({
     },
     glassModalBlur: {
         padding: 24,
+        borderRadius: 28,
+        overflow: 'hidden',
     },
     modalTitle: {
         fontSize: 18,

@@ -105,10 +105,12 @@ const styles = StyleSheet.create({
     containerWrapperDark: {
         borderColor: 'rgba(255, 255, 255, 0.1)',
     },
-    // BlurView fills the rounded wrapper
+    // BlurView fills the rounded wrapper — must also have borderRadius+overflow so it clips correctly on Android
     blurFill: {
         backgroundColor: 'rgba(255,255,255,0.7)',
         padding: 24,
+        borderRadius: 32,
+        overflow: 'hidden',
     },
     blurFillDark: {
         backgroundColor: 'rgba(30, 41, 59, 0.7)',
