@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npx expo:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep -v '^  $')",
+      "Bash(grep -v '^$')",
+      "Bash(grep -v \"^$\")",
+      "Bash(node:*)"
     ]
   }
 }

@@ -31,7 +31,7 @@ class TranslateRequest(BaseModel):
     skip_history: bool = False
 
 class TranslateResponse(BaseModel):
-    translation_id: str
+    translation_id: Optional[str]
     input_text: str
     source_lang: str
     target_lang: str

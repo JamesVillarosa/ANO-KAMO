@@ -91,7 +91,7 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
             logger.warning(f"DB persist skipped: {e}")
 
     return {
-        "translation_id": translation_id or 0,
+        "translation_id": translation_id or None,
         "input_text": request.text,
         "source_lang": request.source_lang,
         "target_lang": request.target_lang,

@@ -1350,7 +1350,7 @@ export default function ConversationScreen() {
 
                 {/* Phase 9: Mode-Specific Branding */}
                 <Text style={[styles.headerModeBranding, isDarkMode && { color: '#F8FAFC' }]}>
-                    {viewMode === 'face_to_face' ? '' : 'Chat'}
+                    Chat
                 </Text>
 
                 <TouchableOpacity onPress={() => router.push('/settings' as any)} style={styles.customHeaderBtn}>
