@@ -14,8 +14,8 @@ import {
     Modal,
 } from 'react-native';
 import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
+import FluidAura from '../src/components/FluidAura';
 import {
     ArrowLeftRight,
     Volume2,
@@ -37,8 +37,6 @@ import * as Haptics from 'expo-haptics';
 import { translateSingle, submitFeedback } from '../src/lib/api';
 import { getDeviceId } from '../src/utils/device';
 import {
-    gradientColors,
-    darkGradientColors,
     SUPPORTED_LANGUAGES,
     LANGUAGE_COLORS,
     LANGUAGE_PLACEHOLDERS,
@@ -387,7 +385,7 @@ export default function TranslateScreen() {
         <PaperProvider>
             <Portal.Host>
                 <View style={[styles.container, isDarkMode && styles.containerDark]}>
-                    <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+                    <FluidAura isDarkMode={isDarkMode} />
 
                     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                         <View style={styles.headerArea}>

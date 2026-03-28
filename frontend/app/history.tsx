@@ -17,8 +17,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import { Text, ActivityIndicator, Portal, Modal as PaperModal } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
+import FluidAura from '../src/components/FluidAura';
 import {
     Star,
     Trash2,
@@ -35,7 +35,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
-import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES } from '../src/theme';
+import { SUPPORTED_LANGUAGES } from '../src/theme';
 import { getDeviceId } from '../src/utils/device';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 
@@ -302,7 +302,6 @@ function groupBySections(items: HistoryItem[]): Section[] {
 export default function HistoryScreen() {
     const { isDarkMode } = useTheme();
     const tts = useTextToSpeech();
-    const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
     const [items, setItems] = useState<HistoryItem[]>([]);
     const [convGroups, setConvGroups] = useState<ConversationGroup[]>([]);
     const [loading, setLoading] = useState(true);
@@ -485,7 +484,7 @@ export default function HistoryScreen() {
 
     return (
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
-            <LinearGradient colors={[...activeGradient]} style={styles.bg} />
+            <FluidAura isDarkMode={isDarkMode} />
             <View style={styles.content}>
                 {/* Tabs */}
                 <View style={styles.headerRow}>
@@ -795,7 +794,7 @@ const styles = StyleSheet.create({
     },
     toggleBtn: { flex: 1, paddingVertical: 10, borderRadius: 26, alignItems: 'center' },
     toggleActive: {
-        backgroundColor: 'rgba(255,255,255,0.45)',
+        backgroundColor: '#FFFFFF',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
@@ -832,7 +831,7 @@ const styles = StyleSheet.create({
     },
 
     card: {
-        backgroundColor: 'rgba(255, 255, 255, 0.68)',
+        backgroundColor: 'rgba(255, 255, 255, 0.82)',
         borderRadius: 16,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -938,11 +937,9 @@ const styles = StyleSheet.create({
     cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 10 },
     actionBtn: {
         width: 32, height: 32, borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.5)',
         justifyContent: 'center', alignItems: 'center',
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
     },
-    actionBtnDark: { backgroundColor: 'rgba(255,255,255,0.05)' },
+    actionBtnDark: {},
 
     list: { paddingBottom: 100 },
 

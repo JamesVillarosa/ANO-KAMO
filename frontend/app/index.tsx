@@ -14,8 +14,8 @@ import {
   Modal,
 } from 'react-native';
 import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
+import FluidAura from '../src/components/FluidAura';
 import {
   Mic,
   MicOff,
@@ -36,13 +36,10 @@ import * as Haptics from 'expo-haptics';
 import { translateSingle, translateMulti, submitFeedback } from '../src/lib/api';
 import { getDeviceId } from '../src/utils/device';
 import {
-  gradientColors,
-  darkGradientColors,
   glassCard,
   darkGlassCard,
   SUPPORTED_LANGUAGES,
   LANGUAGE_PLACEHOLDERS,
-  liquidGlass,
 } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
@@ -58,7 +55,6 @@ import { isValidTranslationInput, getValidationErrorMessage } from '../src/utils
 
 export default function HomeScreen() {
   const { isDarkMode } = useTheme();
-  const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
   const tts = useTextToSpeech();
 
   // Mode toggle
@@ -451,13 +447,7 @@ export default function HomeScreen() {
     <PaperProvider>
       <Portal.Host>
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
-          <LinearGradient colors={[...activeGradient]} style={styles.bg} />
-
-          {/* Background Blobs for Glass Refraction */}
-          <View style={styles.blobContainer}>
-            <LinearGradient colors={['#FF9A9E', '#FAD0C4']} style={[styles.blob, { top: -100, left: -50, width: 300, height: 300 }]} />
-            <LinearGradient colors={['#A18CD1', '#FBC2EB']} style={[styles.blob, { bottom: 100, right: -100, width: 400, height: 400 }]} />
-          </View>
+          <FluidAura isDarkMode={isDarkMode} />
 
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -845,12 +835,15 @@ const styles = StyleSheet.create({
 
   /* Toggle */
   toggleRow: {
-    ...liquidGlass,
     flexDirection: 'row',
+    backgroundColor: 'rgba(241,245,249,0.55)',
     borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     padding: 4,
     marginTop: 35,
     marginBottom: 20,
+    overflow: 'hidden',
   },
   toggleRowDark: {
     backgroundColor: 'rgba(255,255,255,0.09)',
@@ -863,7 +856,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toggleActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -917,11 +910,8 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
   },
 
   /* Divider */

@@ -4,22 +4,20 @@ import {
     Switch, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Text } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
     Moon, ChevronRight, Heart, Users, Send, X,
     Info, Shield, FileText,
 } from 'lucide-react-native';
-import { gradientColors, darkGradientColors, SUPPORTED_LANGUAGES } from '../src/theme';
+import { SUPPORTED_LANGUAGES } from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import { submitPhrase as apiSubmitPhrase } from '../src/lib/api';
 import GlassCard from '../src/components/GlassCard';
+import FluidAura from '../src/components/FluidAura';
 import LanguagePicker from '../src/components/LanguagePicker';
 import GlassNotification from '../src/components/GlassNotification';
 
 export default function SettingsScreen() {
     const { isDarkMode, toggleTheme } = useTheme();
-    const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
-
     const [modalVisible, setModalVisible] = useState(false);
     const [newPhrase, setNewPhrase] = useState('');
     const [newTranslation, setNewTranslation] = useState('');
@@ -67,7 +65,7 @@ export default function SettingsScreen() {
             activeOpacity={onPress ? 0.7 : 1}
             disabled={!onPress && !right}
         >
-            <View style={[styles.iconBox, { backgroundColor: iconColor + '1A' }]}>
+            <View style={styles.iconBox}>
                 <Icon size={17} color={iconColor} />
             </View>
             <View style={styles.itemContent}>
@@ -82,7 +80,7 @@ export default function SettingsScreen() {
 
     return (
         <View style={styles.container}>
-            <LinearGradient colors={[...activeGradient]} style={StyleSheet.absoluteFill} />
+            <FluidAura isDarkMode={isDarkMode} />
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
                 {/* Brand Header */}

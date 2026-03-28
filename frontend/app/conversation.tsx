@@ -23,6 +23,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
+import FluidAura from '../src/components/FluidAura';
 import {
     Mic,
     MicOff,
@@ -50,8 +51,6 @@ import {
     validateCustomTone,
 } from '../src/lib/api';
 import {
-    gradientColors,
-    darkGradientColors,
     SUPPORTED_LANGUAGES,
     LANGUAGE_PLACEHOLDERS,
     LANGUAGE_COLORS,
@@ -89,7 +88,7 @@ const generateMsgId = (): string => {
 
 // interfaces moved to ConversationContext
 
-const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
+const FALLBACK_COLOR = { bg: 'rgba(148,163,184,0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
 
 // ─────────────────────────────────────────
@@ -259,13 +258,13 @@ function ChatBubble({
                         onPress={() => tts.speak(msg.text, msg.lang)}
                         style={styles.utilityBtn}
                     >
-                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                        <Volume2 size={16} color="rgba(0,0,0,0.5)" />
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => openDictionary(msg.text, msg.lang, msg.translations[0]?.lang || 'en')}
                         style={styles.utilityBtn}
                     >
-                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                        <BookOpen size={16} color="rgba(0,0,0,0.5)" />
                     </TouchableOpacity>
                     {onRetranslate && (
                         <TouchableOpacity
@@ -276,7 +275,7 @@ function ChatBubble({
                             }}
                             style={styles.utilityBtn}
                         >
-                            <SlidersHorizontal size={14} color="rgba(255,255,255,0.7)" />
+                            <SlidersHorizontal size={14} color="rgba(0,0,0,0.5)" />
                             {showToneTooltip && (
                                 <View style={styles.toneTooltip}>
                                     <Text style={styles.toneTooltipText}>Tone</Text>
@@ -292,7 +291,7 @@ function ChatBubble({
                     const isError = tr.text === '(Try again)';
                     return (
                         <View key={idx}>
-                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
                             <View style={[styles.transRow, idx === 0 && { marginTop: 8 }]}>
                                 <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
                                 <Text style={styles.transLangLabel}>
@@ -317,13 +316,13 @@ function ChatBubble({
                                         onPress={() => tts.speak(tr.text, tr.lang)}
                                         style={styles.utilityBtn}
                                     >
-                                        <Volume2 size={16} color="rgba(255,255,255,0.7)" />
+                                        <Volume2 size={16} color="rgba(0,0,0,0.5)" />
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
                                         style={styles.utilityBtn}
                                     >
-                                        <BookOpen size={16} color="rgba(255,255,255,0.7)" />
+                                        <BookOpen size={16} color="rgba(0,0,0,0.5)" />
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -1100,7 +1099,7 @@ export default function ConversationScreen() {
 
         return (
             <View style={[styles.container, isDarkMode && styles.containerDark]}>
-                <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+                <FluidAura isDarkMode={isDarkMode} />
 
                 {/* ═══ TOP SECTION (rotated 180°) — Speaker B ═══ */}
                 <View style={[styles.f2fSection, { transform: [{ rotate: '180deg' }], paddingBottom: insets.top + 8 }]}>
@@ -1330,7 +1329,7 @@ export default function ConversationScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         >
-            <LinearGradient colors={isDarkMode ? darkGradientColors : gradientColors} style={styles.bg} />
+            <FluidAura isDarkMode={isDarkMode} />
 
             {/* Custom Glass Header */}
             <View style={[styles.customHeader, { top: insets.top + 10 }]}>
@@ -1364,7 +1363,7 @@ export default function ConversationScreen() {
                 </TouchableOpacity>
             </View>
 
-            <View style={[styles.headerArea, { paddingTop: insets.top + 64 }]}>
+            <View style={[styles.headerArea, { paddingTop: insets.top + 80 }]}>
                 {/* Mode Toggle */}
                 <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
                     <TouchableOpacity
@@ -1664,11 +1663,14 @@ const styles = StyleSheet.create({
     },
 
     toggleRow: {
-        ...liquidGlass,
         flexDirection: 'row',
+        backgroundColor: 'rgba(241,245,249,0.55)',
         borderRadius: 30,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.6)',
         padding: 4,
         marginBottom: 14,
+        overflow: 'hidden',
     },
     toggleRowDark: {
         backgroundColor: 'rgba(255,255,255,0.09)',
@@ -1681,7 +1683,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     toggleActive: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
+        backgroundColor: '#FFFFFF',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
@@ -1743,12 +1745,12 @@ const styles = StyleSheet.create({
         padding: 14,
         borderRadius: 22,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderColor: 'rgba(255,255,255,0.55)',
     },
     bubbleSpeakerLabel: {
         fontSize: 10,
         fontWeight: '800',
-        color: 'rgba(255,255,255,0.6)',
+        color: 'rgba(0,0,0,0.45)',
         textTransform: 'uppercase',
         letterSpacing: 1,
         marginBottom: 2,
@@ -1802,7 +1804,7 @@ const styles = StyleSheet.create({
     transLangLabel: {
         fontSize: 10,
         fontWeight: '700',
-        color: 'rgba(255,255,255,0.6)',
+        color: 'rgba(0,0,0,0.45)',
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
@@ -1833,7 +1835,7 @@ const styles = StyleSheet.create({
     bubbleToneLabel: {
         fontSize: 10,
         fontWeight: '700',
-        color: 'rgba(255,255,255,0.7)',
+        color: 'rgba(0,0,0,0.5)',
         textTransform: 'uppercase',
     },
     toneBadge: {

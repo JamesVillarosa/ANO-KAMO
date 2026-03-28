@@ -111,10 +111,10 @@ export const SUPPORTED_LANGUAGES: Record<string, string> = {
 };
 
 export const LANGUAGE_COLORS: Record<string, { bg: string; text: string; trans: string; light: string }> = {
-    tl: { bg: 'rgba(59, 130, 246, 0.85)', text: '#FFFFFF', trans: '#BFDBFE', light: '#3B82F6' },
-    ceb: { bg: 'rgba(239, 68, 68, 0.85)', text: '#FFFFFF', trans: '#FECACA', light: '#EF4444' },
-    hil: { bg: 'rgba(234, 179, 8, 0.85)', text: '#FFFFFF', trans: '#FEF08A', light: '#EAB308' },
-    en: { bg: 'rgba(141, 85, 36, 0.85)', text: '#FFFFFF', trans: '#DEB887', light: '#8D5524' },
+    tl:  { bg: 'rgba(148, 187, 255, 0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#3B82F6' },
+    ceb: { bg: 'rgba(255, 148, 148, 0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#EF4444' },
+    hil: { bg: 'rgba(252, 211,  77, 0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#D97706' },
+    en:  { bg: 'rgba(188, 143, 100, 0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#92400E' },
 };
 
 export const LANGUAGE_PLACEHOLDERS: Record<string, string> = {
