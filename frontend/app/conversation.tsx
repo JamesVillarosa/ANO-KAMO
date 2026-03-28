@@ -1608,7 +1608,7 @@ export default function ConversationScreen() {
                     <BlurView
                         intensity={60}
                         tint={isDarkMode ? 'dark' : 'light'}
-                        style={styles.glassModalBlur}
+                        style={[styles.glassModalBlur, isDarkMode && styles.glassModalBlurDark]}
                     >
                         <Text style={[styles.modalTitle, isDarkMode && { color: '#F8FAFC' }]}>{confirmModal.title}</Text>
                         <Text style={[styles.modalMessage, isDarkMode && { color: '#CBD5E1' }]}>{confirmModal.message}</Text>
@@ -2086,14 +2086,21 @@ const styles = StyleSheet.create({
     },
     customHeaderBtn: {},
     customHeaderGlass: {
-        ...liquidGlass,
-        padding: 8,
-        borderRadius: 12,
+        padding: 9,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.75)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.9)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 2,
+        elevation: 1,
         overflow: 'hidden',
     },
     customHeaderGlassDark: {
-        backgroundColor: 'rgba(30, 41, 59, 0.55)',
-        borderColor: 'rgba(255, 255, 255, 0.15)',
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     headerModeBranding: {
         fontSize: 16,
@@ -2177,6 +2184,10 @@ const styles = StyleSheet.create({
         padding: 24,
         borderRadius: 28,
         overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.97)',
+    },
+    glassModalBlurDark: {
+        backgroundColor: 'rgba(15,23,42,0.97)',
     },
     modalTitle: {
         fontSize: 18,

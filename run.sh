@@ -163,4 +163,18 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+# Patch Expo CLI to auto-proceed anonymously (no blocking login prompt).
+# Re-applied on every run so npm install doesn't break it.
+EXPO_ACTIONS="$SCRIPT_DIR/frontend/node_modules/@expo/cli/build/src/api/user/actions.js"
+node -e "
+const f=process.argv[1];
+const fs=require('fs');
+let c=fs.readFileSync(f,'utf8');
+if(c.includes('Proceed anonymously')){
+  c=c.replace(/const choices\s*=\s*\[[\s\S]*?return null;/,'return null; \/\/ auto-proceed anonymously (patched by run.sh)');
+  fs.writeFileSync(f,c);
+  console.log('  Expo CLI patched: anonymous mode auto-selected.');
+}
+" "$EXPO_ACTIONS" 2>/dev/null || true
+
 "$EXPO_BIN" start $EXPO_FLAGS

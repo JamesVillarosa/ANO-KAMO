@@ -26,15 +26,15 @@ export default function GlassCard({ children, style, intensity = 40, dark }: Pro
         elevation: 8,
         overflow: 'hidden',
     } : {
-        backgroundColor: 'rgba(255,255,255,0.75)',
+        backgroundColor: 'rgba(255,255,255,0.65)',
         borderRadius: 24,
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.95)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.85)',
         shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.12,
-        shadowRadius: 24,
-        elevation: 6,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
         overflow: 'hidden',
     };
 

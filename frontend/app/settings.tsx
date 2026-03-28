@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     sectionCard: { marginBottom: 24, padding: 6 },
 
     settingsItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderRadius: 18 },
-    iconBox: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    iconBox: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
     itemContent: { flex: 1 },
     itemTitle: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
     itemSubtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },

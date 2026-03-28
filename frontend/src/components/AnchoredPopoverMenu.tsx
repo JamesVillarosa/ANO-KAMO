@@ -91,7 +91,7 @@ export default function AnchoredPopoverMenu({
                     <BlurView
                         intensity={isDarkMode ? 40 : 60}
                         tint={isDarkMode ? 'dark' : 'light'}
-                        style={styles.menuBlur}
+                        style={[styles.menuBlur, isDarkMode ? styles.menuBlurDark : styles.menuBlurLight]}
                     >
                         {items.map((item, index) => (
                             <TouchableOpacity
@@ -167,6 +167,14 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.2)',
         overflow: 'hidden',
         paddingVertical: 8,
+    },
+    menuBlurLight: {
+        backgroundColor: 'rgba(255, 255, 255, 0.97)',
+        borderColor: 'rgba(255, 255, 255, 0.9)',
+    },
+    menuBlurDark: {
+        backgroundColor: 'rgba(15, 23, 42, 0.97)',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
     },
     menuItem: {
         paddingVertical: 14,

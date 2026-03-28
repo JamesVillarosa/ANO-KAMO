@@ -743,7 +743,7 @@ export default function HistoryScreen() {
                     onDismiss={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
                     contentContainerStyle={styles.glassModalContainer}
                 >
-                    <BlurView intensity={60} tint={isDarkMode ? 'dark' : 'light'} style={styles.glassModalBlur}>
+                    <BlurView intensity={60} tint={isDarkMode ? 'dark' : 'light'} style={[styles.glassModalBlur, isDarkMode && styles.glassModalBlurDark]}>
                         <View style={{ alignItems: 'center', marginBottom: 16 }}>
                             <AlertTriangle size={32} color={confirmModal.isDestructive ? '#EF4444' : '#3B82F6'} />
                         </View>
@@ -832,7 +832,7 @@ const styles = StyleSheet.create({
     },
 
     card: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.68)',
         borderRadius: 16,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -1008,7 +1008,8 @@ const styles = StyleSheet.create({
 
     /* Confirmation Modal */
     glassModalContainer: { margin: 20, borderRadius: 28 },
-    glassModalBlur: { padding: 24, borderRadius: 28, overflow: 'hidden' },
+    glassModalBlur: { padding: 24, borderRadius: 28, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.97)' },
+    glassModalBlurDark: { backgroundColor: 'rgba(15,23,42,0.97)' },
     modalTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 8, textAlign: 'center' },
     modalSubtitle: { fontSize: 14, lineHeight: 20, color: '#64748B', marginBottom: 24, textAlign: 'center' },
     modalActions: { flexDirection: 'row', justifyContent: 'center', gap: 12 },

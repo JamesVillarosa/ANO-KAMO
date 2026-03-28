@@ -475,7 +475,7 @@ export default function HomeScreen() {
                   onPress={() => setMode('2way')}
                 >
                   <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                    2 Way Translate
+                    2-Way
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -483,7 +483,7 @@ export default function HomeScreen() {
                   onPress={() => setMode('3way')}
                 >
                   <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                    3 Way Translate
+                    3-Way
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -745,7 +745,7 @@ export default function HomeScreen() {
               <BlurView
                 intensity={30}
                 tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.feedbackModalCentered, liquidGlass, isDarkMode && styles.feedbackModalDark]}
+                style={[styles.feedbackModalCentered, isDarkMode && styles.feedbackModalDark]}
               >
                 <View style={styles.modalHandle} />
                 <View style={styles.refineHeader}>
@@ -761,7 +761,7 @@ export default function HomeScreen() {
 
                 <View style={styles.feedbackActionRow}>
                   <TouchableOpacity
-                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(34,197,94,0.1)' }]}
+                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(34,197,94,0.12)' }]}
                     onPress={() => {
                       if (activeFeedbackTarget) {
                         handleFeedback(activeFeedbackTarget.id, 'like', activeFeedbackTarget.target);
@@ -769,11 +769,12 @@ export default function HomeScreen() {
                       setFeedbackModalVisible(false);
                     }}
                   >
-                    <ThumbsUp size={32} color="#22C55E" />
+                    <ThumbsUp size={24} color="#22C55E" />
+                    <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Helpful</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(239,68,68,0.1)' }]}
+                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(239,68,68,0.12)' }]}
                     onPress={() => {
                       if (activeFeedbackTarget) {
                         handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
@@ -781,7 +782,8 @@ export default function HomeScreen() {
                       setFeedbackModalVisible(false);
                     }}
                   >
-                    <ThumbsDown size={32} color="#EF4444" />
+                    <ThumbsDown size={24} color="#EF4444" />
+                    <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Not helpful</Text>
                   </TouchableOpacity>
                 </View>
               </BlurView>
@@ -861,7 +863,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toggleActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -995,8 +997,8 @@ const styles = StyleSheet.create({
   },
 
   /* Modal Overlay */
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
-  modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
   refineModal: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderTopLeftRadius: 32,
@@ -1109,6 +1111,7 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 30,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.97)',
   },
   feedbackModalDark: {
     backgroundColor: '#1E293B',
@@ -1126,16 +1129,17 @@ const styles = StyleSheet.create({
   },
   largeFeedbackBtn: {
     flex: 1,
-    height: 140,
-    borderRadius: 24,
+    height: 72,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
+    gap: 6,
   },
   largeFeedbackText: {
-    marginTop: 12,
-    fontSize: 18,
+    marginTop: 4,
+    fontSize: 13,
     fontWeight: '700',
   },
 });
