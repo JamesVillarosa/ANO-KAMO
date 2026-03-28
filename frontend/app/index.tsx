@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { GlassBlur as BlurView } from '../src/components/GlassBlur';
 import {
   Mic,
   MicOff,
@@ -898,6 +898,7 @@ const styles = StyleSheet.create({
     maxHeight: 150,
     textAlignVertical: 'top',
     padding: 0,
+    backgroundColor: 'transparent',
   },
   outputArea: { minHeight: 60 },
   outputText: { fontSize: 17, color: '#1E293B', lineHeight: 24 },

@@ -1,92 +1,112 @@
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
-import { TouchableOpacity, View } from 'react-native';
-import { Menu, Settings as SettingsIcon, Sun, Moon, ArrowLeft } from 'lucide-react-native';
-import { useRouter, useSegments, usePathname } from 'expo-router';
+import { TouchableOpacity, View, Platform } from 'react-native';
+import { Menu, Settings as SettingsIcon, ArrowLeft } from 'lucide-react-native';
+import { useRouter, usePathname } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { lightTheme, darkTheme, liquidGlass } from '../src/theme';
 import { ThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { ConversationProvider } from '../src/context/ConversationContext';
 
+function HeaderIconBtn({ icon: IconComponent, onPress, isDarkMode }: { icon: any; onPress: () => void; isDarkMode: boolean }) {
+    const color = isDarkMode ? '#F1F5F9' : '#1E293B';
+    if (Platform.OS === 'ios') {
+        return (
+            <TouchableOpacity onPress={onPress} style={{ marginHorizontal: 4 }}>
+                <BlurView
+                    intensity={20}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={{
+                        padding: 9,
+                        borderRadius: 14,
+                        overflow: 'hidden',
+                        borderWidth: 0.5,
+                        borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
+                    }}
+                >
+                    <IconComponent color={color} size={20} />
+                </BlurView>
+            </TouchableOpacity>
+        );
+    }
+    return (
+        <TouchableOpacity
+            onPress={onPress}
+            style={[{
+                padding: 9,
+                borderRadius: 14,
+                marginHorizontal: 4,
+                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+                borderWidth: 1,
+                borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.9)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.04,
+                shadowRadius: 2,
+                elevation: 1,
+            }]}
+        >
+            <IconComponent color={color} size={20} />
+        </TouchableOpacity>
+    );
+}
+
 function RootLayoutContent() {
-  const router = useRouter();
-  const segments = useSegments();
-  const pathname = usePathname();
-  const { isDarkMode, toggleTheme } = useTheme();
-  const activeTheme = isDarkMode ? darkTheme : lightTheme;
+    const router = useRouter();
+    const pathname = usePathname();
+    const { isDarkMode } = useTheme();
+    const activeTheme = isDarkMode ? darkTheme : lightTheme;
 
-  const isIndex = pathname === '/' || pathname === '/index';
+    const isIndex = pathname === '/' || pathname === '/index';
 
-  const GlassHeaderIcon = ({ icon: IconComponent, onPress, style }: { icon: any, onPress: () => void, style?: any }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[{ marginHorizontal: 5 }, style]}
-    >
-      <BlurView
-        intensity={20}
-        tint={isDarkMode ? 'dark' : 'light'}
-        style={[{
-          padding: 8,
-          borderRadius: 12,
-          overflow: 'hidden',
-        }, liquidGlass]}
-      >
-        <IconComponent color={activeTheme.colors.text} size={20} />
-      </BlurView>
-    </TouchableOpacity>
-  );
+    const mainScreenOptions = {
+        headerStyle: { backgroundColor: 'transparent' },
+        headerShadowVisible: false,
+        headerTransparent: true,
+        headerTitleAlign: 'center' as const,
+        headerTitleStyle: {
+            color: isDarkMode ? '#F8FAFC' : '#1E293B',
+            fontWeight: '800' as const,
+            fontSize: 17,
+            letterSpacing: 1.5,
+        },
+        headerLeft: () => (
+            <View style={{ marginLeft: 10 }}>
+                {!isIndex ? (
+                    <HeaderIconBtn icon={ArrowLeft} onPress={() => router.back()} isDarkMode={isDarkMode} />
+                ) : (
+                    <HeaderIconBtn icon={Menu} onPress={() => router.push('/history' as any)} isDarkMode={isDarkMode} />
+                )}
+            </View>
+        ),
+        headerRight: () => (
+            <View style={{ marginRight: 10 }}>
+                <HeaderIconBtn icon={SettingsIcon} onPress={() => router.push('/settings' as any)} isDarkMode={isDarkMode} />
+            </View>
+        ),
+    };
 
-  const mainScreenOptions = {
-    headerStyle: { backgroundColor: 'transparent' },
-    headerShadowVisible: false,
-    headerTransparent: true,
-    headerTitleAlign: 'center' as const,
-    headerTitleStyle: {
-      color: activeTheme.colors.text,
-      fontWeight: '700' as const,
-      fontSize: 18,
-      letterSpacing: 1.5,
-    },
-    headerLeft: () => (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
-        {!isIndex ? (
-          <GlassHeaderIcon icon={ArrowLeft} onPress={() => router.back()} />
-        ) : (
-          <GlassHeaderIcon icon={Menu} onPress={() => router.push('/history' as any)} />
-        )}
-      </View>
-    ),
-    headerRight: () => (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
-        <GlassHeaderIcon icon={SettingsIcon} onPress={() => router.push('/settings' as any)} />
-      </View>
-    ),
-  };
-
-  return (
-    <PaperProvider theme={activeTheme}>
-      <Stack initialRouteName="splash">
-        <Stack.Screen
-          name="splash"
-          options={{ headerShown: false, animation: 'fade' }}
-        />
-        <Stack.Screen name="index" options={{ ...mainScreenOptions, title: 'ANO-KAMO?' }} />
-        <Stack.Screen name="conversation" options={{ headerShown: false }} />
-        <Stack.Screen name="ocr" options={{ ...mainScreenOptions, title: 'Camera' }} />
-        <Stack.Screen name="history" options={{ ...mainScreenOptions, title: 'History' }} />
-        <Stack.Screen name="community" options={{ ...mainScreenOptions, title: 'Community' }} />
-        <Stack.Screen name="settings" options={{ ...mainScreenOptions, title: 'Settings' }} />
-      </Stack>
-    </PaperProvider>
-  );
+    return (
+        <PaperProvider theme={activeTheme}>
+            <Stack initialRouteName="splash">
+                <Stack.Screen name="splash" options={{ headerShown: false, animation: 'fade' }} />
+                <Stack.Screen name="index" options={{ ...mainScreenOptions, title: 'ANO-KAMO?' }} />
+                <Stack.Screen name="conversation" options={{ headerShown: false }} />
+                <Stack.Screen name="ocr" options={{ ...mainScreenOptions, title: 'Camera' }} />
+                <Stack.Screen name="history" options={{ ...mainScreenOptions, title: 'History' }} />
+                <Stack.Screen name="community" options={{ ...mainScreenOptions, title: 'Community' }} />
+                <Stack.Screen name="settings" options={{ ...mainScreenOptions, title: 'Settings' }} />
+            </Stack>
+        </PaperProvider>
+    );
 }
 
 export default function RootLayout() {
-  return (
-    <ThemeProvider>
-      <ConversationProvider>
-        <RootLayoutContent />
-      </ConversationProvider>
-    </ThemeProvider>
-  );
+    return (
+        <ThemeProvider>
+            <ConversationProvider>
+                <RootLayoutContent />
+            </ConversationProvider>
+        </ThemeProvider>
+    );
 }

@@ -12,7 +12,7 @@ import {
     Platform,
 } from 'react-native';
 import { Text } from 'react-native-paper';
-import { BlurView } from 'expo-blur';
+import { GlassBlur as BlurView } from './GlassBlur';
 
 interface MenuItem {
     label: string;

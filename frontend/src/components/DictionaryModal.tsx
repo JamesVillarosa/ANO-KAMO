@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { GlassBlur as BlurView } from './GlassBlur';
 import { Text } from 'react-native-paper';
 import { X, Volume2 } from 'lucide-react-native';
 import { dictionaryLookup } from '../lib/api';

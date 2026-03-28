@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { GlassBlur as BlurView } from '../src/components/GlassBlur';
 import {
     Plus,
     ThumbsUp,

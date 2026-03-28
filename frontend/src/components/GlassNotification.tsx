@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated, Dimensions, View } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { GlassBlur as BlurView } from './GlassBlur';
 import { Text } from 'react-native-paper';
 import { liquidGlass } from '../theme';
 

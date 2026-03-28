@@ -41,8 +41,8 @@ export const darkTheme = {
 // Legacy export for backward compatibility
 export const theme = lightTheme;
 
-export const gradientColors = ['#E0E7FF', '#F0F4FF', '#FFFFFF'] as const;
-export const darkGradientColors = ['#1E293B', '#0F172A', '#020617'] as const;
+export const gradientColors = ['#C7D2FE', '#EDE9FE', '#F8FAFF'] as const;
+export const darkGradientColors = ['#1E1B4B', '#0F172A', '#020617'] as const;
 
 // More vibrant iOS-style background gradients
 export const vibrantGradients = {
@@ -54,22 +54,29 @@ export const vibrantGradients = {
 };
 
 export const glassCard = {
-    backgroundColor: 'rgba(255, 255, 255, 0.45)', // More translucent for better blur
-    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 24,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.5)', // Brighter border for "glass" highlight
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
     shadowRadius: 24,
-    elevation: 8,
+    elevation: 6,
+    overflow: 'hidden',
 };
 
 export const darkGlassCard = {
-    ...glassCard,
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    shadowOpacity: 0.25,
+    backgroundColor: 'rgba(15,23,42,0.82)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 8,
+    overflow: 'hidden',
 };
 
 export const glassPill = {
@@ -90,10 +97,10 @@ export const liquidGlass = {
     borderWidth: 0.5,
     borderColor: 'rgba(255, 255, 255, 0.5)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
 };
 
 export const SUPPORTED_LANGUAGES: Record<string, string> = {
