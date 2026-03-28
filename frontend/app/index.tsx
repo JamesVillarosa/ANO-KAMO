@@ -851,8 +851,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   toggleRowDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   toggleBtn: {
     flex: 1,
@@ -869,7 +869,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   toggleActiveDark: {
-    backgroundColor: '#334155',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   toggleTextActive: { color: '#1E293B' },
@@ -880,10 +880,17 @@ const styles = StyleSheet.create({
     ...glassCard,
     padding: 22,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    elevation: 0,
+    shadowOpacity: 0,
   },
   cardDark: {
-    backgroundColor: 'rgba(30, 41, 59, 0.45)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(255,255,255,0.09)',
+    borderWidth: 1,
+    elevation: 0,
   },
 
   /* Panel */
@@ -908,11 +915,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
 
   /* Divider */

@@ -740,8 +740,8 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.3)',
     },
     toggleRowDark: {
-        backgroundColor: 'rgba(30,41,59,0.7)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.09)',
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     toggleBtn: {
         flex: 1,
@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    toggleActiveDark: { backgroundColor: '#334155' },
+    toggleActiveDark: { backgroundColor: 'rgba(255,255,255,0.22)' },
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },
@@ -806,8 +806,9 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     cardDark: {
-        backgroundColor: 'rgba(30,41,59,0.4)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderColor: 'rgba(255,255,255,0.09)',
+        elevation: 0,
     },
     resultCard: {
         marginHorizontal: 20,

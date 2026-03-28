@@ -27,11 +27,11 @@ export function GlassBlur({ intensity = 40, tint = 'light', style, children, ...
         );
     }
 
-    // Android fallback: simulate the glass tint with a solid-ish rgba background.
+    // Android fallback: simulate the glass tint with a subtle rgba background.
     const isDark = tint === 'dark' || tint === 'systemChromeMaterialDark';
     const androidBg: ViewStyle = isDark
-        ? { backgroundColor: 'rgba(10, 15, 35, 0.88)' }
-        : { backgroundColor: 'rgba(255, 255, 255, 0.75)' };
+        ? { backgroundColor: 'rgba(255, 255, 255, 0.07)' }
+        : { backgroundColor: 'rgba(255, 255, 255, 0.38)' };
 
     return (
         <View style={[androidBg, style]} {...rest}>
