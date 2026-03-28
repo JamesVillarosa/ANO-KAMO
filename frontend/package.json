@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start --tunnel",
-    "start:lan": "expo start",
-    "android": "expo start --android --tunnel",
-    "ios": "expo start --ios --tunnel",
+    "start": "expo start",
+    "start:tunnel": "expo start --tunnel",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -43,6 +43,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~19.1.4",
+    "@types/react-native": "^0.72.8",
     "babel-preset-expo": "^54.0.10",
     "typescript": "^5.3.0"
   },

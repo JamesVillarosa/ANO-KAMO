@@ -25,6 +25,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "package": "com.villarosa.jamescarl.anokamo",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
