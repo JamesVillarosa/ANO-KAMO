@@ -26,8 +26,7 @@ export default function LanguagePicker({
     title = 'Select Language',
 }: LanguagePickerProps) {
     const { isDarkMode } = useTheme();
-    // Show ALL languages — no filtering by exclude (smart swap handles conflicts)
-    const languages = Object.entries(SUPPORTED_LANGUAGES);
+    const languages = Object.entries(SUPPORTED_LANGUAGES).filter(([code]) => !exclude.includes(code));
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>

@@ -1,5 +1,5 @@
 """
-OCR Endpoints — Text extraction, scanning, and full OCR processing with translation
+OCR Endpoints — Text extraction, translation, and overlay via Gemini Vision
 """
 import logging
 from fastapi import APIRouter, Depends
@@ -16,41 +16,6 @@ router = APIRouter()
 
 # ──────────────── Request / Response Schemas ────────────────
 
-class OcrScanRequest(BaseModel):
-    image_base64: str = Field(..., description="Base64 encoded image")
-    source_lang: str = Field("tl", description="Source language code")
-
-
-class OcrScanTranslateRequest(BaseModel):
-    image_base64: str = Field(..., description="Base64 encoded image")
-    source_lang: str = Field("tl", description="Source language code")
-    target_lang: str = Field("en", description="Target language code for translation")
-
-
-class TextBlockOut(BaseModel):
-    text: str
-    translated_text: str = ""
-    x: int
-    y: int
-    width: int
-    height: int
-    confidence: float = 0.0
-
-
-class OcrScanResponse(BaseModel):
-    blocks: List[dict]
-    image_width: int
-    image_height: int
-    error: Optional[str] = None
-
-
-class OcrScanTranslateResponse(BaseModel):
-    blocks: List[TextBlockOut]
-    image_width: int
-    image_height: int
-    error: Optional[str] = None
-
-
 class OcrProcessFullRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image")
     source_lang: Optional[str] = Field(None, description="Source language code (null = auto-detect)")
@@ -61,7 +26,7 @@ class OcrProcessFullRequest(BaseModel):
 class OcrFullBlock(BaseModel):
     text: str
     translated_text: str
-    box: List[int] = Field(..., description="[x, y, width, height]")
+    box: List[int] = Field(..., description="[x, y, width, height] in pixels")
     confidence: float = 0.0
 
 
@@ -74,6 +39,18 @@ class OcrProcessFullResponse(BaseModel):
     error: Optional[str] = None
 
 
+class OcrTranslateBlocksRequest(BaseModel):
+    blocks: List[dict] = Field(..., description="Pre-extracted OCR blocks with text and box")
+    source_lang: str = Field("tl")
+    target_lang: str = Field("en")
+    device_id: Optional[str] = None
+
+
+class OcrTranslateBlocksResponse(BaseModel):
+    blocks: List[OcrFullBlock]
+    error: Optional[str] = None
+
+
 class OcrExtractRequest(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image")
     source_lang: Optional[str] = None
@@ -83,42 +60,20 @@ class OcrExtractRequest(BaseModel):
 
 # ──────────────── Endpoints ────────────────
 
-@router.post("/ocr/scan", response_model=OcrScanResponse)
-async def ocr_scan(request: OcrScanRequest):
-    """Scan image for text blocks with bounding boxes (Tesseract). No translation."""
-    result = OcrService.scan_text_blocks(
-        image_base64=request.image_base64,
-        source_lang=request.source_lang,
-    )
-    return result
-
-
-@router.post("/ocr/scan-translate", response_model=OcrScanTranslateResponse)
-async def ocr_scan_translate(request: OcrScanTranslateRequest):
-    """
-    Scan image for text blocks with bounding boxes (Tesseract)
-    AND translate each block using Gemini. For real-time live scan.
-    """
-    result = OcrService.scan_and_translate(
-        image_base64=request.image_base64,
-        source_lang=request.source_lang,
-        target_lang=request.target_lang,
-    )
-    return result
-
-
 @router.post("/ocr/process-full", response_model=OcrProcessFullResponse)
 async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends(get_db)):
     """
-    Full OCR processing for captured/gallery images.
-    Returns extracted text, translated text, and bounding box coordinates.
+    Full OCR processing via Gemini Vision.
+    Single call: extracts text, translates, and returns bounding box coordinates.
+    Works for camera captures and gallery images.
     """
     result = OcrService.process_full_ocr(
         image_base64=request.image_base64,
         source_lang=request.source_lang,
         target_lang=request.target_lang,
     )
-    # Save extracted + translated text to history
+
+    # Save to history
     if result.get("full_extracted_text"):
         try:
             t = create_translation(
@@ -138,24 +93,16 @@ async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends
             )
         except Exception as e:
             logger.warning(f"OCR history save skipped: {e}")
+
     return result
-
-
-class OcrTranslateBlocksRequest(BaseModel):
-    blocks: List[dict] = Field(..., description="Pre-extracted OCR blocks with text and box")
-    source_lang: str = Field("tl")
-    target_lang: str = Field("en")
-    device_id: Optional[str] = None
-
-
-class OcrTranslateBlocksResponse(BaseModel):
-    blocks: List[OcrFullBlock]
-    error: Optional[str] = None
 
 
 @router.post("/ocr/translate-blocks", response_model=OcrTranslateBlocksResponse)
 async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
-    """Translate pre-extracted OCR blocks without re-running Tesseract."""
+    """
+    Translate pre-extracted OCR blocks without re-running OCR.
+    Used for language-switching after a capture — reuses stored blocks.
+    """
     if not request.blocks:
         return {"blocks": []}
 
@@ -163,8 +110,12 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
 
     if request.source_lang == request.target_lang:
         return {"blocks": [
-            {"text": b.get("text", ""), "translated_text": b.get("text", ""),
-             "box": b.get("box", [0, 0, 0, 0]), "confidence": b.get("confidence", 0)}
+            {
+                "text": b.get("text", ""),
+                "translated_text": b.get("text", ""),
+                "box": b.get("box", [0, 0, 0, 0]),
+                "confidence": b.get("confidence", 0),
+            }
             for b in request.blocks
         ]}
 
@@ -193,7 +144,8 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
 @router.post("/ocr/extract")
 async def ocr_extract(request: OcrExtractRequest):
     """
-    Legacy: Extract text from image and translate it (Gemini Vision).
+    Legacy: Extract text from image and translate it (no bounding boxes).
+    Uses Gemini Vision. Returns plain text result.
     """
     result = OcrService.extract_and_translate(
         image_base64=request.image_base64,

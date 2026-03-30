@@ -1,1042 +1,913 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+/**
+ * Camera Translate Screen
+ *
+ * Camera screen: full-screen viewfinder with language picker, flash, capture, gallery, flip.
+ * Result screen: photo with translated text overlays + full translation card.
+ * Includes BottomNav (Text | Camera | Conversation).
+ */
+import React, { useState, useRef, useCallback } from 'react';
 import {
     StyleSheet,
     View,
-    ScrollView,
     TouchableOpacity,
-    TextInput,
-    KeyboardAvoidingView,
-    Platform,
-    Animated,
+    Image,
+    ActivityIndicator,
     Dimensions,
-    ToastAndroid,
-    Alert,
-    Modal,
+    ScrollView,
+    Platform,
 } from 'react-native';
-import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
-import { GlassBlur as BlurView } from '../src/components/GlassBlur';
-import FluidAura from '../src/components/FluidAura';
+import { Text } from 'react-native-paper';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
+    Camera,
+    FolderOpen,
+    RotateCcw,
+    Zap,
+    ZapOff,
+    RefreshCcw,
     ArrowLeftRight,
-    Volume2,
-    Copy,
-    Languages,
-    ChevronDown,
-    Mic,
-    MicOff,
-    BookOpen,
-    ThumbsUp,
-    ThumbsDown,
-    MoreHorizontal,
-    MessageSquare,
+    ScanText,
     X,
-    Send,
+    ChevronDown,
 } from 'lucide-react-native';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
-import { translateSingle, submitFeedback } from '../src/lib/api';
-import { getDeviceId } from '../src/utils/device';
-import {
-    SUPPORTED_LANGUAGES,
-    LANGUAGE_COLORS,
-    LANGUAGE_PLACEHOLDERS,
-    liquidGlass,
-} from '../src/theme';
 import { useTheme } from '../src/context/ThemeContext';
+import { SUPPORTED_LANGUAGES } from '../src/theme';
+import { ocrProcessFull, ocrTranslateBlocks } from '../src/lib/api';
+import FluidAura from '../src/components/FluidAura';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
-import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
-import { useSpeechRecognition } from '../src/hooks/useSpeechRecognition';
-import TappableWord from '../src/components/TappableWord';
-import WordCardModal from '../src/components/WordCardModal';
-import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
+import GlassNotification from '../src/components/GlassNotification';
 
-const FALLBACK_COLOR = { bg: 'rgba(100,116,139,0.85)', text: '#FFFFFF', trans: '#CBD5E1', light: '#64748B' };
-const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
+interface OcrBlock {
+    text: string;
+    translated_text: string;
+    box: number[];
+    confidence: number;
+}
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// Bottom nav height + its bottom offset — used to push controls above it
+const NAV_CLEARANCE = 106;
 
 export default function TranslateScreen() {
     const { isDarkMode } = useTheme();
-    const tts = useTextToSpeech();
+    const insets = useSafeAreaInsets();
+    const cameraRef = useRef<CameraView>(null);
 
-    const [mode, setMode] = useState<'2way' | '3way'>('2way');
+    const [permission, requestPermission] = useCameraPermissions();
+    const [screenState, setScreenState] = useState<'camera' | 'result'>('camera');
+    const [facing, setFacing] = useState<'front' | 'back'>('back');
+    const [flash, setFlash] = useState<'off' | 'on'>('off');
+
+    const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null);
+    const [ocrSize, setOcrSize] = useState<{ width: number; height: number } | null>(null);
+    const [blocks, setBlocks] = useState<OcrBlock[]>([]);
+    const [rawBlocks, setRawBlocks] = useState<OcrBlock[]>([]);
+    const [fullTranslation, setFullTranslation] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [retranslating, setRetranslating] = useState(false);
+
     const [sourceLang, setSourceLang] = useState('tl');
-    const [targetLang1, setTargetLang1] = useState('ceb');
-    const [targetLang2, setTargetLang2] = useState('hil');
+    const [targetLang, setTargetLang] = useState('en');
+    const [pickerTarget, setPickerTarget] = useState<'source' | 'target' | null>(null);
 
-    const [sourceText, setSourceText] = useState('');
-    const [translated1, setTranslated1] = useState('');
-    const [translated2, setTranslated2] = useState('');
-    const [translationId1, setTranslationId1] = useState('');
-    const [translationId2, setTranslationId2] = useState('');
-    const [loading1, setLoading1] = useState(false);
-    const [loading2, setLoading2] = useState(false);
-    const [breakdownVisible, setBreakdownVisible] = useState(false);
+    const [notifVisible, setNotifVisible] = useState(false);
+    const [notifMessage, setNotifMessage] = useState('');
 
-    const [pickerTarget, setPickerTarget] = useState<'source' | 'target1' | 'target2' | null>(null);
+    const showNotif = (msg: string) => { setNotifMessage(msg); setNotifVisible(true); };
 
-    // Feedback state
-    const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
-    const [feedbackGiven2, setFeedbackGiven2] = useState<'like' | 'dislike' | null>(null);
-    const [showMenu1, setShowMenu1] = useState(false);
-    const [showMenu2, setShowMenu2] = useState(false);
-    const menuRef1 = useRef<any>(null);
-    const menuRef2 = useRef<any>(null);
-    const [menuPos1, setMenuPos1] = useState({ top: 0, left: 20 });
-    const [menuPos2, setMenuPos2] = useState({ top: 0, left: 20 });
-    const [refineModal, setRefineModal] = useState<{ visible: boolean; translationId: string; originalText: string; target: 1 | 2 }>({
-        visible: false, translationId: '', originalText: '', target: 1,
-    });
-    const [refineText, setRefineText] = useState('');
-    const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
-    const [activeFeedbackTarget, setActiveFeedbackTarget] = useState<{ id: string; target: 1 | 2 } | null>(null);
+    // ─── Core pipeline ───────────────────────────────────────────
 
-    // Glow animations
-    const glowAnim1 = useRef(new Animated.Value(0)).current;
-    const glowAnim2 = useRef(new Animated.Value(0)).current;
-
-    // STT
-    const speech = useSpeechRecognition(sourceLang);
-    const pulseAnim = useRef(new Animated.Value(1)).current;
-
-    const [dictWord, setDictWord] = useState('');
-    const [sourceLangLookup, setSourceLangLookup] = useState('');
-    const [targetLangLookup, setTargetLangLookup] = useState('');
-    const [dictVisible, setDictVisible] = useState(false);
-
-    // Pulse animation
-    useEffect(() => {
-        if (speech.isListening || speech.isProcessing) {
-            const pulse = Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, { toValue: 1.3, duration: 600, useNativeDriver: true }),
-                    Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-                ])
-            );
-            pulse.start();
-            return () => pulse.stop();
-        } else {
-            pulseAnim.setValue(1);
-        }
-    }, [speech.isListening, speech.isProcessing]);
-
-    // Auto-populate input with live transcript
-    useEffect(() => {
-        const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
-        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
-            setSourceText(liveText);
-        }
-    }, [speech.transcript, speech.interimTranscript]);
-
-    // When transcription completes, set the text
-    useEffect(() => {
-        if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
-            setSourceText(speech.transcript.trim());
-        }
-    }, [speech.isProcessing, speech.transcript]);
-
-    // Auto-translate with debounce
-    useEffect(() => {
-        if (!sourceText.trim() || sourceText.length < 2) {
-            setTranslated1('');
-            setTranslated2('');
-            setTranslationId1('');
-            setTranslationId2('');
-            setFeedbackGiven1(null);
-            setFeedbackGiven2(null);
-            return;
-        }
-        const timer = setTimeout(async () => {
-            setLoading1(true);
-            setFeedbackGiven1(null);
-            setFeedbackGiven2(null);
-            const deviceId = await getDeviceId().catch(() => undefined);
-            try {
-                const r1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceId);
-                setTranslated1(r1.output_text || '');
-                setTranslationId1(r1.translation_id || '');
-            } catch {
-                setTranslated1('Translation unavailable');
+    const processImage = async (uri: string, base64: string, w: number, h: number) => {
+        setPhotoUri(uri);
+        setPhotoSize({ width: w, height: h });
+        setOcrSize(null);
+        setBlocks([]);
+        setRawBlocks([]);
+        setFullTranslation('');
+        setScreenState('result');
+        setLoading(true);
+        try {
+            const result = await ocrProcessFull(base64, targetLang, sourceLang);
+            if (result.error) {
+                showNotif(result.error);
+            } else if (!result.blocks?.length) {
+                showNotif('No readable text found. Try a clearer or closer photo.');
+            } else {
+                setBlocks(result.blocks);
+                setRawBlocks(result.blocks.map(b => ({ ...b })));
+                setFullTranslation(result.full_translated_text ?? '');
+                setOcrSize({ width: result.image_width, height: result.image_height });
             }
-            setLoading1(false);
+        } catch (err: any) {
+            showNotif(err.message || 'Failed to process image.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-            if (mode === '3way') {
-                setLoading2(true);
-                try {
-                    const r2 = await translateSingle(sourceText, sourceLang, targetLang2, undefined, deviceId);
-                    setTranslated2(r2.output_text || '');
-                    setTranslationId2(r2.translation_id || '');
-                } catch {
-                    setTranslated2('Translation unavailable');
-                }
-                setLoading2(false);
+    const handleCapture = async () => {
+        if (!cameraRef.current || loading) return;
+        try {
+            const pic = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.8 });
+            if (pic?.base64) await processImage(pic.uri, pic.base64, pic.width, pic.height);
+        } catch {
+            showNotif('Failed to capture photo.');
+        }
+    };
+
+    const handleGallery = async () => {
+        if (loading) return;
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: 'images' as any,
+                base64: true,
+                quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]?.base64) {
+                const a = result.assets[0];
+                await processImage(a.uri, a.base64!, a.width, a.height);
             }
-        }, 800);
-        return () => clearTimeout(timer);
-    }, [sourceText, sourceLang, targetLang1, targetLang2, mode]);
-
-    const openDictionary = (text: string, src: string, tgt: string) => {
-        if (!text.trim()) {
-            showToast("Generate a translation first to use the dictionary.");
-            return;
-        }
-
-        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-        if (words.length === 1) {
-            const cleanWord = words[0].replace(/[.,!?;:""''()\[\]{}]/g, '').trim();
-            setDictWord(cleanWord);
-            setSourceLangLookup(src);
-            setTargetLangLookup(tgt);
-            setDictVisible(true);
-        } else {
-            setDictWord(text);
-            setSourceLangLookup(src);
-            setTargetLangLookup(tgt);
-            setBreakdownVisible(true);
+        } catch {
+            showNotif('Could not open gallery.');
         }
     };
 
-    const swapLanguages = () => {
-        const oldSource = sourceLang;
-        const oldTarget = targetLang1;
-        setSourceLang(oldTarget);
-        setTargetLang1(oldSource);
-        if (translated1) {
-            setSourceText(translated1);
-            setTranslated1('');
-        }
-    };
-
-    const showToast = (message: string) => {
-        if (Platform.OS === 'android') {
-            ToastAndroid.show(message, ToastAndroid.SHORT);
-        } else {
-            Alert.alert('', message);
-        }
-    };
-
-    const handlePickerSelect = (code: string) => {
-        if (pickerTarget === 'source') setSourceLang(code);
-        else if (pickerTarget === 'target1') setTargetLang1(code);
-        else if (pickerTarget === 'target2') setTargetLang2(code);
-        setPickerTarget(null);
-    };
-
-    const triggerGlow = (anim: Animated.Value) => {
-        Animated.sequence([
-            Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: false }),
-            Animated.timing(anim, { toValue: 0, duration: 600, useNativeDriver: false }),
-        ]).start();
-    };
-
-    const handleFeedback = async (
-        translationId: string,
-        type: 'like' | 'dislike',
-        target: 1 | 2,
-    ) => {
-        const anim = target === 1 ? glowAnim1 : glowAnim2;
-        const setFeedback = target === 1 ? setFeedbackGiven1 : setFeedbackGiven2;
-        const currentFeedback = target === 1 ? feedbackGiven1 : feedbackGiven2;
-
-        if (currentFeedback === type) {
-            setFeedback(null);
-            return;
-        }
-
-        setFeedback(type);
-        triggerGlow(anim);
-
+    const handleRetranslate = useCallback(async () => {
+        if (!rawBlocks.length || loading || retranslating) return;
+        setRetranslating(true);
         try {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch { }
+            const raw = rawBlocks.map(b => ({ text: b.text, box: b.box, confidence: b.confidence }));
+            const result = await ocrTranslateBlocks(raw, sourceLang, targetLang);
+            if (result.blocks?.length) {
+                setBlocks(result.blocks as OcrBlock[]);
+                setFullTranslation(result.blocks.map(b => b.translated_text).filter(Boolean).join(' '));
+            }
+        } catch (err: any) {
+            showNotif(err.message || 'Retranslation failed.');
+        } finally {
+            setRetranslating(false);
+        }
+    }, [rawBlocks, sourceLang, targetLang, loading, retranslating]);
 
-        try {
-            await submitFeedback(translationId, type);
-        } catch { }
+    const handleNewPhoto = () => {
+        setScreenState('camera');
+        setPhotoUri(null);
+        setPhotoSize(null);
+        setOcrSize(null);
+        setBlocks([]);
+        setRawBlocks([]);
+        setFullTranslation('');
     };
 
-    const handleCopy = async (text: string) => {
-        try {
-            await Clipboard.setStringAsync(text);
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Copied to clipboard');
-        } catch { }
-    };
+    // ─── Derived layout for result image ─────────────────────────
 
-    const handleSubmitRefinement = async () => {
-        if (!refineText.trim()) return;
-        try {
-            await submitFeedback(refineModal.translationId, 'dislike', refineText.trim());
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Suggestion submitted! Thank you.');
-        } catch { }
-        setRefineModal({ visible: false, translationId: '', originalText: '', target: 1 });
-        setRefineText('');
-    };
+    const effectiveSize = ocrSize ?? photoSize;
+    const imgW = SCREEN_W;
+    const imgH = effectiveSize ? imgW * (effectiveSize.height / effectiveSize.width) : 300;
+    const scaleX = effectiveSize ? imgW / effectiveSize.width : 1;
+    const scaleY = effectiveSize ? imgH / effectiveSize.height : 1;
 
-    const srcColor = getColorForLang(sourceLang);
-    const tgt1Color = getColorForLang(targetLang1);
-    const tgt2Color = getColorForLang(targetLang2);
+    const srcName = SUPPORTED_LANGUAGES[sourceLang] ?? sourceLang;
+    const tgtName = SUPPORTED_LANGUAGES[targetLang] ?? targetLang;
 
-    const renderActionRow = (
-        text: string,
-        translationId: string,
-        langColor: any,
-        src: string,
-        tgt: string,
-        target: 1 | 2,
-        feedbackState: 'like' | 'dislike' | null,
-        showMenu: boolean,
-        setShowMenu: (v: boolean) => void,
-        glowAnim: Animated.Value,
-    ) => {
-        const glowColor = glowAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['transparent', feedbackState === 'dislike' ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'],
-        });
+    // ─── Awaiting permission ──────────────────────────────────────
 
+    if (!permission) {
         return (
-            <Animated.View style={[styles.cardFooter, { backgroundColor: glowColor, borderRadius: 12, marginHorizontal: -4, paddingHorizontal: 4 }]}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => tts.speak(text, tgt)}>
-                    <Volume2 size={18} color={langColor.light} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionBtn} onPress={() => openDictionary(text, tgt, src)}>
-                    <BookOpen size={18} color={langColor.light} />
-                </TouchableOpacity>
-
-                {/* Feedback Trigger */}
-                <TouchableOpacity
-                    style={[styles.actionBtn, feedbackState && { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#3B82F6' }]}
-                    onPress={() => {
-                        setActiveFeedbackTarget({ id: translationId, target });
-                        setFeedbackModalVisible(true);
-                    }}
-                >
-                    <MessageSquare size={18} color={isDarkMode ? '#64748B' : '#94A3B8'} />
-                </TouchableOpacity>
-
-                <View style={{ flex: 1 }} />
-
-                <View>
-                    <TouchableOpacity
-                        ref={target === 1 ? menuRef1 : menuRef2}
-                        style={styles.actionBtn}
-                        onPress={() => {
-                            const ref = target === 1 ? menuRef1 : menuRef2;
-                            const setPos = target === 1 ? setMenuPos1 : setMenuPos2;
-                            if (ref.current) {
-                                ref.current.measure((_x: number, _y: number, w: number, _h: number, pageX: number, pageY: number) => {
-                                    const screenWidth = Dimensions.get('window').width;
-                                    setPos({
-                                        top: pageY - 92,
-                                        left: Math.min(pageX, screenWidth - 220), // anchor from left, clamp to screen edge
-                                    });
-                                    setShowMenu(!showMenu);
-                                });
-                            } else {
-                                setShowMenu(!showMenu);
-                            }
-                        }}
-                    >
-                        <MoreHorizontal size={18} color={isDarkMode ? '#64748B' : '#94A3B8'} />
-                    </TouchableOpacity>
-                    {showMenu && (
-                        <Portal>
-                            <TouchableOpacity
-                                style={StyleSheet.absoluteFill}
-                                onPress={() => setShowMenu(false)}
-                            >
-                                <View style={[styles.popoverMenu, isDarkMode && styles.popoverMenuDark, {
-                                    top: (target === 1 ? menuPos1 : menuPos2).top,
-                                    left: (target === 1 ? menuPos1 : menuPos2).left,  // ← was `right`
-                                }]}>
-                                    <TouchableOpacity
-                                        style={styles.popoverItem}
-                                        onPress={() => {
-                                            setShowMenu(false);
-                                            handleCopy(text);
-                                        }}
-                                    >
-                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Copy</Text>
-                                    </TouchableOpacity>
-                                    <View style={[styles.popoverSep, isDarkMode && { backgroundColor: '#334155' }]} />
-                                    <TouchableOpacity
-                                        style={styles.popoverItem}
-                                        onPress={() => {
-                                            setShowMenu(false);
-                                            setRefineText(text);
-                                            setRefineModal({ visible: true, translationId, originalText: text, target });
-                                        }}
-                                    >
-                                        <Text style={[styles.popoverText, isDarkMode && { color: '#E2E8F0' }]}>Suggest a Translation</Text>
-                                    </TouchableOpacity>
-                                    {/* Caret pointing down toward the button */}
-                                    <View style={[styles.popoverCaret, isDarkMode && styles.popoverCaretDark]} />
-                                </View>
-                            </TouchableOpacity>
-                        </Portal>
-                    )}
-                </View>
-            </Animated.View>
+            <View style={[styles.root, styles.centered]}>
+                <FluidAura isDarkMode={isDarkMode} />
+                <ActivityIndicator color={isDarkMode ? '#FFF' : '#6366F1'} size="large" />
+                <BottomNav />
+            </View>
         );
-    };
+    }
+
+    // ─── Permission denied ────────────────────────────────────────
+
+    if (!permission.granted) {
+        return (
+            <View style={[styles.root, styles.centered]}>
+                <FluidAura isDarkMode={isDarkMode} />
+                <View style={[styles.permCard, isDarkMode && styles.permCardDark]}>
+                    <Camera size={52} color="#6366F1" />
+                    <Text style={[styles.permTitle, isDarkMode && styles.textLight]}>
+                        Camera Access Needed
+                    </Text>
+                    <Text style={styles.permDesc}>
+                        Allow camera access to capture and translate text from photos.
+                    </Text>
+                    <TouchableOpacity style={styles.permPrimaryBtn} onPress={requestPermission}>
+                        <Camera size={18} color="#FFF" />
+                        <Text style={styles.permPrimaryText}>Allow Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.permSecondaryBtn} onPress={handleGallery}>
+                        <FolderOpen size={18} color="#6366F1" />
+                        <Text style={styles.permSecondaryText}>Use Gallery Instead</Text>
+                    </TouchableOpacity>
+                </View>
+                <BottomNav />
+                <GlassNotification
+                    visible={notifVisible}
+                    message={notifMessage}
+                    onHide={() => setNotifVisible(false)}
+                    isDarkMode={isDarkMode}
+                />
+            </View>
+        );
+    }
+
+    // ─── Camera Screen ────────────────────────────────────────────
+
+    if (screenState === 'camera') {
+        return (
+            <View style={styles.root}>
+                {/* Full-screen camera */}
+                <CameraView
+                    ref={cameraRef}
+                    style={StyleSheet.absoluteFill}
+                    facing={facing}
+                    flash={flash}
+                />
+
+                {/* Top bar: language selector + flash */}
+                <View style={[styles.camTopBar, { paddingTop: insets.top + 10 }]}>
+                    {/* Language selector pill */}
+                    <View style={styles.camLangRow}>
+                        <TouchableOpacity
+                            style={styles.camLangPill}
+                            onPress={() => setPickerTarget('source')}
+                            activeOpacity={0.75}
+                        >
+                            <Text style={styles.camLangText}>{srcName}</Text>
+                            <ChevronDown size={12} color="rgba(255,255,255,0.6)" />
+                        </TouchableOpacity>
+
+                        <ArrowLeftRight size={14} color="rgba(255,255,255,0.45)" />
+
+                        <TouchableOpacity
+                            style={styles.camLangPill}
+                            onPress={() => setPickerTarget('target')}
+                            activeOpacity={0.75}
+                        >
+                            <Text style={styles.camLangText}>{tgtName}</Text>
+                            <ChevronDown size={12} color="rgba(255,255,255,0.6)" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Flash toggle */}
+                    <TouchableOpacity
+                        style={styles.camIconBtn}
+                        onPress={() => setFlash(f => f === 'off' ? 'on' : 'off')}
+                        activeOpacity={0.75}
+                    >
+                        {flash === 'off'
+                            ? <ZapOff size={20} color="rgba(255,255,255,0.7)" />
+                            : <Zap size={20} color="#FBBF24" fill="#FBBF24" />
+                        }
+                    </TouchableOpacity>
+                </View>
+
+                {/* Viewfinder scan guide */}
+                <View style={styles.scanFrame} pointerEvents="none">
+                    <View style={[styles.scanCorner, styles.cornerTL]} />
+                    <View style={[styles.scanCorner, styles.cornerTR]} />
+                    <View style={[styles.scanCorner, styles.cornerBL]} />
+                    <View style={[styles.scanCorner, styles.cornerBR]} />
+                </View>
+
+                {/* Bottom gradient + hint + controls — box-none so BottomNav below receives touches */}
+                <View style={[styles.camBottomArea, { paddingBottom: insets.bottom + NAV_CLEARANCE }]} pointerEvents="box-none">
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.72)']}
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                    />
+                    <View style={styles.scanHintRow} pointerEvents="none">
+                        <ScanText size={14} color="rgba(255,255,255,0.65)" />
+                        <Text style={styles.scanHintText}>Point at text to translate</Text>
+                    </View>
+                    <View style={styles.camControlsRow} pointerEvents="box-none">
+                        {/* Gallery */}
+                        <TouchableOpacity style={styles.camSideBtn} onPress={handleGallery} activeOpacity={0.75}>
+                            <View style={styles.camSideBtnCircle}>
+                                <FolderOpen size={24} color="#FFF" />
+                            </View>
+                            <Text style={styles.camSideLabel}>Gallery</Text>
+                        </TouchableOpacity>
+
+                        {/* Shutter */}
+                        <TouchableOpacity
+                            style={styles.shutterRing}
+                            onPress={handleCapture}
+                            activeOpacity={0.85}
+                            disabled={loading}
+                        >
+                            <View style={[styles.shutterDot, loading && styles.shutterLoading]}>
+                                {loading && <ActivityIndicator size="small" color="#1E293B" />}
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Flip */}
+                        <TouchableOpacity
+                            style={styles.camSideBtn}
+                            onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
+                            activeOpacity={0.75}
+                        >
+                            <View style={styles.camSideBtnCircle}>
+                                <RotateCcw size={24} color="#FFF" />
+                            </View>
+                            <Text style={styles.camSideLabel}>Flip</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <BottomNav />
+
+                <LanguagePicker
+                    visible={pickerTarget !== null}
+                    onDismiss={() => setPickerTarget(null)}
+                    onSelect={(code) => {
+                        if (pickerTarget === 'source') setSourceLang(code);
+                        else setTargetLang(code);
+                        setPickerTarget(null);
+                    }}
+                    selected={pickerTarget === 'source' ? sourceLang : targetLang}
+                    exclude={pickerTarget === 'source' ? [targetLang] : [sourceLang]}
+                />
+                <GlassNotification
+                    visible={notifVisible}
+                    message={notifMessage}
+                    onHide={() => setNotifVisible(false)}
+                    isDarkMode={isDarkMode}
+                />
+            </View>
+        );
+    }
+
+    // ─── Result Screen ────────────────────────────────────────────
 
     return (
-        <PaperProvider>
-            <Portal.Host>
-                <View style={[styles.container, isDarkMode && styles.containerDark]}>
-                    <FluidAura isDarkMode={isDarkMode} />
+        <View style={[styles.root, isDarkMode ? styles.bgDark : styles.bgLight]}>
+            <FluidAura isDarkMode={isDarkMode} />
 
-                    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                        <View style={styles.headerArea}>
-                            <Text style={[styles.headerTitle, isDarkMode && { color: '#F8FAFC' }]}>ANO-KAMO?</Text>
+            {/* Header */}
+            <View style={[styles.resultHeader, { paddingTop: insets.top + 8 }]}>
+                <TouchableOpacity style={styles.backBtn} onPress={handleNewPhoto} activeOpacity={0.75}>
+                    <X size={15} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                    <Text style={[styles.backBtnText, isDarkMode && styles.textLight]}>New Photo</Text>
+                </TouchableOpacity>
 
-                            {/* Mode Toggle */}
-                            <View style={[styles.toggleRow, isDarkMode && styles.toggleRowDark]}>
-                                <TouchableOpacity
-                                    style={[styles.toggleBtn, mode === '2way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                                    onPress={() => setMode('2way')}
-                                >
-                                    <Text style={[styles.toggleText, mode === '2way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                                        2 Languages
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.toggleBtn, mode === '3way' && (isDarkMode ? styles.toggleActiveDark : styles.toggleActive)]}
-                                    onPress={() => setMode('3way')}
-                                >
-                                    <Text style={[styles.toggleText, mode === '3way' && (isDarkMode ? styles.toggleTextActiveDark : styles.toggleTextActive)]}>
-                                        3 Languages
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {/* Language Selectors */}
-                        <View style={styles.langRow}>
-                            <TouchableOpacity style={[styles.langBtn, { borderColor: srcColor.light }]} onPress={() => setPickerTarget('source')}>
-                                <View style={[styles.langDot, { backgroundColor: srcColor.light }]} />
-                                <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[sourceLang]}</Text>
-                                <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.swapBtn} onPress={swapLanguages}>
-                                <ArrowLeftRight size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={[styles.langBtn, { borderColor: tgt1Color.light }]} onPress={() => setPickerTarget('target1')}>
-                                <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
-                                <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang1]}</Text>
-                                <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                            </TouchableOpacity>
-                        </View>
-
-                        {mode === '3way' && (
-                            <View style={[styles.langRow, { marginTop: 8 }]}>
-                                <View style={{ flex: 1 }} />
-                                <TouchableOpacity style={[styles.langBtn, { borderColor: tgt2Color.light }]} onPress={() => setPickerTarget('target2')}>
-                                    <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
-                                    <Text style={[styles.langLabel, isDarkMode && { color: '#F8FAFC' }]}>{SUPPORTED_LANGUAGES[targetLang2]}</Text>
-                                    <ChevronDown size={14} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                                </TouchableOpacity>
-                            </View>
-                        )}
-
-                        {/* Source Input with Mic */}
-                        <BlurView
-                            intensity={40}
-                            tint={isDarkMode ? 'dark' : 'light'}
-                            style={[styles.card, isDarkMode && styles.cardDark]}
-                        >
-                            <TextInput
-                                style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                                placeholder={
-                                    speech.isListening ? 'Listening...'
-                                        : speech.isProcessing ? 'Transcribing...'
-                                            : LANGUAGE_PLACEHOLDERS[sourceLang] || 'Enter text...'
-                                }
-                                placeholderTextColor={
-                                    (speech.isListening || speech.isProcessing)
-                                        ? '#EF4444'
-                                        : (isDarkMode ? '#64748B' : '#94A3B8')
-                                }
-                                value={sourceText}
-                                onChangeText={setSourceText}
-                                multiline
-                                numberOfLines={4}
-                            />
-                            <View style={styles.cardFooter}>
-                                <TouchableOpacity
-                                    style={[styles.micBtnSmall, {
-                                        backgroundColor: (speech.isListening || speech.isProcessing)
-                                            ? '#EF4444'
-                                            : srcColor.light
-                                    }]}
-                                    onPress={() => {
-                                        if (speech.isListening) speech.stopListening();
-                                        else if (!speech.isProcessing) speech.startListening();
-                                    }}
-                                    disabled={speech.isProcessing}
-                                >
-                                    <Animated.View style={{ transform: [{ scale: (speech.isListening || speech.isProcessing) ? pulseAnim : 1 }] }}>
-                                        {speech.isListening ? (
-                                            <MicOff size={16} color="#FFF" />
-                                        ) : speech.isProcessing ? (
-                                            <ActivityIndicator size={12} color="#FFF" />
-                                        ) : (
-                                            <Mic size={16} color="#FFF" />
-                                        )}
-                                    </Animated.View>
-                                </TouchableOpacity>
-
-                                <View style={{ flex: 1 }} />
-
-                                {sourceText.length > 0 && (
-                                    <TouchableOpacity style={{ marginLeft: 10 }} onPress={() => tts.speak(sourceText, sourceLang)}>
-                                        <Volume2 size={18} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-                        </BlurView>
-
-                        {/* Translation Result 1 */}
-                        {(translated1 || loading1) && (
-                            <BlurView
-                                intensity={40}
-                                tint={isDarkMode ? 'dark' : 'light'}
-                                style={[styles.resultCard, { borderLeftColor: tgt1Color.light }, isDarkMode && styles.cardDark]}
-                            >
-                                <View style={styles.resultHeader}>
-                                    <View style={[styles.langDot, { backgroundColor: tgt1Color.light }]} />
-                                    <Text style={[styles.resultLang, { color: tgt1Color.light }]}>
-                                        {SUPPORTED_LANGUAGES[targetLang1]}
-                                    </Text>
-                                </View>
-                                {loading1 ? (
-                                    <ActivityIndicator color={tgt1Color.light} style={{ marginVertical: 12 }} />
-                                ) : (
-                                    <>
-                                        <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                            {translated1}
-                                        </Text>
-                                        {renderActionRow(
-                                            translated1, translationId1, tgt1Color,
-                                            sourceLang, targetLang1, 1,
-                                            feedbackGiven1, showMenu1, setShowMenu1, glowAnim1,
-                                        )}
-                                    </>
-                                )}
-                            </BlurView>
-                        )}
-
-                        {/* Translation Result 2 (3-way mode) */}
-                        {mode === '3way' && (translated2 || loading2) && (
-                            <BlurView
-                                intensity={40}
-                                tint={isDarkMode ? 'dark' : 'light'}
-                                style={[styles.resultCard, { borderLeftColor: tgt2Color.light }, isDarkMode && styles.cardDark]}
-                            >
-                                <View style={styles.resultHeader}>
-                                    <View style={[styles.langDot, { backgroundColor: tgt2Color.light }]} />
-                                    <Text style={[styles.resultLang, { color: tgt2Color.light }]}>
-                                        {SUPPORTED_LANGUAGES[targetLang2]}
-                                    </Text>
-                                </View>
-                                {loading2 ? (
-                                    <ActivityIndicator color={tgt2Color.light} style={{ marginVertical: 12 }} />
-                                ) : (
-                                    <>
-                                        <Text style={[styles.resultText, isDarkMode && { color: '#F8FAFC' }]}>
-                                            {translated2}
-                                        </Text>
-                                        {renderActionRow(
-                                            translated2, translationId2, tgt2Color,
-                                            sourceLang, targetLang2, 2,
-                                            feedbackGiven2, showMenu2, setShowMenu2, glowAnim2,
-                                        )}
-                                    </>
-                                )}
-                            </BlurView>
-                        )}
-
-                        <View style={{ height: 120 }} />
-                    </ScrollView>
-
-                    <BottomNav />
-
-                    <LanguagePicker
-                        visible={pickerTarget !== null}
-                        onDismiss={() => setPickerTarget(null)}
-                        onSelect={handlePickerSelect}
-                        selected={
-                            pickerTarget === 'source' ? sourceLang
-                                : pickerTarget === 'target1' ? targetLang1
-                                    : targetLang2
-                        }
-                    />
-
-                    <WordCardModal
-                        visible={dictVisible}
-                        onDismiss={() => setDictVisible(false)}
-                        word={dictWord}
-                        sourceLang={sourceLangLookup}
-                        targetLang={targetLangLookup}
-                    />
-
-                    <SentenceBreakdownSheet
-                        visible={breakdownVisible}
-                        onClose={() => setBreakdownVisible(false)}
-                        text={dictWord}
-                        sourceLang={sourceLangLookup}
-                        targetLang={targetLangLookup}
-                        onWordPress={(word) => {
-                            setBreakdownVisible(false);
-                            setDictWord(word);
-                            setTimeout(() => setDictVisible(true), 300);
-                        }}
-                    />
-
-                    {/* Refinement Modal */}
-                    <Modal
-                        visible={refineModal.visible}
-                        transparent
-                        animationType="slide"
-                        onRequestClose={() => setRefineModal({ ...refineModal, visible: false })}
+                {/* Language row */}
+                <View style={styles.resultLangRow}>
+                    <TouchableOpacity
+                        style={[styles.resultLangPill, isDarkMode && styles.resultLangPillDark]}
+                        onPress={() => setPickerTarget('source')}
+                        disabled={loading || retranslating}
+                        activeOpacity={0.75}
                     >
-                        <View style={styles.modalOverlay}>
-                            <BlurView
-                                intensity={60}
-                                tint={isDarkMode ? 'dark' : 'light'}
-                                style={[styles.refineModal, isDarkMode && styles.refineModalDark]}
-                            >
-                                <View style={styles.modalHandle} />
-                                <View style={styles.refineHeader}>
-                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>
-                                        Suggest Better Translation
-                                    </Text>
-                                    <TouchableOpacity onPress={() => setRefineModal({ ...refineModal, visible: false })}>
-                                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                                    </TouchableOpacity>
-                                </View>
+                        <Text style={[styles.resultLangText, isDarkMode && styles.textLight]}>
+                            {srcName}
+                        </Text>
+                        <ChevronDown size={11} color="#94A3B8" />
+                    </TouchableOpacity>
 
-                                <Text style={[styles.refineLabel, isDarkMode && { color: '#94A3B8' }]}>Current translation:</Text>
-                                <Text style={[styles.refineOriginal, isDarkMode && { color: '#CBD5E1' }]}>
-                                    "{refineModal.originalText}"
-                                </Text>
+                    <ArrowLeftRight size={13} color={isDarkMode ? '#475569' : '#94A3B8'} />
 
-                                <Text style={[styles.refineLabel, { marginTop: 16 }, isDarkMode && { color: '#94A3B8' }]}>
-                                    Your suggested translation:
-                                </Text>
-                                <TextInput
-                                    style={[styles.refineInput, isDarkMode && styles.refineInputDark]}
-                                    placeholder="Type a better translation..."
-                                    placeholderTextColor="#94A3B8"
-                                    value={refineText}
-                                    onChangeText={setRefineText}
-                                    multiline
-                                />
-
-                                <TouchableOpacity
-                                    style={[styles.refineSubmit, !refineText.trim() && { opacity: 0.5 }]}
-                                    onPress={handleSubmitRefinement}
-                                    disabled={!refineText.trim()}
-                                >
-                                    <Send size={18} color="#FFF" />
-                                    <Text style={styles.refineSubmitText}>Submit Suggestion</Text>
-                                </TouchableOpacity>
-                            </BlurView>
-                        </View>
-                    </Modal>
-
-                    {/* Feedback Modal */}
-                    <Modal
-                        visible={feedbackModalVisible}
-                        transparent
-                        animationType="fade"
-                        onRequestClose={() => setFeedbackModalVisible(false)}
+                    <TouchableOpacity
+                        style={[styles.resultLangPill, isDarkMode && styles.resultLangPillDark]}
+                        onPress={() => setPickerTarget('target')}
+                        disabled={loading || retranslating}
+                        activeOpacity={0.75}
                     >
-                        <View style={styles.modalOverlayCentered}>
-                            <BlurView
-                                intensity={30}
-                                tint={isDarkMode ? 'dark' : 'light'}
-                                style={[styles.feedbackModalCentered, liquidGlass, isDarkMode && styles.feedbackModalDark]}
-                            >
-                                <View style={styles.modalHandle} />
-                                <View style={styles.refineHeader}>
-                                    <Text style={[styles.refineTitle, isDarkMode && { color: '#F8FAFC' }]}>Rate this translation</Text>
-                                    <TouchableOpacity onPress={() => setFeedbackModalVisible(false)}>
-                                        <X size={22} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <Text style={[styles.feedbackBody, isDarkMode && { color: '#94A3B8' }]}>
-                                    Your feedback is important to us!
-                                </Text>
-
-                                <View style={styles.feedbackActionRow}>
-                                    <TouchableOpacity
-                                        style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(34,197,94,0.1)' }]}
-                                        onPress={() => {
-                                            if (activeFeedbackTarget) {
-                                                handleFeedback(activeFeedbackTarget.id, 'like', activeFeedbackTarget.target);
-                                            }
-                                            setFeedbackModalVisible(false);
-                                        }}
-                                    >
-                                        <ThumbsUp size={32} color="#22C55E" />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(239,68,68,0.1)' }]}
-                                        onPress={() => {
-                                            if (activeFeedbackTarget) {
-                                                handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
-                                            }
-                                            setFeedbackModalVisible(false);
-                                        }}
-                                    >
-                                        <ThumbsDown size={32} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            </BlurView>
-                        </View>
-                    </Modal>
+                        <Text style={[styles.resultLangText, isDarkMode && styles.textLight]}>
+                            {tgtName}
+                        </Text>
+                        <ChevronDown size={11} color="#94A3B8" />
+                    </TouchableOpacity>
                 </View>
-            </Portal.Host>
-        </PaperProvider>
+
+                {/* Retranslate button */}
+                {rawBlocks.length > 0 && !loading ? (
+                    <TouchableOpacity
+                        style={styles.retransBtn}
+                        onPress={handleRetranslate}
+                        disabled={retranslating}
+                        activeOpacity={0.75}
+                    >
+                        {retranslating
+                            ? <ActivityIndicator size="small" color="#6366F1" />
+                            : <RefreshCcw size={14} color="#6366F1" />
+                        }
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ width: 38 }} />
+                )}
+            </View>
+
+            {/* Scrollable content */}
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: NAV_CLEARANCE + 16 }]}
+            >
+                {/* Photo + overlays */}
+                {photoUri && (
+                    <View style={{ width: imgW, height: imgH }}>
+                        <Image
+                            source={{ uri: photoUri }}
+                            style={{ width: imgW, height: imgH }}
+                            resizeMode="stretch"
+                        />
+
+                        {/* Loading shimmer over image */}
+                        {loading && (
+                            <View style={styles.imgLoadingOverlay}>
+                                <View style={styles.imgLoadingCard}>
+                                    <ActivityIndicator size="large" color="#6366F1" />
+                                    <Text style={styles.imgLoadingTitle}>Analyzing image…</Text>
+                                    <Text style={styles.imgLoadingSubtitle}>
+                                        Reading and translating text
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Translated text overlay blocks */}
+                        {!loading && blocks.map((block, i) => {
+                            const [bx, by, bw, bh] = block.box;
+                            if (!block.translated_text || bw < 1 || bh < 1) return null;
+                            const left = bx * scaleX;
+                            const top = by * scaleY;
+                            const width = Math.max(bw * scaleX, 28);
+                            const height = Math.max(bh * scaleY, 16);
+                            const fs = Math.max(9, Math.min(14, height * 0.5));
+                            return (
+                                <View
+                                    key={i}
+                                    style={[
+                                        styles.overlayBlock,
+                                        {
+                                            left,
+                                            top,
+                                            width,
+                                            minHeight: height,
+                                        },
+                                        isDarkMode && styles.overlayBlockDark,
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.overlayText,
+                                            { fontSize: fs, lineHeight: fs * 1.35 },
+                                        ]}
+                                        numberOfLines={0}
+                                    >
+                                        {block.translated_text}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
+
+                {/* Empty state */}
+                {!loading && !blocks.length && photoUri && (
+                    <View style={[styles.emptyCard, isDarkMode && styles.emptyCardDark]}>
+                        <ScanText size={40} color={isDarkMode ? '#334155' : '#CBD5E1'} />
+                        <Text style={[styles.emptyTitle, isDarkMode && styles.textLight]}>
+                            No text detected
+                        </Text>
+                        <Text style={styles.emptyHint}>
+                            Try a clearer photo with well-lit, larger text.
+                        </Text>
+                    </View>
+                )}
+
+                {/* Full translation card */}
+                {!loading && !!fullTranslation && (
+                    <View style={[styles.fullCard, isDarkMode && styles.fullCardDark]}>
+                        <Text style={styles.fullCardLabel}>FULL TRANSLATION</Text>
+                        <Text style={[styles.fullCardText, isDarkMode && styles.textLight]}>
+                            {fullTranslation}
+                        </Text>
+                    </View>
+                )}
+            </ScrollView>
+
+            <BottomNav />
+
+            <LanguagePicker
+                visible={pickerTarget !== null}
+                onDismiss={() => setPickerTarget(null)}
+                onSelect={(code) => {
+                    if (pickerTarget === 'source') setSourceLang(code);
+                    else setTargetLang(code);
+                    setPickerTarget(null);
+                }}
+                selected={pickerTarget === 'source' ? sourceLang : targetLang}
+            />
+            <GlassNotification
+                visible={notifVisible}
+                message={notifMessage}
+                onHide={() => setNotifVisible(false)}
+                isDarkMode={isDarkMode}
+            />
+        </View>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#FFF' },
-    containerDark: { backgroundColor: '#0F172A' },
-    bg: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    scrollView: { flex: 1 },
-    scrollContent: { paddingBottom: 40 },
+const CORNER_SIZE = 22;
+const CORNER_THICK = 2.5;
+const CORNER_COLOR = 'rgba(255,255,255,0.85)';
 
-    headerArea: {
-        paddingTop: 60,
-        paddingHorizontal: 20,
+const styles = StyleSheet.create({
+    root: { flex: 1, backgroundColor: '#000' },
+    bgLight: { backgroundColor: '#F1F5F9' },
+    bgDark: { backgroundColor: '#0F172A' },
+    centered: { justifyContent: 'center', alignItems: 'center' },
+    textLight: { color: '#F8FAFC' },
+
+    // ── Permission card ──
+    permCard: {
+        backgroundColor: 'rgba(255,255,255,0.94)',
+        borderRadius: 28,
+        padding: 32,
+        marginHorizontal: 28,
+        alignItems: 'center',
+        gap: 14,
+        elevation: 2,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.95)',
     },
-    headerTitle: {
-        fontSize: 22,
+    permCardDark: {
+        backgroundColor: 'rgba(30,27,75,0.94)',
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    permTitle: {
+        fontSize: 20,
         fontWeight: '800',
         color: '#1E293B',
         textAlign: 'center',
-        marginBottom: 12,
-        letterSpacing: 1,
     },
-
-    toggleRow: {
-        flexDirection: 'row',
-        backgroundColor: 'rgba(241,245,249,0.7)',
-        borderRadius: 30,
-        padding: 4,
-        marginTop: 23,
-        marginBottom: 14,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
+    permDesc: {
+        fontSize: 14,
+        color: '#64748B',
+        textAlign: 'center',
+        lineHeight: 20,
     },
-    toggleRowDark: {
-        backgroundColor: 'rgba(255,255,255,0.09)',
-        borderColor: 'rgba(255,255,255,0.12)',
-    },
-    toggleBtn: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 26,
-        alignItems: 'center',
-    },
-    toggleActive: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    toggleActiveDark: { backgroundColor: 'rgba(255,255,255,0.22)' },
-    toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-    toggleTextActive: { color: '#1E293B' },
-    toggleTextActiveDark: { color: '#F8FAFC' },
-
-    langRow: {
+    permPrimaryBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        justifyContent: 'center',
         gap: 8,
-        marginBottom: 8,
+        width: '100%',
+        backgroundColor: '#6366F1',
+        borderRadius: 16,
+        paddingVertical: 14,
     },
-    langBtn: {
+    permPrimaryText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+    permSecondaryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        width: '100%',
+        backgroundColor: 'rgba(99,102,241,0.1)',
+        borderRadius: 16,
+        paddingVertical: 14,
+        marginTop: -4,
+    },
+    permSecondaryText: { color: '#6366F1', fontSize: 15, fontWeight: '700' },
+
+    // ── Camera: top bar ──
+    camTopBar: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingBottom: 14,
+        zIndex: 20,
+        gap: 10,
+    },
+    camLangRow: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        backgroundColor: 'rgba(0,0,0,0.48)',
+        borderRadius: 28,
         paddingHorizontal: 14,
         paddingVertical: 10,
-        borderRadius: 20,
-        borderWidth: 1.5,
-        backgroundColor: 'rgba(255,255,255,0.4)',
-        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
     },
-    langDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+    camLangPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
     },
-    langLabel: {
-        flex: 1,
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#1E293B',
+    camLangText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '600',
     },
-    swapBtn: {
-        padding: 8,
+    camIconBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.48)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 
-    card: {
-        marginHorizontal: 20,
-        marginTop: 8,
-        borderRadius: 24,
-        padding: 16,
+    // ── Camera: viewfinder scan guide ──
+    scanFrame: {
+        position: 'absolute',
+        top: SCREEN_H * 0.25,
+        left: SCREEN_W * 0.1,
+        right: SCREEN_W * 0.1,
+        height: SCREEN_H * 0.35,
+        zIndex: 5,
+    },
+    scanCorner: {
+        position: 'absolute',
+        width: CORNER_SIZE,
+        height: CORNER_SIZE,
+        borderColor: CORNER_COLOR,
+    },
+    cornerTL: {
+        top: 0,
+        left: 0,
+        borderTopWidth: CORNER_THICK,
+        borderLeftWidth: CORNER_THICK,
+        borderTopLeftRadius: 4,
+    },
+    cornerTR: {
+        top: 0,
+        right: 0,
+        borderTopWidth: CORNER_THICK,
+        borderRightWidth: CORNER_THICK,
+        borderTopRightRadius: 4,
+    },
+    cornerBL: {
+        bottom: 0,
+        left: 0,
+        borderBottomWidth: CORNER_THICK,
+        borderLeftWidth: CORNER_THICK,
+        borderBottomLeftRadius: 4,
+    },
+    cornerBR: {
+        bottom: 0,
+        right: 0,
+        borderBottomWidth: CORNER_THICK,
+        borderRightWidth: CORNER_THICK,
+        borderBottomRightRadius: 4,
+    },
+
+    // ── Camera: bottom controls ──
+    camBottomArea: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingTop: 48,
+        zIndex: 15,
+    },
+    scanHintRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        marginBottom: 20,
+    },
+    scanHintText: {
+        color: 'rgba(255,255,255,0.65)',
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    camControlsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-evenly',
+        paddingHorizontal: 16,
+        paddingBottom: Platform.OS === 'ios' ? 0 : 8,
+    },
+    camSideBtn: {
+        alignItems: 'center',
+        gap: 6,
+        minWidth: 64,
+    },
+    camSideBtnCircle: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: 'rgba(255,255,255,0.18)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.4)',
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        overflow: 'hidden',
+        borderColor: 'rgba(255,255,255,0.25)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    cardDark: {
-        backgroundColor: 'rgba(255,255,255,0.07)',
-        borderColor: 'rgba(255,255,255,0.09)',
-        elevation: 0,
+    camSideLabel: {
+        color: 'rgba(255,255,255,0.75)',
+        fontSize: 11,
+        fontWeight: '500',
     },
-    resultCard: {
-        marginHorizontal: 20,
-        marginTop: 12,
-        borderRadius: 24,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.4)',
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        borderLeftWidth: 4,
-        overflow: 'hidden',
+    shutterRing: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        borderWidth: 3.5,
+        borderColor: 'rgba(255,255,255,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
+    shutterDot: {
+        width: 62,
+        height: 62,
+        borderRadius: 31,
+        backgroundColor: '#FFFFFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    shutterLoading: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+    },
+
+    // ── Result: header ──
     resultHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        marginBottom: 8,
-    },
-    resultLang: {
-        fontSize: 12,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-    },
-    resultText: {
-        fontSize: 17,
-        fontWeight: '500',
-        lineHeight: 24,
-        color: '#1E293B',
-    },
-    textInput: {
-        fontSize: 16,
-        color: '#1E293B',
-        minHeight: 80,
-        textAlignVertical: 'top',
-    },
-    textInputDark: {
-        color: '#F8FAFC',
-    },
-    cardFooter: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 8,
-        gap: 4,
-    },
-    micBtnSmall: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-        elevation: 2,
-    },
-
-    actionBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    popoverMenu: {
-        position: 'absolute',
-        backgroundColor: '#FFF',
-        borderRadius: 14,
-        paddingVertical: 4,
-        paddingBottom: 16,
-        minWidth: 210,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-        elevation: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.06)',
-        zIndex: 999,
-    },
-    popoverMenuDark: {
-        backgroundColor: '#1E293B',
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    popoverItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingVertical: 11,
-        gap: 10,
-    },
-    popoverText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#1E293B',
-    },
-    popoverSep: {
-        height: 1,
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        marginHorizontal: 8,
-    },
-    popoverCaret: {
-        position: 'absolute',
-        bottom: -8,
-        left: 8,        // ← was `right: 8`
-        width: 0,
-        height: 0,
-        borderLeftWidth: 8,
-        borderRightWidth: 8,
-        borderTopWidth: 8,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderTopColor: '#FFF',
-    },
-    popoverCaretDark: {
-        borderTopColor: '#1E293B',
-    },
-
-    /* Modal Overlay */
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
-    modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-    refineModal: {
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
-        padding: 24,
-        paddingBottom: 40,
-        minHeight: 350,
-    },
-    refineModalDark: {
-        backgroundColor: '#1E293B',
-    },
-    modalHandle: {
-        width: 40,
-        height: 4,
-        backgroundColor: 'rgba(0,0,0,0.1)',
-        borderRadius: 2,
-        alignSelf: 'center',
-        marginBottom: 16,
-    },
-    refineHeader: {
-        flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    refineTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: '#1E293B',
-    },
-    refineLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#64748B',
-        marginBottom: 6,
-    },
-    refineOriginal: {
-        fontSize: 15,
-        fontStyle: 'italic',
-        color: '#475569',
-        marginBottom: 16,
-    },
-    refineInput: {
-        backgroundColor: 'rgba(241,245,249,0.5)',
-        borderRadius: 16,
-        padding: 16,
-        fontSize: 15,
-        color: '#1E293B',
-        minHeight: 120,
-        textAlignVertical: 'top',
-        marginBottom: 20,
-    },
-    refineInputDark: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        color: '#F8FAFC',
-    },
-    refineSubmit: {
-        flexDirection: 'row',
-        backgroundColor: '#3B82F6',
-        borderRadius: 16,
-        paddingVertical: 14,
-        justifyContent: 'center',
-        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingBottom: 8,
+        zIndex: 10,
         gap: 8,
     },
-    refineSubmitText: {
+    backBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: 'rgba(0,0,0,0.06)',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    backBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    resultLangRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    resultLangPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(255,255,255,0.88)',
+        borderRadius: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.95)',
+        elevation: 1,
+    },
+    resultLangPillDark: {
+        backgroundColor: 'rgba(30,27,75,0.88)',
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    resultLangText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    retransBtn: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(99,102,241,0.12)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // ── Result: scroll ──
+    scrollContent: {
+        paddingBottom: 20,
+    },
+
+    // ── Result: image loading overlay ──
+    imgLoadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    imgLoadingCard: {
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 24,
+        paddingHorizontal: 32,
+        paddingVertical: 28,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    imgLoadingTitle: {
         color: '#FFF',
-        fontSize: 15,
+        fontSize: 17,
+        fontWeight: '700',
+    },
+    imgLoadingSubtitle: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 13,
+    },
+
+    // ── Result: translated overlay blocks ──
+    overlayBlock: {
+        position: 'absolute',
+        backgroundColor: 'rgba(8,12,28,0.86)',
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+    },
+    overlayBlockDark: {
+        backgroundColor: 'rgba(30,27,75,0.9)',
+    },
+    overlayText: {
+        color: '#FFFFFF',
         fontWeight: '700',
     },
 
-    /* Feedback Modal */
-    feedbackModal: {
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
-        padding: 24,
-        paddingBottom: 50,
-        minHeight: 380,
+    // ── Empty state ──
+    emptyCard: {
+        margin: 18,
+        padding: 32,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.88)',
+        alignItems: 'center',
+        gap: 12,
+        elevation: 1,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.95)',
     },
-    feedbackModalCentered: {
-        width: Dimensions.get('window').width * 0.85,
-        borderRadius: 32,
-        padding: 24,
-        paddingBottom: 30,
-        overflow: 'hidden',
+    emptyCardDark: {
+        backgroundColor: 'rgba(30,27,75,0.88)',
+        borderColor: 'rgba(255,255,255,0.08)',
     },
-    feedbackModalDark: {
-        backgroundColor: '#1E293B',
-    },
-    feedbackBody: {
-        fontSize: 15,
-        color: '#64748B',
-        marginBottom: 30,
+    emptyTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#1E293B',
         textAlign: 'center',
     },
-    feedbackActionRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 16,
+    emptyHint: {
+        fontSize: 13,
+        color: '#94A3B8',
+        textAlign: 'center',
+        lineHeight: 19,
     },
-    largeFeedbackBtn: {
-        flex: 1,
-        height: 140,
-        borderRadius: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+
+    // ── Full translation card ──
+    fullCard: {
+        margin: 14,
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        borderRadius: 22,
+        padding: 20,
+        elevation: 1,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.95)',
     },
-    largeFeedbackText: {
-        marginTop: 12,
-        fontSize: 18,
+    fullCardDark: {
+        backgroundColor: 'rgba(30,27,75,0.92)',
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    fullCardLabel: {
+        fontSize: 10,
         fontWeight: '700',
+        letterSpacing: 1.8,
+        color: '#94A3B8',
+        textTransform: 'uppercase',
+        marginBottom: 10,
+    },
+    fullCardText: {
+        fontSize: 16,
+        lineHeight: 26,
+        color: '#1E293B',
+        fontWeight: '500',
     },
 });

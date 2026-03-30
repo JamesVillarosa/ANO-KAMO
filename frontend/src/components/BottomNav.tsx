@@ -10,7 +10,7 @@ const { width } = Dimensions.get('window');
 
 const TABS = [
     { key: 'text', label: 'Text', icon: Type, route: '/' },
-    { key: 'camera', label: 'Camera', icon: Camera, route: '/ocr' },
+    { key: 'camera', label: 'Camera', icon: Camera, route: '/translate' },
     { key: 'conversation', label: 'Conversation', icon: MessageSquare, route: '/conversation' },
 ];
 
@@ -20,7 +20,7 @@ export default function BottomNav() {
     const { isDarkMode } = useTheme();
 
     const activeTab = pathname === '/' ? 'text'
-        : pathname === '/ocr' ? 'camera'
+        : pathname === '/translate' ? 'camera'
         : pathname === '/conversation' ? 'conversation'
         : 'text';
 
