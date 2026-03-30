@@ -1,3 +1,6 @@
+# Secrets / tokens
+.ngrok_token
+
 # Python
 __pycache__/
 *.py[cod]

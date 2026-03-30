@@ -66,7 +66,16 @@ class OcrService:
             image_bytes = base64.b64decode(fixed_b64)
             image = Image.open(io.BytesIO(image_bytes))
             image = ImageOps.exif_transpose(image)  # Fix EXIF rotation (portrait photos)
-            img_width, img_height = image.size
+
+            # Resize to max 1024px — smaller image gives Gemini better spatial resolution
+            # for bounding box estimation, and reduces API payload size.
+            MAX_DIM = 1024
+            if max(image.size) > MAX_DIM:
+                ratio = MAX_DIM / max(image.size)
+                new_size = (int(image.width * ratio), int(image.height * ratio))
+                image = image.resize(new_size, Image.LANCZOS)
+
+            img_width, img_height = image.size  # Dimensions Gemini will operate on
 
             # Normalize to JPEG for Gemini (handles PNG, HEIC, WEBP, etc.)
             buf = io.BytesIO()
@@ -94,13 +103,16 @@ class OcrService:
                 f"documents, anything with text). For each text group:\n"
                 f"1. Extract the original text exactly as it appears\n"
                 f"2. Translate it to {tgt_name}\n"
-                f"3. Estimate its bounding box as NORMALIZED coordinates (values 0.0 to 1.0)\n\n"
+                f"3. Estimate its COMPLETE bounding box as NORMALIZED coordinates (values 0.0–1.0)\n\n"
                 f"RULES:\n"
                 f"- Only include clear, intentional text — skip background textures or watermarks\n"
                 f"- Group text that belongs together on the same sign or label as ONE block\n"
                 f"- box format: [x, y, width, height] where (x,y) is the top-left corner\n"
                 f"  All values are fractions of image dimensions (0.0 = left/top, 1.0 = right/bottom)\n"
-                f"  Example: a sign in the top-left quarter might be [0.05, 0.05, 0.4, 0.15]\n"
+                f"  IMPORTANT: the box must encompass EVERY character of the text group — make it\n"
+                f"  slightly generous so the overlay fully covers the original text region.\n"
+                f"  Example (sign filling most of the frame): [0.03, 0.05, 0.94, 0.90]\n"
+                f"  Example (small label top-left): [0.02, 0.02, 0.28, 0.08]\n"
                 f"- If text is already in {tgt_name}, set translated = original text\n"
                 f"- Translate accurately and naturally\n\n"
                 f"Return ONLY valid JSON with no markdown fences:\n"
