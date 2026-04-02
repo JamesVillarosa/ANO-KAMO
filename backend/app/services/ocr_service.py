@@ -94,35 +94,27 @@ class OcrService:
 
             src_name = SUPPORTED_LANGUAGES.get(source_lang or "", "Filipino")
             tgt_name = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
-            lang_hint = f"The text is primarily in {src_name}. " if source_lang else ""
+            lang_hint = f"The source text is primarily in {src_name}. " if source_lang else ""
 
             prompt = (
-                f"You are an expert OCR and translation assistant analyzing a photo.\n\n"
+                f"Detect and translate ALL readable text in this image.\n\n"
                 f"{lang_hint}"
-                f"Task: Find ALL readable text in this image (signs, labels, menus, products, "
-                f"documents, anything with text). For each text group:\n"
-                f"1. Extract the original text exactly as it appears\n"
-                f"2. Translate it to {tgt_name}\n"
-                f"3. Provide its EXACT bounding box in PIXEL coordinates\n\n"
-                f"IMAGE SIZE: {img_width} × {img_height} pixels (width × height)\n\n"
-                f"RULES:\n"
-                f"- Only include clear, intentional text — skip background textures or watermarks\n"
-                f"- Group text that belongs together on the same sign or label as ONE block\n"
-                f"- box format: [x, y, width, height] where (x,y) is the TOP-LEFT pixel corner\n"
-                f"  x: pixels from left edge (0 = leftmost, {img_width} = rightmost)\n"
-                f"  y: pixels from top edge (0 = topmost, {img_height} = bottommost)\n"
-                f"  width: pixel width of the text group\n"
-                f"  height: pixel height of the text group\n"
-                f"  IMPORTANT: the box must tightly enclose ALL characters in the group.\n"
-                f"  Example (sign filling most of frame, {img_width}×{img_height} image):\n"
-                f"    [5, 8, {img_width - 10}, {img_height - 16}]\n"
-                f"  Example (small label top-left quarter):\n"
-                f"    [4, 4, {img_width // 4}, {img_height // 10}]\n"
-                f"- If text is already in {tgt_name}, set translated = original text\n"
-                f"- Translate accurately and naturally\n\n"
-                f"Return ONLY valid JSON with no markdown fences:\n"
-                f'{{ "blocks": [ {{ "text": "original", "translated": "translation", "box": [x, y, w, h] }} ] }}\n\n'
-                f"If no readable text is found, return: {{ \"blocks\": [] }}"
+                f"For each distinct text group (sign, label, graffiti, menu, document):\n"
+                f"1. Provide a TIGHT bounding box as [y_min, x_min, y_max, x_max]\n"
+                f"   • All values are integers 0–1000\n"
+                f"   • 0 = top/left edge of image, 1000 = bottom/right edge of image\n"
+                f"   • y_min=top, x_min=left, y_max=bottom, x_max=right of the text\n"
+                f"   • Hug the actual text pixels — do not include blank space around the text\n"
+                f"2. Copy the original text exactly as it appears\n"
+                f"3. Translate every word to {tgt_name}\n"
+                f"4. Count how many lines of text are in this group (integer ≥ 1)\n\n"
+                f"Rules:\n"
+                f"- Skip background textures, decorations, and illegible marks\n"
+                f"- Group all text on the same physical sign/label into ONE block\n"
+                f"- If text is already in {tgt_name}, set translated = original\n\n"
+                f"Return ONLY valid JSON, no markdown:\n"
+                f'{{"blocks":[{{"box_2d":[y_min,x_min,y_max,x_max],"text":"...","translated":"...","lines":N}}]}}\n'
+                f'No text found: {{"blocks":[]}}'
             )
 
             url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
@@ -139,8 +131,18 @@ class OcrService:
                 "generationConfig": {"temperature": 0.0, "maxOutputTokens": 2048},
             }
 
-            with httpx.Client(timeout=45.0) as client:
-                resp = client.post(url, json=payload)
+            # Retry on 503/429 (transient overload) — up to 3 attempts
+            import time
+            resp = None
+            for attempt in range(3):
+                with httpx.Client(timeout=45.0) as client:
+                    resp = client.post(url, json=payload)
+                if resp.status_code in (503, 429):
+                    wait = 2 ** attempt  # 1s, 2s, 4s
+                    logger.warning(f"Gemini OCR {resp.status_code} (attempt {attempt+1}/3), retrying in {wait}s")
+                    time.sleep(wait)
+                    continue
+                break
             if resp.status_code != 200:
                 raise Exception(f"Gemini API {resp.status_code}: {resp.text[:200]}")
 
@@ -157,36 +159,47 @@ class OcrService:
             for block in raw_blocks:
                 text = str(block.get("text", "")).strip()
                 translated = str(block.get("translated", "")).strip()
-                box = block.get("box", [])
+                lines = max(1, int(block.get("lines", 1)))
 
-                if not text or len(box) < 4:
+                # Accept both "box_2d" (new native format) and "box" (legacy fallback)
+                raw_box = block.get("box_2d") or block.get("box", [])
+
+                if not text or len(raw_box) < 4:
                     continue
 
                 try:
-                    bx, by, bw, bh = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+                    v = [float(x) for x in raw_box[:4]]
                 except (TypeError, ValueError):
                     continue
 
-                # We ask Gemini for pixel coordinates. Handle two cases:
-                # (a) Pixel coords (expected): any value outside 0–1 range confirms pixels.
-                # (b) Normalized 0–1 fallback: if all values are in 0–1 range, convert.
-                if bx <= 1.0 and by <= 1.0 and bw <= 1.0 and bh <= 1.0:
-                    # Gemini returned normalized — convert to pixels
-                    bx = bx * img_width
-                    by = by * img_height
-                    bw = bw * img_width
-                    bh = bh * img_height
+                max_v = max(v)
 
-                px = max(0, int(round(bx)))
-                py = max(0, int(round(by)))
-                pw = max(10, min(int(round(bw)), img_width - px))
-                ph = max(10, min(int(round(bh)), img_height - py))
+                if max_v <= 1.5:
+                    # 0–1 normalized [y,x,y,x] or [x,y,w,h] — treat as 0–1 corner format
+                    y0, x0, y1, x1 = v[0] * img_height, v[1] * img_width, v[2] * img_height, v[3] * img_width
+                elif max_v <= 1001:
+                    # Gemini native 0–1000 [y_min, x_min, y_max, x_max]
+                    y0 = v[0] / 1000 * img_height
+                    x0 = v[1] / 1000 * img_width
+                    y1 = v[2] / 1000 * img_height
+                    x1 = v[3] / 1000 * img_width
+                else:
+                    # Pixel corner format [y_min, x_min, y_max, x_max]
+                    y0, x0, y1, x1 = v[0], v[1], v[2], v[3]
+
+                px = max(0, int(round(x0)))
+                py = max(0, int(round(y0)))
+                px2 = max(px + 10, min(int(round(x1)), img_width))
+                py2 = max(py + 10, min(int(round(y1)), img_height))
+                pw = px2 - px
+                ph = py2 - py
 
                 result_blocks.append({
                     "text": text,
                     "translated_text": translated or text,
                     "box": [px, py, pw, ph],
                     "confidence": 95.0,
+                    "lines": lines,
                 })
                 all_texts.append(text)
                 all_translated.append(translated or text)
@@ -267,13 +280,22 @@ class OcrService:
         )
 
         try:
+            import time
             url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.0, "maxOutputTokens": 1024},
             }
-            with httpx.Client(timeout=30.0) as client:
-                resp = client.post(url, json=payload)
+            resp = None
+            for attempt in range(3):
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(url, json=payload)
+                if resp.status_code in (503, 429):
+                    wait = 2 ** attempt
+                    logger.warning(f"Gemini translate {resp.status_code} (attempt {attempt+1}/3), retrying in {wait}s")
+                    time.sleep(wait)
+                    continue
+                break
             if resp.status_code != 200:
                 raise Exception(f"Gemini API {resp.status_code}: {resp.text[:200]}")
             response_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]

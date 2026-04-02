@@ -28,6 +28,7 @@ class OcrFullBlock(BaseModel):
     translated_text: str
     box: List[int] = Field(..., description="[x, y, width, height] in pixels")
     confidence: float = 0.0
+    lines: int = Field(1, description="Number of text lines in the source block")
 
 
 class OcrProcessFullResponse(BaseModel):
@@ -115,6 +116,7 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
                 "translated_text": b.get("text", ""),
                 "box": b.get("box", [0, 0, 0, 0]),
                 "confidence": b.get("confidence", 0),
+                "lines": b.get("lines", 1),
             }
             for b in request.blocks
         ]}
@@ -137,6 +139,7 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
             "translated_text": translated_texts[i] if i < len(translated_texts) else block.get("text", ""),
             "box": block.get("box", [0, 0, 0, 0]),
             "confidence": block.get("confidence", 0),
+            "lines": block.get("lines", 1),
         })
     return {"blocks": result_blocks}
 

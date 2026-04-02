@@ -65,6 +65,7 @@ interface OcrBlock {
     translated_text: string;
     box: number[];
     confidence: number;
+    lines?: number;
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -190,7 +191,7 @@ export default function TranslateScreen() {
         if (!rawBlocks.length || loading || retranslating) return;
         setRetranslating(true);
         try {
-            const raw = rawBlocks.map(b => ({ text: b.text, box: b.box, confidence: b.confidence }));
+            const raw = rawBlocks.map(b => ({ text: b.text, box: b.box, confidence: b.confidence, lines: b.lines ?? 1 }));
             const result = await ocrTranslateBlocks(raw, srcLang, tgtLang);
             if (result.blocks?.length) {
                 setBlocks(result.blocks as OcrBlock[]);
@@ -559,33 +560,48 @@ export default function TranslateScreen() {
                             </View>
                         )}
 
-                        {/* Translated text overlay blocks */}
+                        {/* Translated text overlay blocks — Google Lens style */}
                         {!loading && blocks.map((block, i) => {
                             const [bx, by, bw, bh] = block.box;
                             if (!block.translated_text || bw < 1 || bh < 1) return null;
-                            // Clamp to image bounds so overlays never appear outside the photo
-                            const rawLeft = bx * scaleX;
-                            const rawTop = by * scaleY;
-                            const left = Math.max(0, Math.min(rawLeft, imgW - 4));
-                            const top = Math.max(0, Math.min(rawTop, imgH - 4));
-                            const width = Math.max(Math.min(bw * scaleX, imgW - left), 28);
-                            const height = Math.max(Math.min(bh * scaleY, imgH - top), 18);
-                            // Scale font to fill the bounding box height (capped at 48pt)
-                            const fs = Math.max(11, Math.min(height * 0.22, 48));
+
+                            // Exact box matching the source text bounding box
+                            const left = Math.max(0, Math.min(bx * scaleX, imgW - 4));
+                            const top = Math.max(0, Math.min(by * scaleY, imgH - 4));
+                            const width = Math.max(20, Math.min(bw * scaleX, imgW - left));
+                            const height = Math.max(14, Math.min(bh * scaleY, imgH - top));
+
+                            // Three-constraint font size — take the smallest of:
+                            // 1. Gemini line-height: (height / lines) × 0.78
+                            //    Matches the visual size of the source text.
+                            // 2. Geometric estimate: in case Gemini reports lines=1 on a
+                            //    tall multi-line block, cap with aspect-ratio heuristic.
+                            // 3. Longest-word constraint: the longest word in the
+                            //    translation must fit on one line (no mid-word breaks).
+                            const srcLines = Math.max(1, block.lines ?? 1);
+                            const fsByGemini = (height / srcLines) * 0.78;
+
+                            const geoLines = Math.max(1, Math.round(height / Math.max(width * 0.38, 1)));
+                            const fsByGeo = (height / geoLines) * 0.78;
+
+                            const longestWord = block.translated_text
+                                .split(/\s+/)
+                                .reduce((m, w) => Math.max(m, w.length), 1);
+                            const fsByWidth = width / (longestWord * 0.62);
+
+                            const fs = Math.max(9, Math.min(fsByGemini, fsByGeo, fsByWidth, 120));
+
                             return (
                                 <View
                                     key={i}
                                     style={[
                                         styles.overlayBlock,
-                                        { left, top, width, minHeight: height },
+                                        { left, top, width, height, overflow: 'hidden' },
                                         isDarkMode && styles.overlayBlockDark,
                                     ]}
                                 >
                                     <Text
-                                        style={[
-                                            styles.overlayText,
-                                            { fontSize: fs, lineHeight: fs * 1.25 },
-                                        ]}
+                                        style={[styles.overlayText, { fontSize: fs, lineHeight: fs * 1.2 }]}
                                         numberOfLines={0}
                                     >
                                         {block.translated_text}
@@ -1127,10 +1143,11 @@ const styles = StyleSheet.create({
     // ── Result: translated overlay blocks ──
     overlayBlock: {
         position: 'absolute',
-        backgroundColor: 'rgba(8,12,28,0.86)',
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 3,
+        backgroundColor: 'rgba(8,12,28,0.90)',
+        borderRadius: 2,
+        paddingHorizontal: 2,
+        paddingVertical: 1,
+        justifyContent: 'center',
     },
     overlayBlockDark: { backgroundColor: 'rgba(30,27,75,0.9)' },
     overlayText: { color: '#FFFFFF', fontWeight: '700' },
