@@ -16,6 +16,7 @@ from app.db.crud import (
 )
 from app.db.session import get_db
 from app.db.schemas import HistoryItemResponse, FavoriteToggleRequest
+from app.db.models import Conversation
 
 
 class TranslationOutputIn(BaseModel):
@@ -154,6 +155,7 @@ async def get_conversation_history(
             "conversation_id": c.conversation_id,
             "mode": c.mode,
             "started_at": c.started_at,
+            "is_starred": bool(c.is_starred),
             "participants": [
                 {"speaker_label": p.speaker_label, "preferred_language": p.preferred_language}
                 for p in c.participants
@@ -172,6 +174,37 @@ async def get_conversation_history(
             ],
         })
     return results
+
+
+@router.delete("/history/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    device_id: str = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Delete a conversation and all its messages."""
+    conv = db.query(Conversation).filter(Conversation.conversation_id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if device_id and conv.device_id and conv.device_id != device_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    db.delete(conv)
+    db.commit()
+    return None
+
+
+@router.post("/history/conversations/{conversation_id}/star")
+async def toggle_conversation_star(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Toggle starred status on a conversation."""
+    conv = db.query(Conversation).filter(Conversation.conversation_id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conv.is_starred = not bool(conv.is_starred)
+    db.commit()
+    return {"conversation_id": conversation_id, "is_starred": conv.is_starred}
 
 
 @router.delete("/history/clear-all")

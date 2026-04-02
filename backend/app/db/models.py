@@ -86,6 +86,7 @@ class Conversation(Base):
     mode = Column(String(20), nullable=False, default="two_way")        # two_way / three_way
     view_mode = Column(String(20), nullable=False, default="face_to_face")  # face_to_face / side_by_side
     started_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_starred = Column(Boolean, default=False, nullable=True)
 
     device = relationship("Device", back_populates="conversations")
     participants = relationship("Participant", back_populates="conversation", cascade="all, delete-orphan")

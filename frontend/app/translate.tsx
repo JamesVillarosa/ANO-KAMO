@@ -591,7 +591,11 @@ export default function TranslateScreen() {
                                 .reduce((m, w) => Math.max(m, w.length), 1);
                             const fsByWidth = width / (longestWord * 0.62);
 
-                            const fs = Math.max(9, Math.min(fsByGemini, fsByGeo, fsByWidth, 120));
+                            // Area constraint: all characters must fit within the bounding box
+                            const totalChars = Math.max(1, block.translated_text.replace(/\s+/g, '').length);
+                            const fsByArea = Math.sqrt((height * width) / (totalChars * 0.85));
+
+                            const fs = Math.max(9, Math.min(fsByGemini, fsByGeo, fsByWidth, fsByArea, 120));
 
                             return (
                                 <View
@@ -603,8 +607,10 @@ export default function TranslateScreen() {
                                     ]}
                                 >
                                     <Text
-                                        style={[styles.overlayText, { fontSize: fs, lineHeight: fs * 1.2 }]}
+                                        style={[styles.overlayText, { fontSize: fs, lineHeight: fs * 1.15 }]}
                                         numberOfLines={0}
+                                        adjustsFontSizeToFit
+                                        minimumFontScale={0.4}
                                     >
                                         {block.translated_text}
                                     </Text>

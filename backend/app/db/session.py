@@ -43,3 +43,10 @@ def init_db():
             conn.commit()
         except Exception:
             pass  # Column already exists
+        try:
+            conn.execute(text(
+                "ALTER TABLE conversation ADD COLUMN is_starred BOOLEAN DEFAULT 0"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists

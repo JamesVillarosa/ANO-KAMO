@@ -33,7 +33,7 @@ import {
     MessageSquare,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory } from '../src/lib/api';
+import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory, deleteConversation, toggleConversationStar } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
 import { SUPPORTED_LANGUAGES } from '../src/theme';
 import { getDeviceId } from '../src/utils/device';
@@ -127,6 +127,7 @@ interface ConversationGroup {
     conversation_id: string;
     mode: string;
     started_at: string;
+    is_starred: boolean;
     participants: ConvParticipant[];
     messages: ConvMessage[];
 }
@@ -136,11 +137,15 @@ function ConversationGroupCard({
     isExpanded,
     onToggle,
     isDarkMode,
+    onDelete,
+    onToggleStar,
 }: {
     group: ConversationGroup;
     isExpanded: boolean;
     onToggle: () => void;
     isDarkMode: boolean;
+    onDelete: () => void;
+    onToggleStar: () => void;
 }) {
     const timestamp = formatTimestamp(group.started_at);
     const langs = group.participants.map(p =>
@@ -187,6 +192,19 @@ function ConversationGroupCard({
                     </View>
                 </View>
             </TouchableOpacity>
+            <View style={styles.cardActions}>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]} onPress={onToggleStar}>
+                    <Star
+                        size={15}
+                        color={group.is_starred ? '#F59E0B' : (isDarkMode ? '#64748B' : '#94A3B8')}
+                        fill={group.is_starred ? '#F59E0B' : 'none'}
+                    />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]} onPress={onDelete}>
+                    <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                </TouchableOpacity>
+            </View>
 
             {/* Expanded: mini chat log */}
             {isExpanded && (
@@ -356,7 +374,18 @@ export default function HistoryScreen() {
     const handleToggleFav = async (outputId: string) => {
         try {
             await toggleFavorite(outputId);
-            fetchData();
+            setItems(prev => prev.map(item => ({
+                ...item,
+                outputs: item.outputs.map(o =>
+                    o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
+                ),
+            })));
+            setDetailItem(prev => prev ? {
+                ...prev,
+                outputs: prev.outputs.map(o =>
+                    o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
+                ),
+            } : null);
         } catch {}
     };
 
@@ -374,6 +403,30 @@ export default function HistoryScreen() {
             },
             'Delete', true,
         );
+    };
+
+    const handleDeleteConversation = (convId: string) => {
+        showConfirm(
+            'Delete Conversation?',
+            'This will permanently remove this conversation and all its messages.',
+            async () => {
+                try {
+                    const deviceId = await getDeviceId();
+                    await deleteConversation(convId, deviceId);
+                    setConvGroups(prev => prev.filter(g => g.conversation_id !== convId));
+                } catch {}
+            },
+            'Delete', true,
+        );
+    };
+
+    const handleToggleConvStar = async (convId: string) => {
+        try {
+            await toggleConversationStar(convId);
+            setConvGroups(prev => prev.map(g =>
+                g.conversation_id === convId ? { ...g, is_starred: !g.is_starred } : g
+            ));
+        } catch {}
     };
 
     const handleClearAll = () => {
@@ -614,6 +667,8 @@ export default function HistoryScreen() {
                                                                 : displayItem.group.conversation_id
                                                         );
                                                     }}
+                                                    onDelete={() => handleDeleteConversation(displayItem.group.conversation_id)}
+                                                    onToggleStar={() => handleToggleConvStar(displayItem.group.conversation_id)}
                                                 />
                                             );
                                         }
@@ -948,9 +1003,9 @@ const styles = StyleSheet.create({
     emptySubText: { fontSize: 13, color: '#CBD5E1', marginTop: 6, textAlign: 'center' },
 
     /* Detail Modal */
-    detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
     detailModal: {
-        backgroundColor: 'rgba(255,255,255,0.75)',
+        backgroundColor: '#FFFFFF',
         borderTopLeftRadius: 28,
         borderTopRightRadius: 28,
         padding: 24,
@@ -958,7 +1013,7 @@ const styles = StyleSheet.create({
         maxHeight: '85%',
         overflow: 'hidden',
     },
-    detailModalDark: { backgroundColor: 'rgba(15, 23, 42, 0.75)' },
+    detailModalDark: { backgroundColor: '#0F172A' },
     detailHandle: {
         width: 40, height: 4,
         backgroundColor: 'rgba(0,0,0,0.1)',
