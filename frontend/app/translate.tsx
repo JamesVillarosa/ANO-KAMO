@@ -50,6 +50,7 @@ import {
 import { useTheme } from '../src/context/ThemeContext';
 import { SUPPORTED_LANGUAGES } from '../src/theme';
 import { ocrProcessFull, ocrTranslateBlocks, submitFeedback } from '../src/lib/api';
+import { getDeviceId } from '../src/utils/device';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 import FluidAura from '../src/components/FluidAura';
 import BottomNav from '../src/components/BottomNav';
@@ -140,7 +141,8 @@ export default function TranslateScreen() {
         setLoading(true);
         translationIdRef.current = Date.now().toString();
         try {
-            const result = await ocrProcessFull(base64, targetLang, sourceLang);
+            const deviceId = await getDeviceId();
+            const result = await ocrProcessFull(base64, targetLang, sourceLang, deviceId);
             if (result.error) {
                 showNotif(result.error);
             } else if (!result.blocks?.length) {
@@ -1171,7 +1173,7 @@ const styles = StyleSheet.create({
     // ── Full translation card ──
     fullCard: {
         margin: 14,
-        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        backgroundColor: 'rgba(255, 255, 255, 0.82)',
         borderRadius: 22,
         padding: 20,
         elevation: 2,
@@ -1179,7 +1181,7 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(99,102,241,0.18)',
     },
     fullCardDark: {
-        backgroundColor: 'rgba(30,27,75,0.96)',
+        backgroundColor: 'rgba(30,27,75,0.88)',
         borderColor: 'rgba(99,102,241,0.35)',
     },
     fullCardLabel: {

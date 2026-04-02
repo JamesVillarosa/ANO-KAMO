@@ -1323,13 +1323,13 @@ export default function ConversationScreen() {
     // Standard (Two-Way / Three-Way) Render
     // ─────────────────────────────────────────
     return (
-        // DO NOT wrap this in SafeAreaView or add absolute positioning to inputBar — keyboard fix depends on this structure
-        <KeyboardAvoidingView
-            style={[styles.container, isDarkMode && styles.containerDark]}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
-        >
+        <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <FluidAura isDarkMode={isDarkMode} />
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+            >
 
             {/* Custom Glass Header */}
             <View style={[styles.customHeader, { top: insets.top + 10 }]}>
@@ -1557,8 +1557,6 @@ export default function ConversationScreen() {
                     )}
             </BlurView>
 
-            <BottomNav />
-
             <LanguagePicker
                 visible={pickerFor !== null}
                 onDismiss={() => setPickerFor(null)}
@@ -1644,7 +1642,9 @@ export default function ConversationScreen() {
             >
                 {snackbarMessage}
             </Snackbar>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+            <BottomNav />
+        </View>
     );
 }
 
@@ -1729,7 +1729,7 @@ const styles = StyleSheet.create({
 
     // ── Chat (Standard mode) ──
     chatArea: { flex: 1 },
-    chatContent: { padding: 16, paddingBottom: 220 },
+    chatContent: { padding: 16, paddingBottom: 150 },
 
     emptyState: { alignItems: 'center', marginTop: 60 },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
@@ -2089,7 +2089,7 @@ const styles = StyleSheet.create({
     customHeaderBtn: {},
     customHeaderGlass: {
         padding: 9,
-        borderRadius: 14,
+        borderRadius: 50,
         backgroundColor: 'rgba(255,255,255,0.75)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.9)',

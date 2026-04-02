@@ -180,6 +180,13 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+# Apply ngrok auth token to ngrok's config file so Expo's internal ngrok picks it up.
+if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
+    npx --yes ngrok config add-authtoken "$NGROK_AUTHTOKEN" 2>/dev/null \
+        || npx --yes ngrok authtoken "$NGROK_AUTHTOKEN" 2>/dev/null \
+        || true
+fi
+
 # Patch Expo CLI to auto-proceed anonymously (no blocking login prompt).
 EXPO_ACTIONS="$SCRIPT_DIR/frontend/node_modules/@expo/cli/build/src/api/user/actions.js"
 node -e "

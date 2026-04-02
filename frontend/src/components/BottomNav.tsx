@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { Type, Camera, MessageSquare } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -18,6 +19,7 @@ export default function BottomNav() {
     const router = useRouter();
     const pathname = usePathname();
     const { isDarkMode } = useTheme();
+    const insets = useSafeAreaInsets();
 
     const activeTab = pathname === '/' ? 'text'
         : pathname === '/translate' ? 'camera'
@@ -56,7 +58,7 @@ export default function BottomNav() {
     );
 
     return (
-        <View style={styles.container} pointerEvents="box-none">
+        <View style={[styles.container, { bottom: 28 + insets.bottom }]} pointerEvents="box-none">
             {Platform.OS === 'ios' ? (
                 <BlurView intensity={28} tint={isDarkMode ? 'dark' : 'light'} style={[styles.nav, navStyle]}>
                     <NavContent />
@@ -73,7 +75,6 @@ export default function BottomNav() {
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: 28,
         left: 0,
         right: 0,
         alignItems: 'center',

@@ -18,7 +18,7 @@ function HeaderIconBtn({ icon: IconComponent, onPress, isDarkMode }: { icon: any
                     tint={isDarkMode ? 'dark' : 'light'}
                     style={{
                         padding: 9,
-                        borderRadius: 14,
+                        borderRadius: 50,
                         overflow: 'hidden',
                         borderWidth: 0.5,
                         borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.7)',
@@ -34,7 +34,7 @@ function HeaderIconBtn({ icon: IconComponent, onPress, isDarkMode }: { icon: any
             onPress={onPress}
             style={[{
                 padding: 9,
-                borderRadius: 14,
+                borderRadius: 50,
                 marginHorizontal: 4,
                 backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
                 borderWidth: 1,

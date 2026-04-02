@@ -87,7 +87,7 @@ export default function LanguagePicker({
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        backgroundColor: 'rgba(0, 0, 0, 0.72)',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -106,13 +106,13 @@ const styles = StyleSheet.create({
     },
     // BlurView fills the rounded wrapper — must also have borderRadius+overflow so it clips correctly on Android
     blurFill: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
+        backgroundColor: 'rgba(255,255,255,0.55)',
         padding: 24,
         borderRadius: 32,
         overflow: 'hidden',
     },
     blurFillDark: {
-        backgroundColor: 'rgba(30, 41, 59, 0.7)',
+        backgroundColor: 'rgba(30, 41, 59, 0.6)',
     },
     header: {
         flexDirection: 'row',
