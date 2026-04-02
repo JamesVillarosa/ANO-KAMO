@@ -103,16 +103,21 @@ class OcrService:
                 f"documents, anything with text). For each text group:\n"
                 f"1. Extract the original text exactly as it appears\n"
                 f"2. Translate it to {tgt_name}\n"
-                f"3. Estimate its COMPLETE bounding box as NORMALIZED coordinates (values 0.0–1.0)\n\n"
+                f"3. Provide its EXACT bounding box in PIXEL coordinates\n\n"
+                f"IMAGE SIZE: {img_width} × {img_height} pixels (width × height)\n\n"
                 f"RULES:\n"
                 f"- Only include clear, intentional text — skip background textures or watermarks\n"
                 f"- Group text that belongs together on the same sign or label as ONE block\n"
-                f"- box format: [x, y, width, height] where (x,y) is the top-left corner\n"
-                f"  All values are fractions of image dimensions (0.0 = left/top, 1.0 = right/bottom)\n"
-                f"  IMPORTANT: the box must encompass EVERY character of the text group — make it\n"
-                f"  slightly generous so the overlay fully covers the original text region.\n"
-                f"  Example (sign filling most of the frame): [0.03, 0.05, 0.94, 0.90]\n"
-                f"  Example (small label top-left): [0.02, 0.02, 0.28, 0.08]\n"
+                f"- box format: [x, y, width, height] where (x,y) is the TOP-LEFT pixel corner\n"
+                f"  x: pixels from left edge (0 = leftmost, {img_width} = rightmost)\n"
+                f"  y: pixels from top edge (0 = topmost, {img_height} = bottommost)\n"
+                f"  width: pixel width of the text group\n"
+                f"  height: pixel height of the text group\n"
+                f"  IMPORTANT: the box must tightly enclose ALL characters in the group.\n"
+                f"  Example (sign filling most of frame, {img_width}×{img_height} image):\n"
+                f"    [5, 8, {img_width - 10}, {img_height - 16}]\n"
+                f"  Example (small label top-left quarter):\n"
+                f"    [4, 4, {img_width // 4}, {img_height // 10}]\n"
                 f"- If text is already in {tgt_name}, set translated = original text\n"
                 f"- Translate accurately and naturally\n\n"
                 f"Return ONLY valid JSON with no markdown fences:\n"
@@ -162,19 +167,20 @@ class OcrService:
                 except (TypeError, ValueError):
                     continue
 
-                # Gemini may return pixel coords if it ignores the normalized instruction.
-                # Heuristic: if any value > 1.5, treat as pixel coordinates directly.
-                if bx > 1.5 or by > 1.5 or bw > 1.5 or bh > 1.5:
-                    px = max(0, int(bx))
-                    py = max(0, int(by))
-                    pw = max(10, min(int(bw), img_width - px))
-                    ph = max(10, min(int(bh), img_height - py))
-                else:
-                    # Normalized → pixel
-                    px = max(0, int(bx * img_width))
-                    py = max(0, int(by * img_height))
-                    pw = max(10, min(int(bw * img_width), img_width - px))
-                    ph = max(10, min(int(bh * img_height), img_height - py))
+                # We ask Gemini for pixel coordinates. Handle two cases:
+                # (a) Pixel coords (expected): any value outside 0–1 range confirms pixels.
+                # (b) Normalized 0–1 fallback: if all values are in 0–1 range, convert.
+                if bx <= 1.0 and by <= 1.0 and bw <= 1.0 and bh <= 1.0:
+                    # Gemini returned normalized — convert to pixels
+                    bx = bx * img_width
+                    by = by * img_height
+                    bw = bw * img_width
+                    bh = bh * img_height
+
+                px = max(0, int(round(bx)))
+                py = max(0, int(round(by)))
+                pw = max(10, min(int(round(bw)), img_width - px))
+                ph = max(10, min(int(round(bh)), img_height - py))
 
                 result_blocks.append({
                     "text": text,
@@ -278,19 +284,43 @@ class OcrService:
 
     @staticmethod
     def _parse_numbered_response(response_text: str, expected_count: int) -> List[str]:
-        """Parse a numbered list response from Gemini into individual strings."""
+        """
+        Parse a numbered list response from Gemini.
+        Handles multi-line translations — continuation lines (no leading number)
+        are joined onto the previous numbered item so nothing gets truncated.
+        """
         lines = response_text.strip().split("\n")
-        results = []
+        result_map: dict = {}
+        current_num: Optional[int] = None
+        current_parts: List[str] = []
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            cleaned = re.sub(r"^\d+[\.\)\-]\s*", "", line)
-            if cleaned:
-                results.append(cleaned)
-        while len(results) < expected_count:
-            results.append("")
-        return results[:expected_count]
+            m = re.match(r"^(\d+)[\.\)\-]\s*(.*)", line)
+            if m:
+                # Flush previous entry
+                if current_num is not None:
+                    result_map[current_num] = " ".join(current_parts).strip()
+                current_num = int(m.group(1))
+                first = m.group(2).strip()
+                current_parts = [first] if first else []
+            elif current_num is not None:
+                # Continuation line — belongs to the current numbered item
+                current_parts.append(line)
+            else:
+                # Response has no numbers at all — treat whole text as item 1
+                current_num = 1
+                current_parts.append(line)
+
+        # Flush the last entry
+        if current_num is not None:
+            result_map[current_num] = " ".join(current_parts).strip()
+
+        # Build ordered list
+        results = [result_map.get(i + 1, "") for i in range(expected_count)]
+        return results
 
     # ─── Legacy: simple extract + translate (no bounding boxes) ───
 

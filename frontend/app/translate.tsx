@@ -67,7 +67,7 @@ interface OcrBlock {
     confidence: number;
 }
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // Bottom nav height + its bottom offset — used to push controls above it
 const NAV_CLEARANCE = 106;
@@ -174,6 +174,7 @@ export default function TranslateScreen() {
                 mediaTypes: 'images' as any,
                 base64: true,
                 quality: 0.8,
+                selectionLimit: 1,
             });
             if (!result.canceled && result.assets[0]?.base64) {
                 const a = result.assets[0];
@@ -483,12 +484,19 @@ export default function TranslateScreen() {
 
             {/* Header */}
             <View style={[styles.resultHeader, { paddingTop: insets.top + 8 }]}>
-                <TouchableOpacity style={styles.backBtn} onPress={handleNewPhoto} activeOpacity={0.75}>
-                    <X size={15} color={isDarkMode ? '#94A3B8' : '#64748B'} />
-                    <Text style={[styles.backBtnText, isDarkMode && styles.textLight]}>New Photo</Text>
-                </TouchableOpacity>
+                {/* Row 1: New Photo button + spinner */}
+                <View style={styles.resultHeaderRow1}>
+                    <TouchableOpacity style={styles.backBtn} onPress={handleNewPhoto} activeOpacity={0.75}>
+                        <X size={15} color={isDarkMode ? '#94A3B8' : '#64748B'} />
+                        <Text style={[styles.backBtnText, isDarkMode && styles.textLight]}>New Photo</Text>
+                    </TouchableOpacity>
+                    {retranslating
+                        ? <ActivityIndicator size="small" color="#6366F1" />
+                        : null
+                    }
+                </View>
 
-                {/* Language row with swap */}
+                {/* Row 2: Language selector centered */}
                 <View style={styles.resultLangRow}>
                     <TouchableOpacity
                         style={[styles.resultLangPill, isDarkMode && styles.resultLangPillDark]}
@@ -499,7 +507,7 @@ export default function TranslateScreen() {
                         <Text style={[styles.resultLangText, isDarkMode && styles.textLight]}>
                             {srcName}
                         </Text>
-                        <ChevronDown size={11} color="#94A3B8" />
+                        <ChevronDown size={13} color="#94A3B8" />
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -508,7 +516,7 @@ export default function TranslateScreen() {
                         disabled={loading || retranslating}
                         activeOpacity={0.75}
                     >
-                        <ArrowLeftRight size={13} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
+                        <ArrowLeftRight size={16} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -520,15 +528,9 @@ export default function TranslateScreen() {
                         <Text style={[styles.resultLangText, isDarkMode && styles.textLight]}>
                             {tgtName}
                         </Text>
-                        <ChevronDown size={11} color="#94A3B8" />
+                        <ChevronDown size={13} color="#94A3B8" />
                     </TouchableOpacity>
                 </View>
-
-                {/* Retranslating spinner (replaces the old reload button) */}
-                {retranslating
-                    ? <ActivityIndicator size="small" color="#6366F1" style={{ width: 38 }} />
-                    : <View style={{ width: 38 }} />
-                }
             </View>
 
             {/* Scrollable content */}
@@ -561,10 +563,13 @@ export default function TranslateScreen() {
                         {!loading && blocks.map((block, i) => {
                             const [bx, by, bw, bh] = block.box;
                             if (!block.translated_text || bw < 1 || bh < 1) return null;
-                            const left = bx * scaleX;
-                            const top = by * scaleY;
-                            const width = Math.max(bw * scaleX, 28);
-                            const height = Math.max(bh * scaleY, 18);
+                            // Clamp to image bounds so overlays never appear outside the photo
+                            const rawLeft = bx * scaleX;
+                            const rawTop = by * scaleY;
+                            const left = Math.max(0, Math.min(rawLeft, imgW - 4));
+                            const top = Math.max(0, Math.min(rawTop, imgH - 4));
+                            const width = Math.max(Math.min(bw * scaleX, imgW - left), 28);
+                            const height = Math.max(Math.min(bh * scaleY, imgH - top), 18);
                             // Scale font to fill the bounding box height (capped at 48pt)
                             const fs = Math.max(11, Math.min(height * 0.22, 48));
                             return (
@@ -968,10 +973,10 @@ const styles = StyleSheet.create({
     // ── Camera: viewfinder scan guide ──
     scanFrame: {
         position: 'absolute',
-        top: SCREEN_W * 0.38,
-        left: SCREEN_W * 0.1,
-        right: SCREEN_W * 0.1,
-        height: SCREEN_W * 0.45,
+        top: SCREEN_H * 0.15,
+        left: SCREEN_W * 0.06,
+        right: SCREEN_W * 0.06,
+        height: SCREEN_H * 0.48,
         zIndex: 5,
     },
     scanCorner: {
@@ -1046,13 +1051,16 @@ const styles = StyleSheet.create({
 
     // ── Result: header ──
     resultHeader: {
+        flexDirection: 'column',
+        paddingHorizontal: 14,
+        paddingBottom: 12,
+        zIndex: 10,
+        gap: 10,
+    },
+    resultHeaderRow1: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingBottom: 8,
-        zIndex: 10,
-        gap: 8,
+        gap: 10,
     },
     backBtn: {
         flexDirection: 'row',
@@ -1065,20 +1073,19 @@ const styles = StyleSheet.create({
     },
     backBtnText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
     resultLangRow: {
-        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        gap: 8,
     },
     resultLangPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        backgroundColor: 'rgba(255,255,255,0.88)',
-        borderRadius: 14,
-        paddingHorizontal: 10,
-        paddingVertical: 7,
+        gap: 6,
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.95)',
         elevation: 1,
@@ -1087,10 +1094,10 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(30,27,75,0.88)',
         borderColor: 'rgba(255,255,255,0.08)',
     },
-    resultLangText: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+    resultLangText: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
     resultSwapBtn: {
-        padding: 5,
-        borderRadius: 12,
+        padding: 8,
+        borderRadius: 14,
         backgroundColor: 'rgba(59,130,246,0.1)',
     },
 
@@ -1147,16 +1154,16 @@ const styles = StyleSheet.create({
     // ── Full translation card ──
     fullCard: {
         margin: 14,
-        backgroundColor: 'rgba(255,255,255,0.92)',
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
         borderRadius: 22,
         padding: 20,
-        elevation: 1,
+        elevation: 2,
         borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.95)',
+        borderColor: 'rgba(99,102,241,0.18)',
     },
     fullCardDark: {
-        backgroundColor: 'rgba(30,27,75,0.92)',
-        borderColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(30,27,75,0.96)',
+        borderColor: 'rgba(99,102,241,0.35)',
     },
     fullCardLabel: {
         fontSize: 10,
