@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
     StyleSheet,
     View,
@@ -11,6 +11,7 @@ import {
     StatusBar,
     LayoutAnimation,
     UIManager,
+    BackHandler,
 } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -319,6 +320,7 @@ function groupBySections(items: HistoryItem[]): Section[] {
 
 export default function HistoryScreen() {
     const { isDarkMode } = useTheme();
+    const router = useRouter();
     const tts = useTextToSpeech();
     const [items, setItems] = useState<HistoryItem[]>([]);
     const [convGroups, setConvGroups] = useState<ConversationGroup[]>([]);
@@ -370,6 +372,24 @@ export default function HistoryScreen() {
             fetchData();
         }, [fetchData])
     );
+
+    // Android hardware back button: dismiss modals first, then go back
+    useEffect(() => {
+        const onBack = () => {
+            if (confirmModal.visible) {
+                setConfirmModal(prev => ({ ...prev, visible: false }));
+                return true;
+            }
+            if (detailItem) {
+                setDetailItem(null);
+                return true;
+            }
+            router.back();
+            return true;
+        };
+        const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+        return () => sub.remove();
+    }, [confirmModal.visible, detailItem, router]);
 
     const handleToggleFav = async (outputId: string) => {
         try {
@@ -856,7 +876,14 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    toggleActiveDark: { backgroundColor: 'rgba(255,255,255,0.22)' },
+    toggleActiveDark: {
+        backgroundColor: 'rgba(255,255,255,0.22)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },

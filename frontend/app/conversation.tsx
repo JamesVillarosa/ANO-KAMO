@@ -14,6 +14,7 @@ import {
     LayoutAnimation,
     UIManager,
     StatusBar,
+    BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -724,6 +725,38 @@ export default function ConversationScreen() {
         return () => { onShow.remove(); onHide.remove(); onShowAndroid.remove(); onHideAndroid.remove(); };
     }, []);
 
+    // Android hardware back button: dismiss modals/pickers first, then go back
+    useEffect(() => {
+        const onBack = () => {
+            if (confirmModal.visible) {
+                setConfirmModal(prev => ({ ...prev, visible: false }));
+                return true;
+            }
+            if (pickerFor !== null) {
+                setPickerFor(null);
+                return true;
+            }
+            if (dictVisible) {
+                setDictVisible(false);
+                return true;
+            }
+            if (breakdownVisible) {
+                setBreakdownVisible(false);
+                return true;
+            }
+            // Dismiss keyboard first if it's open
+            if (keyboardVisible) {
+                Keyboard.dismiss();
+                return true;
+            }
+            // Navigate back
+            router.back();
+            return true;
+        };
+        const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+        return () => sub.remove();
+    }, [confirmModal.visible, pickerFor, dictVisible, breakdownVisible, keyboardVisible, router]);
+
     // Create backend conversation session — waits for deviceId to be loaded
     useEffect(() => {
         // Only create new session if none exists and deviceId is ready
@@ -1327,7 +1360,7 @@ export default function ConversationScreen() {
             <FluidAura isDarkMode={isDarkMode} />
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior="padding"
                 keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
             >
 
@@ -1495,7 +1528,7 @@ export default function ConversationScreen() {
                 style={[
                     styles.inputBar,
                     isDarkMode && styles.inputBarDark,
-                    { marginBottom: keyboardVisible ? 0 : (90 + insets.bottom) },
+                    { marginBottom: keyboardVisible ? 8 : (90 + insets.bottom) },
                 ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
@@ -1642,7 +1675,7 @@ export default function ConversationScreen() {
                 {snackbarMessage}
             </Snackbar>
             </KeyboardAvoidingView>
-            <BottomNav />
+            {!keyboardVisible && <BottomNav />}
         </View>
     );
 }
@@ -1689,7 +1722,14 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    toggleActiveDark: { backgroundColor: 'rgba(255,255,255,0.22)' },
+    toggleActiveDark: {
+        backgroundColor: 'rgba(255,255,255,0.22)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
     toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
     toggleTextActive: { color: '#1E293B' },
     toggleTextActiveDark: { color: '#F8FAFC' },

@@ -94,7 +94,7 @@ function RootLayoutContent() {
                 <Stack.Screen name="conversation" options={{ headerShown: false }} />
                 <Stack.Screen name="ocr" options={{ ...mainScreenOptions, title: 'Camera' }} />
                 <Stack.Screen name="translate" options={{ headerShown: false }} />
-                <Stack.Screen name="history" options={{ ...mainScreenOptions, title: 'History' }} />
+                <Stack.Screen name="history" options={{ ...mainScreenOptions, title: '' }} />
                 <Stack.Screen name="community" options={{ ...mainScreenOptions, title: 'Community' }} />
                 <Stack.Screen name="settings" options={{ ...mainScreenOptions, title: 'Settings' }} />
             </Stack>

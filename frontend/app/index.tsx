@@ -12,6 +12,7 @@ import {
   Animated,
   ToastAndroid,
   Modal,
+  BackHandler,
 } from 'react-native';
 import { Text, ActivityIndicator, Portal, Provider as PaperProvider } from 'react-native-paper';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
@@ -130,6 +131,43 @@ export default function HomeScreen() {
   const isFirstSourceLangRender = useRef(true);
   // Debounce ref so we can cancel pending translation on source lang change
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Android hardware back button: dismiss modals/pickers first
+  useEffect(() => {
+    const onBack = () => {
+      if (feedbackModalVisible) {
+        setFeedbackModalVisible(false);
+        return true;
+      }
+      if (refineModal.visible) {
+        setRefineModal({ ...refineModal, visible: false });
+        return true;
+      }
+      if (pickerTarget !== null) {
+        setPickerTarget(null);
+        return true;
+      }
+      if (dictVisible) {
+        setDictVisible(false);
+        return true;
+      }
+      if (breakdownVisible) {
+        setBreakdownVisible(false);
+        return true;
+      }
+      if (showMenu1) {
+        setShowMenu1(false);
+        return true;
+      }
+      if (showMenu2) {
+        setShowMenu2(false);
+        return true;
+      }
+      return false; // home screen — let default behavior handle
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [feedbackModalVisible, refineModal.visible, pickerTarget, dictVisible, breakdownVisible, showMenu1, showMenu2]);
 
 // PROMPT 7: Auto-clear input when source language changes
   useEffect(() => {
@@ -865,6 +903,11 @@ const styles = StyleSheet.create({
   },
   toggleActiveDark: {
     backgroundColor: 'rgba(255,255,255,0.22)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   toggleTextActive: { color: '#1E293B' },

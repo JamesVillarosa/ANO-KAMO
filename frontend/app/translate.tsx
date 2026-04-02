@@ -6,7 +6,7 @@
  *   feedback, 3-dot menu. Language change auto-retranslates — no manual reload button.
  * Includes BottomNav (Text | Camera | Conversation).
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     StyleSheet,
     View,
@@ -21,6 +21,7 @@ import {
     ToastAndroid,
     Alert,
     TextInput as RNTextInput,
+    BackHandler,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -119,6 +120,39 @@ export default function TranslateScreen() {
 
     const showNotif = (msg: string) => { setNotifMessage(msg); setNotifVisible(true); };
 
+    // Android hardware back button: dismiss modals first, go to camera, then navigate back
+    useEffect(() => {
+        const onBack = () => {
+            if (feedbackModalVisible) {
+                setFeedbackModalVisible(false);
+                return true;
+            }
+            if (refineModal.visible) {
+                setRefineModal({ visible: false, originalText: '' });
+                return true;
+            }
+            if (pickerTarget !== null) {
+                setPickerTarget(null);
+                return true;
+            }
+            if (dictVisible) {
+                setDictVisible(false);
+                return true;
+            }
+            if (breakdownVisible) {
+                setBreakdownVisible(false);
+                return true;
+            }
+            if (screenState === 'result') {
+                handleNewPhoto();
+                return true;
+            }
+            return false; // let default back behavior handle it
+        };
+        const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+        return () => sub.remove();
+    }, [feedbackModalVisible, refineModal.visible, pickerTarget, dictVisible, breakdownVisible, screenState]);
+
     const showToast = (msg: string) => {
         if (Platform.OS === 'android') {
             ToastAndroid.show(msg, ToastAndroid.SHORT);
@@ -196,9 +230,15 @@ export default function TranslateScreen() {
             const raw = rawBlocks.map(b => ({ text: b.text, box: b.box, confidence: b.confidence, lines: b.lines ?? 1 }));
             const result = await ocrTranslateBlocks(raw, srcLang, tgtLang);
             if (result.blocks?.length) {
-                setBlocks(result.blocks as OcrBlock[]);
+                // Preserve original source geometry (box, lines, text) so font size
+                // stays stable — only update translated_text from the API response.
+                const mergedBlocks = rawBlocks.map((orig, idx) => ({
+                    ...orig,
+                    translated_text: result.blocks[idx]?.translated_text ?? orig.translated_text,
+                }));
+                setBlocks(mergedBlocks);
                 setFullTranslation(
-                    result.blocks.map((b: any) => b.translated_text).filter(Boolean).join('\n'),
+                    mergedBlocks.map(b => b.translated_text).filter(Boolean).join('\n'),
                 );
             }
         } catch (err: any) {
@@ -580,22 +620,22 @@ export default function TranslateScreen() {
                             //    tall multi-line block, cap with aspect-ratio heuristic.
                             // 3. Longest-word constraint: the longest word in the
                             //    translation must fit on one line (no mid-word breaks).
+                            // Font size is computed purely from source-text geometry
+                            // (lines + bounding box) so it stays stable across language switches.
                             const srcLines = Math.max(1, block.lines ?? 1);
                             const fsByGemini = (height / srcLines) * 0.78;
-
                             const geoLines = Math.max(1, Math.round(height / Math.max(width * 0.38, 1)));
                             const fsByGeo = (height / geoLines) * 0.78;
+                            const fs = Math.max(9, Math.min(fsByGemini, fsByGeo, 120));
 
-                            const longestWord = block.translated_text
-                                .split(/\s+/)
-                                .reduce((m, w) => Math.max(m, w.length), 1);
-                            const fsByWidth = width / (longestWord * 0.62);
-
-                            // Area constraint: all characters must fit within the bounding box
-                            const totalChars = Math.max(1, block.translated_text.replace(/\s+/g, '').length);
-                            const fsByArea = Math.sqrt((height * width) / (totalChars * 0.85));
-
-                            const fs = Math.max(9, Math.min(fsByGemini, fsByGeo, fsByWidth, fsByArea, 120));
+                            // Mirror the case of the source text
+                            const srcText = block.text ?? '';
+                            const isAllCaps = srcText.length > 0 &&
+                                srcText === srcText.toUpperCase() &&
+                                /[A-Za-z\u00C0-\u024F]/.test(srcText);
+                            const displayText = isAllCaps
+                                ? block.translated_text.toUpperCase()
+                                : block.translated_text;
 
                             return (
                                 <View
@@ -610,9 +650,9 @@ export default function TranslateScreen() {
                                         style={[styles.overlayText, { fontSize: fs, lineHeight: fs * 1.15 }]}
                                         numberOfLines={0}
                                         adjustsFontSizeToFit
-                                        minimumFontScale={0.4}
+                                        minimumFontScale={0.35}
                                     >
-                                        {block.translated_text}
+                                        {displayText}
                                     </Text>
                                 </View>
                             );
