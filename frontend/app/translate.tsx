@@ -81,8 +81,7 @@ export default function TranslateScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [screenState, setScreenState] = useState<'camera' | 'result'>('camera');
     const [facing, setFacing] = useState<'front' | 'back'>('back');
-    // 'torch' keeps the light on continuously; 'off' = no torch
-    const [flash, setFlash] = useState<'off' | 'torch'>('off');
+    const [torchOn, setTorchOn] = useState(false);
 
     const [photoUri, setPhotoUri] = useState<string | null>(null);
     const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null);
@@ -339,12 +338,12 @@ export default function TranslateScreen() {
     if (screenState === 'camera') {
         return (
             <View style={styles.root}>
-                {/* Full-screen camera — flash='torch' keeps the flashlight on */}
+                {/* Full-screen camera — enableTorch keeps the flashlight on continuously */}
                 <CameraView
                     ref={cameraRef}
                     style={StyleSheet.absoluteFill}
                     facing={facing}
-                    flash={flash}
+                    enableTorch={torchOn}
                 />
 
                 {/* Top bar: language selector + flash toggle */}
@@ -378,15 +377,15 @@ export default function TranslateScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Flash toggle: 'torch' = light stays on */}
+                    {/* Flash toggle: enableTorch keeps light on continuously */}
                     <TouchableOpacity
-                        style={[styles.camIconBtn, flash === 'torch' && styles.camIconBtnActive]}
-                        onPress={() => setFlash(f => f === 'off' ? 'torch' : 'off')}
+                        style={[styles.camIconBtn, torchOn && styles.camIconBtnActive]}
+                        onPress={() => setTorchOn(t => !t)}
                         activeOpacity={0.75}
                     >
-                        {flash === 'off'
-                            ? <ZapOff size={20} color="rgba(255,255,255,0.7)" />
-                            : <Zap size={20} color="#FBBF24" fill="#FBBF24" />
+                        {torchOn
+                            ? <Zap size={20} color="#FBBF24" fill="#FBBF24" />
+                            : <ZapOff size={20} color="rgba(255,255,255,0.7)" />
                         }
                     </TouchableOpacity>
                 </View>

@@ -1,15 +1,15 @@
 /**
- * FluidAura — Animated "Fluid Aura" mesh-gradient background.
+ * FluidAura — App background.
  *
- * Light mode: soft lavender base + breathing misty-blue, peach, and
- *   indigo blobs with a whisper of warm umber at the bottom.
- * Dark mode:  deep navy base + breathing indigo, dark-teal, and
- *   violet blobs with the same umber warmth.
+ * Light mode: static background image (ano-kamo-background.jpg) — soft
+ *   lavender/purple/rose gradient that defines the app's visual identity.
+ * Dark mode:  animated mesh-gradient — deep navy base + breathing indigo,
+ *   dark-teal, and violet blobs with warm umber accent.
  *
- * All animations run on the native thread (opacity only).
+ * All dark-mode animations run on the native thread (opacity only).
  */
 import React, { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Dimensions, Easing, ImageBackground, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -24,6 +24,8 @@ export default function FluidAura({ isDarkMode = false }: Props) {
     const a3 = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
+        if (!isDarkMode) return; // no animation needed for light mode (static image)
+
         const breathe = (anim: Animated.Value, halfMs: number, delayMs: number) =>
             Animated.sequence([
                 Animated.delay(delayMs),
@@ -52,110 +54,67 @@ export default function FluidAura({ isDarkMode = false }: Props) {
         ]);
         master.start();
         return () => master.stop();
-    }, []);
+    }, [isDarkMode]);
 
-    if (isDarkMode) {
+    // ── Light mode: background image ─────────────────────────────
+    if (!isDarkMode) {
         return (
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                {/* Base: deep navy → dark indigo */}
-                <LinearGradient
-                    colors={['#0F172A', '#1E1B4B']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                />
-                {/* Blob 1: indigo (top-right) */}
-                <Animated.View style={[styles.blobTopRight, {
-                    opacity: a1.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.5] }),
-                }]}>
-                    <LinearGradient
-                        colors={['rgba(49,46,129,0.95)', 'rgba(49,46,129,0.4)', 'transparent']}
-                        start={{ x: 1, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </Animated.View>
-                {/* Blob 2: dark teal (bottom-left) */}
-                <Animated.View style={[styles.blobBottomLeft, {
-                    opacity: a2.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.42] }),
-                }]}>
-                    <LinearGradient
-                        colors={['rgba(30,58,95,0.95)', 'rgba(30,58,95,0.4)', 'transparent']}
-                        start={{ x: 0, y: 1 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </Animated.View>
-                {/* Blob 3: deep violet (center) */}
-                <Animated.View style={[styles.blobCenter, {
-                    opacity: a3.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.38] }),
-                }]}>
-                    <LinearGradient
-                        colors={['transparent', 'rgba(45,27,105,0.85)', 'transparent']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </Animated.View>
-                {/* Umber warmth accent */}
-                <View style={styles.blobUmber}>
-                    <LinearGradient
-                        colors={['transparent', 'rgba(141,85,36,0.10)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </View>
-            </View>
+            <ImageBackground
+                source={require('../../assets/background.jpg')}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+                pointerEvents="none"
+            />
         );
     }
 
+    // ── Dark mode: animated mesh-gradient ─────────────────────────
     return (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {/* Base: soft lavender */}
+            {/* Base: deep navy → dark indigo */}
             <LinearGradient
-                colors={['#EEF2FF', '#E0E7FF']}
+                colors={['#0F172A', '#1E1B4B']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
             />
-            {/* Blob 1: misty blue (top-right, breathing) */}
+            {/* Blob 1: indigo (top-right) */}
             <Animated.View style={[styles.blobTopRight, {
-                opacity: a1.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.92] }),
+                opacity: a1.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.5] }),
             }]}>
                 <LinearGradient
-                    colors={['rgba(186,230,253,0.95)', 'rgba(224,242,254,0.55)', 'transparent']}
+                    colors={['rgba(49,46,129,0.95)', 'rgba(49,46,129,0.4)', 'transparent']}
                     start={{ x: 1, y: 0 }}
                     end={{ x: 0, y: 1 }}
                     style={StyleSheet.absoluteFill}
                 />
             </Animated.View>
-            {/* Blob 2: light peach/rose (bottom-left, breathing) */}
+            {/* Blob 2: dark teal (bottom-left) */}
             <Animated.View style={[styles.blobBottomLeft, {
-                opacity: a2.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.82] }),
+                opacity: a2.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.42] }),
             }]}>
                 <LinearGradient
-                    colors={['rgba(254,205,211,0.95)', 'rgba(255,241,242,0.55)', 'transparent']}
+                    colors={['rgba(30,58,95,0.95)', 'rgba(30,58,95,0.4)', 'transparent']}
                     start={{ x: 0, y: 1 }}
                     end={{ x: 1, y: 0 }}
                     style={StyleSheet.absoluteFill}
                 />
             </Animated.View>
-            {/* Blob 3: soft indigo/violet (center, breathing) */}
+            {/* Blob 3: deep violet (center) */}
             <Animated.View style={[styles.blobCenter, {
-                opacity: a3.interpolate({ inputRange: [0, 1], outputRange: [0.12, 0.55] }),
+                opacity: a3.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.38] }),
             }]}>
                 <LinearGradient
-                    colors={['transparent', 'rgba(199,210,254,0.88)', 'rgba(221,214,254,0.55)', 'transparent']}
+                    colors={['transparent', 'rgba(45,27,105,0.85)', 'transparent']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFill}
                 />
             </Animated.View>
-            {/* Umber warmth accent — "Kayumanggi" hint */}
+            {/* Umber warmth accent */}
             <View style={styles.blobUmber}>
                 <LinearGradient
-                    colors={['transparent', 'rgba(141,85,36,0.07)']}
+                    colors={['transparent', 'rgba(141,85,36,0.10)']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 0, y: 1 }}
                     style={StyleSheet.absoluteFill}

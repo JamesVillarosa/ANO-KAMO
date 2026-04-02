@@ -41,7 +41,8 @@ export const darkTheme = {
 // Legacy export for backward compatibility
 export const theme = lightTheme;
 
-export const gradientColors = ['#C7D2FE', '#EDE9FE', '#F8FAFF'] as const;
+// Splash gradient — white-prominent with whispers of the image's pink and blue-lavender
+export const gradientColors = ['#FEF2F6', '#FDFBFF', '#EEF1FB'] as const;
 export const darkGradientColors = ['#1E1B4B', '#0F172A', '#020617'] as const;
 
 // More vibrant iOS-style background gradients
