@@ -831,10 +831,10 @@ const styles = StyleSheet.create({
     },
 
     card: {
-        backgroundColor: 'rgba(255, 255, 255, 0.52)',
+        backgroundColor: '#FFFFFF',
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderColor: 'rgba(0, 0, 0, 0.06)',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
@@ -845,8 +845,8 @@ const styles = StyleSheet.create({
         padding: 14,
     },
     cardDark: {
-        backgroundColor: 'rgba(255,255,255,0.07)',
-        borderColor: 'rgba(255,255,255,0.09)',
+        backgroundColor: '#1E293B',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
 
     cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },

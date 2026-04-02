@@ -36,14 +36,14 @@ function HeaderIconBtn({ icon: IconComponent, onPress, isDarkMode }: { icon: any
                 padding: 9,
                 borderRadius: 50,
                 marginHorizontal: 4,
-                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+                backgroundColor: isDarkMode ? '#1E293B' : '#FFFFFF',
                 borderWidth: 1,
-                borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.9)',
+                borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.04,
-                shadowRadius: 2,
-                elevation: 1,
+                shadowOpacity: 0.08,
+                shadowRadius: 3,
+                elevation: 2,
             }]}
         >
             <IconComponent color={color} size={20} />

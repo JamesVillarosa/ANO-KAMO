@@ -1173,7 +1173,7 @@ const styles = StyleSheet.create({
     // ── Full translation card ──
     fullCard: {
         margin: 14,
-        backgroundColor: 'rgba(255, 255, 255, 0.82)',
+        backgroundColor: '#FFFFFF',
         borderRadius: 22,
         padding: 20,
         elevation: 2,
@@ -1181,7 +1181,7 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(99,102,241,0.18)',
     },
     fullCardDark: {
-        backgroundColor: 'rgba(30,27,75,0.88)',
+        backgroundColor: '#1E293B',
         borderColor: 'rgba(99,102,241,0.35)',
     },
     fullCardLabel: {

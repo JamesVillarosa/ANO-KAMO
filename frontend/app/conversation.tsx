@@ -1495,8 +1495,7 @@ export default function ConversationScreen() {
                 style={[
                     styles.inputBar,
                     isDarkMode && styles.inputBarDark,
-                    { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 },
-                    { marginBottom: keyboardVisible ? 0 : 90 },
+                    { marginBottom: keyboardVisible ? 0 : (90 + insets.bottom) },
                 ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
@@ -2090,7 +2089,7 @@ const styles = StyleSheet.create({
     customHeaderGlass: {
         padding: 9,
         borderRadius: 50,
-        backgroundColor: 'rgba(255,255,255,0.75)',
+        backgroundColor: '#FFFFFF',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.9)',
         shadowColor: '#000',
@@ -2101,8 +2100,8 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     customHeaderGlassDark: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: '#1E293B',
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     headerModeBranding: {
         fontSize: 16,
