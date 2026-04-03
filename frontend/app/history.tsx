@@ -705,14 +705,14 @@ export default function HistoryScreen() {
                 })()}
             </View>
 
-            {/* Detail Modal */}
+            {/* Detail Modal — conditionally rendered so it never intercepts back button when closed */}
+            {detailItem && (
             <Modal
-                visible={!!detailItem}
+                visible
                 transparent
                 animationType="slide"
                 onRequestClose={() => setDetailItem(null)}
             >
-                {detailItem && (
                     <View style={styles.detailOverlay}>
                         <BlurView
                             intensity={80}
@@ -807,8 +807,8 @@ export default function HistoryScreen() {
                             </ScrollView>
                         </BlurView>
                     </View>
-                )}
             </Modal>
+            )}
 
             {/* Confirmation Modal */}
             <Portal>

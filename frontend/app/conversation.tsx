@@ -3,7 +3,6 @@ import {
     StyleSheet,
     View,
     ScrollView,
-    KeyboardAvoidingView,
     Keyboard,
     Platform,
     TouchableOpacity,
@@ -439,7 +438,7 @@ export default function ConversationScreen() {
 
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
-    const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
 
     // Duplicate-message guard — prevents the same message ID from being added twice
     const addedMessageIds = useRef(new Set<string>());
@@ -711,18 +710,14 @@ export default function ConversationScreen() {
     }, [messages]);
 
     useEffect(() => {
-        const onShow = Keyboard.addListener('keyboardWillShow', () => {
-            setKeyboardVisible(true);
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const onShow = Keyboard.addListener(showEvent, e => {
+            setKeyboardHeight(e.endCoordinates.height);
             scrollRef.current?.scrollToEnd({ animated: true });
         });
-        const onHide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
-        // Android fires keyboardDidShow/keyboardDidHide instead of Will
-        const onShowAndroid = Keyboard.addListener('keyboardDidShow', () => {
-            setKeyboardVisible(true);
-            scrollRef.current?.scrollToEnd({ animated: true });
-        });
-        const onHideAndroid = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-        return () => { onShow.remove(); onHide.remove(); onShowAndroid.remove(); onHideAndroid.remove(); };
+        const onHide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+        return () => { onShow.remove(); onHide.remove(); };
     }, []);
 
     // Android hardware back button: dismiss modals/pickers first, then go back
@@ -745,7 +740,7 @@ export default function ConversationScreen() {
                 return true;
             }
             // Dismiss keyboard first if it's open
-            if (keyboardVisible) {
+            if (keyboardHeight > 0) {
                 Keyboard.dismiss();
                 return true;
             }
@@ -755,7 +750,7 @@ export default function ConversationScreen() {
         };
         const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
         return () => sub.remove();
-    }, [confirmModal.visible, pickerFor, dictVisible, breakdownVisible, keyboardVisible, router]);
+    }, [confirmModal.visible, pickerFor, dictVisible, breakdownVisible, keyboardHeight, router]);
 
     // Create backend conversation session — waits for deviceId to be loaded
     useEffect(() => {
@@ -1358,12 +1353,6 @@ export default function ConversationScreen() {
     return (
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
             <FluidAura isDarkMode={isDarkMode} />
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior="padding"
-                keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
-            >
-
             {/* Custom Glass Header */}
             <View style={[styles.customHeader, { top: insets.top + 10 }]}>
                 <TouchableOpacity
@@ -1481,7 +1470,7 @@ export default function ConversationScreen() {
             <ScrollView
                 ref={scrollRef}
                 style={styles.chatArea}
-                contentContainerStyle={[styles.chatContent, keyboardVisible && { paddingBottom: 100 }]}
+                contentContainerStyle={styles.chatContent}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
@@ -1528,7 +1517,12 @@ export default function ConversationScreen() {
                 style={[
                     styles.inputBar,
                     isDarkMode && styles.inputBarDark,
-                    { marginBottom: keyboardVisible ? 8 : (90 + insets.bottom) },
+                    {
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: keyboardHeight > 0 ? keyboardHeight + 60 : 90 + insets.bottom,
+                    },
                 ]}
             >
                     <View style={[styles.speakerDot, { backgroundColor: getColorForLang(getActiveLang()).light }]} />
@@ -1674,8 +1668,7 @@ export default function ConversationScreen() {
             >
                 {snackbarMessage}
             </Snackbar>
-            </KeyboardAvoidingView>
-            {!keyboardVisible && <BottomNav />}
+            <BottomNav />
         </View>
     );
 }
