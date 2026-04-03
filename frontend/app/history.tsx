@@ -861,7 +861,6 @@ const styles = StyleSheet.create({
         padding: 4,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
-        overflow: 'hidden',
     },
     toggleRowDark: {
         backgroundColor: 'rgba(255,255,255,0.09)',
