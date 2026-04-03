@@ -1343,6 +1343,44 @@ export default function ConversationScreen() {
                         setTimeout(() => setDictVisible(true), 300);
                     }}
                 />
+
+                {/* Confirmation Modal */}
+                <Portal>
+                    <PaperModal
+                        visible={confirmModal.visible}
+                        onDismiss={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                        contentContainerStyle={styles.glassModalContainer}
+                    >
+                        <BlurView
+                            intensity={60}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[styles.glassModalBlur, isDarkMode && styles.glassModalBlurDark]}
+                        >
+                            <Text style={[styles.modalTitle, isDarkMode && { color: '#F8FAFC' }]}>{confirmModal.title}</Text>
+                            <Text style={[styles.modalMessage, isDarkMode && { color: '#CBD5E1' }]}>{confirmModal.message}</Text>
+                            <View style={styles.modalButtons}>
+                                <TouchableOpacity
+                                    onPress={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                                    style={styles.modalBtnCancel}
+                                >
+                                    <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        confirmModal.onConfirm();
+                                        setConfirmModal(prev => ({ ...prev, visible: false }));
+                                    }}
+                                    style={[
+                                        styles.modalBtnAction,
+                                        confirmModal.isDestructive && { backgroundColor: '#EF4444' }
+                                    ]}
+                                >
+                                    <Text style={styles.modalBtnTextAction}>{confirmModal.confirmText}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </BlurView>
+                    </PaperModal>
+                </Portal>
             </View>
         );
     }

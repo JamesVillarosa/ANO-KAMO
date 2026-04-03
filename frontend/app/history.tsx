@@ -34,7 +34,7 @@ import {
     MessageSquare,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory, deleteConversation, toggleConversationStar } from '../src/lib/api';
+import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory, deleteConversation, toggleConversationStar, clearAllConversations } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
 import { SUPPORTED_LANGUAGES } from '../src/theme';
 import { getDeviceId } from '../src/utils/device';
@@ -392,21 +392,28 @@ export default function HistoryScreen() {
     }, [confirmModal.visible, detailItem, router]);
 
     const handleToggleFav = async (outputId: string) => {
+        const toggle = (prev: HistoryItem[]) => prev.map(item => ({
+            ...item,
+            outputs: item.outputs.map(o =>
+                o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
+            ),
+        }));
+        const toggleDetail = (prev: HistoryItem | null) => prev ? {
+            ...prev,
+            outputs: prev.outputs.map(o =>
+                o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
+            ),
+        } : null;
+        // Optimistic update — reflect immediately in UI
+        setItems(toggle);
+        setDetailItem(toggleDetail);
         try {
             await toggleFavorite(outputId);
-            setItems(prev => prev.map(item => ({
-                ...item,
-                outputs: item.outputs.map(o =>
-                    o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
-                ),
-            })));
-            setDetailItem(prev => prev ? {
-                ...prev,
-                outputs: prev.outputs.map(o =>
-                    o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
-                ),
-            } : null);
-        } catch {}
+        } catch {
+            // Revert on error
+            setItems(toggle);
+            setDetailItem(toggleDetail);
+        }
     };
 
     const handleDelete = (item: HistoryItem) => {
@@ -452,12 +459,16 @@ export default function HistoryScreen() {
     const handleClearAll = () => {
         showConfirm(
             'Clear History',
-            'Are you sure you want to delete all translation history? This cannot be undone.',
+            'Are you sure you want to delete all history? This cannot be undone.',
             async () => {
                 try {
                     const deviceId = await getDeviceId();
-                    await clearAllHistory(deviceId);
+                    await Promise.all([
+                        clearAllHistory(deviceId),
+                        clearAllConversations(deviceId),
+                    ]);
                     setItems([]);
+                    setConvGroups([]);
                 } catch {}
             },
             'Clear All', true,
@@ -589,29 +600,65 @@ export default function HistoryScreen() {
                     <View style={styles.center}>
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
-                ) : activeTab === 'favorites' ? (
-                    filtered.length === 0 ? (
-                        <View style={styles.center}>
-                            <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
-                            <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
-                                No favorites yet
-                            </Text>
-                            <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
-                                Star a translation to save it here
-                            </Text>
-                        </View>
-                    ) : (
-                        <SectionList
-                            sections={sections}
-                            renderItem={renderItem}
-                            renderSectionHeader={renderSectionHeader}
-                            keyExtractor={item => item.translation_id}
-                            contentContainerStyle={styles.list}
-                            showsVerticalScrollIndicator={false}
-                            stickySectionHeadersEnabled={false}
-                        />
-                    )
-                ) : (() => {
+                ) : activeTab === 'favorites' ? (() => {
+                    const starredConvs = convGroups.filter(g => g.is_starred);
+                    const favItems = items.filter(i => i.outputs?.some(o => o.is_favorite));
+                    const favSections = groupBySections(favItems);
+
+                    if (starredConvs.length === 0 && favItems.length === 0) {
+                        return (
+                            <View style={styles.center}>
+                                <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                                <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
+                                    No favorites yet
+                                </Text>
+                                <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
+                                    Star a translation to save it here
+                                </Text>
+                            </View>
+                        );
+                    }
+
+                    return (
+                        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+                            {starredConvs.length > 0 && (
+                                <View>
+                                    <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
+                                        CONVERSATIONS
+                                    </Text>
+                                    {starredConvs.map(group => (
+                                        <ConversationGroupCard
+                                            key={group.conversation_id}
+                                            group={group}
+                                            isExpanded={expandedConvId === group.conversation_id}
+                                            isDarkMode={isDarkMode}
+                                            onToggle={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setExpandedConvId(prev =>
+                                                    prev === group.conversation_id ? null : group.conversation_id
+                                                );
+                                            }}
+                                            onDelete={() => handleDeleteConversation(group.conversation_id)}
+                                            onToggleStar={() => handleToggleConvStar(group.conversation_id)}
+                                        />
+                                    ))}
+                                </View>
+                            )}
+                            {favSections.map(section => (
+                                <View key={section.title}>
+                                    <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
+                                        {section.title.toUpperCase()}
+                                    </Text>
+                                    {section.data.map(item => (
+                                        <React.Fragment key={item.translation_id}>
+                                            {renderItem({ item } as any)}
+                                        </React.Fragment>
+                                    ))}
+                                </View>
+                            ))}
+                        </ScrollView>
+                    );
+                })() : (() => {
                     // Build unified history: non-chat items + conversation groups, sorted by date
                     type MixedItem =
                         | { type: 'single'; item: HistoryItem; timestamp: string }

@@ -176,6 +176,23 @@ async def get_conversation_history(
     return results
 
 
+@router.delete("/history/conversations/clear-all")
+async def clear_all_conversations(
+    device_id: str = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Delete all conversations and their messages for a device."""
+    query = db.query(Conversation)
+    if device_id:
+        query = query.filter(Conversation.device_id == device_id)
+    convs = query.all()
+    count = len(convs)
+    for conv in convs:
+        db.delete(conv)
+    db.commit()
+    return {"deleted": count}
+
+
 @router.delete("/history/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: str,
