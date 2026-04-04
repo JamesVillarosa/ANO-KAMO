@@ -287,8 +287,9 @@ function ChatBubble({
 
                 {/* In non-3-way modes, only show the first translation — 3rd-participant row is hidden, not deleted */}
                 {(currentMode === 'three_way' ? msg.translations : msg.translations.slice(0, 1)).map((tr, idx) => {
+                    // Hide translation row while retrying (shimmer covers it) or if permanently empty
+                    if (!tr.text || tr.text === '(Try again)') return null;
                     const trColor = getColorForLang(tr.lang);
-                    const isError = tr.text === '(Try again)';
                     return (
                         <View key={idx}>
                             <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
@@ -298,34 +299,23 @@ function ChatBubble({
                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                 </Text>
                             </View>
-                            <Text style={[
-                                styles.transText,
-                                { color: langColor.trans },
-                                isError && {
-                                    color: isDarkMode ? '#F87171' : '#EF4444',
-                                    fontWeight: '500',
-                                    textAlign: alignment === 'center' ? 'center' : (alignment === 'left' ? 'left' : 'right'),
-                                    fontStyle: 'normal'
-                                }
-                            ]}>
-                                {isError ? 'Paki-ulit (Try again)' : tr.text}
+                            <Text style={[styles.transText, { color: langColor.trans }]}>
+                                {tr.text}
                             </Text>
-                            {!isError && (
-                                <View style={[styles.bubbleUtilityRow, { marginTop: 4 }]}>
-                                    <TouchableOpacity
-                                        onPress={() => tts.speak(tr.text, tr.lang)}
-                                        style={styles.utilityBtn}
-                                    >
-                                        <Volume2 size={16} color="rgba(0,0,0,0.5)" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
-                                        style={styles.utilityBtn}
-                                    >
-                                        <BookOpen size={16} color="rgba(0,0,0,0.5)" />
-                                    </TouchableOpacity>
-                                </View>
-                            )}
+                            <View style={[styles.bubbleUtilityRow, { marginTop: 4 }]}>
+                                <TouchableOpacity
+                                    onPress={() => tts.speak(tr.text, tr.lang)}
+                                    style={styles.utilityBtn}
+                                >
+                                    <Volume2 size={16} color="rgba(0,0,0,0.5)" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
+                                    style={styles.utilityBtn}
+                                >
+                                    <BookOpen size={16} color="rgba(0,0,0,0.5)" />
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     );
                 })}
@@ -408,6 +398,34 @@ const MemoizedChatBubble = React.memo(ChatBubble, (prev, next) =>
     prev.isSyncShimmering === next.isSyncShimmering &&
     prev.currentMode === next.currentMode
 );
+
+// ─────────────────────────────────────────
+// Module-level utilities
+// ─────────────────────────────────────────
+
+/** Retry a promise-returning fn up to maxAttempts times, waiting delayMs between each. */
+async function retryFn<T>(fn: () => Promise<T>, maxAttempts = 3, delayMs = 1500): Promise<T> {
+    let lastErr: unknown;
+    for (let i = 0; i < maxAttempts; i++) {
+        try { return await fn(); } catch (e) { lastErr = e; }
+        if (i < maxAttempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+    throw lastErr;
+}
+
+function sanitizeTranslation(text: string): string {
+    if (!text) return '';
+    if (text.includes('{') || text.includes('}') || text.includes(':')) {
+        try {
+            const parsed = JSON.parse(text);
+            if (parsed.t) return parsed.t;
+            return '';
+        } catch {
+            return '';
+        }
+    }
+    return text;
+}
 
 // ─────────────────────────────────────────
 // Main Screen
@@ -524,28 +542,55 @@ export default function ConversationScreen() {
             }));
         } catch (err) {
             console.error('Retranslate error:', err);
-            setSnackbarMessage('Paki-ulit (Try again)');
+            setSnackbarMessage('Translation failed. Retrying…');
             setSnackbarVisible(true);
         } finally {
             setTimeout(() => setIsSyncShimmering(false), 800);
         }
     };
 
-    const sanitizeTranslation = (text: string): string => {
-        if (!text) return 'Invalid Input';
-        // Phase 8.3: Anti-JSON Leak
-        if (text.includes('{') || text.includes('}') || text.includes(':')) {
-            try {
-                // If it's valid JSON but leaked, try to extract 't'
-                const parsed = JSON.parse(text);
-                if (parsed.t) return parsed.t;
-                return 'Invalid Input';
-            } catch {
-                return 'Invalid Input';
+    /**
+     * Retries translation in the background after a send failure.
+     * Shows shimmer (isRegenerating) until translation succeeds or attempts are exhausted.
+     */
+    const retryTranslationsAsync = useCallback(async (
+        msgId: string,
+        text: string,
+        fromLang: string,
+        targetLangs: string[],
+        tone: string | null,
+    ) => {
+        const MAX_ATTEMPTS = 20;
+        const DELAY = 2000;
+        for (let i = 0; i < MAX_ATTEMPTS; i++) {
+            await new Promise(r => setTimeout(r, DELAY));
+            const translations: Translation[] = [];
+            let allOk = true;
+            for (const tl of targetLangs) {
+                try {
+                    const res = await translateSingle(text, fromLang, tl, tone || undefined, undefined, true);
+                    const translated = sanitizeTranslation(res.output_text) || '';
+                    if (!translated) { allOk = false; break; }
+                    translations.push({ text: translated, lang: tl });
+                } catch {
+                    allOk = false;
+                    break;
+                }
+            }
+            if (allOk && translations.length === targetLangs.length) {
+                setMessages(prev => prev.map(m =>
+                    m.id === msgId
+                        ? { ...m, translations, isRegenerating: false, isNewMessage: false }
+                        : m
+                ));
+                return;
             }
         }
-        return text;
-    };
+        // All attempts exhausted — stop shimmer, leave translations empty (hidden in bubble)
+        setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, isRegenerating: false } : m
+        ));
+    }, [setMessages]);
 
     const lang0 = langs[0];
     const lang1 = langs[1];
@@ -844,17 +889,17 @@ export default function ConversationScreen() {
             let updatedTranslations = bubble.translations.filter(t => !toRemove.includes(t.lang));
             for (const targetLang of toAdd) {
                 try {
-                    const res = await translateSingle(
+                    const res = await retryFn(() => translateSingle(
                         bubble.originalText || bubble.text,
                         bubble.lang,
                         targetLang,
                         bubble.tone,
                         devId,
                         true, // skip_history — retranslation must not create text history entries
-                    );
+                    ));
                     updatedTranslations.push({ lang: targetLang, text: sanitizeTranslation(res.output_text) });
                 } catch {
-                    updatedTranslations.push({ lang: targetLang, text: '(Try again)' });
+                    updatedTranslations.push({ lang: targetLang, text: '' });
                 }
             }
             return { ...bubble, translations: updatedTranslations, isRegenerating: false };
@@ -927,12 +972,14 @@ export default function ConversationScreen() {
         const speakerLabel = ['A', 'B', 'C'][activeSpeaker];
 
         setLoading(true);
+        const capturedTone = activeTone;
         try {
             const translations: Translation[] = [];
+            let anyFailed = false;
             if (conversationId) {
                 // One API call with all target langs — avoids duplicate DB records for 3-way
                 try {
-                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLangs, activeTone || undefined);
+                    const res = await retryFn(() => apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLangs, capturedTone || undefined));
                     if (res.translations && Array.isArray(res.translations) && res.translations.length > 0) {
                         res.translations.forEach((t: { lang: string; text: string }) => {
                             translations.push({ text: sanitizeTranslation(t.text) || '', lang: t.lang });
@@ -942,48 +989,58 @@ export default function ConversationScreen() {
                         translations.push({ text: sanitizeTranslation(res.translated_text) || '', lang: targetLangs[0] || fromLang });
                     }
                 } catch {
-                    targetLangs.forEach(tl => translations.push({ text: '(Try again)', lang: tl }));
+                    anyFailed = true;
+                    targetLangs.forEach(tl => translations.push({ text: '', lang: tl }));
                 }
             } else {
                 // No conversation session — translate locally one at a time
                 for (const tl of targetLangs) {
                     try {
-                        const res = await translateSingle(text, fromLang, tl, activeTone || undefined, undefined, true);
+                        const res = await retryFn(() => translateSingle(text, fromLang, tl, capturedTone || undefined, undefined, true));
                         translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
                     } catch {
-                        translations.push({ text: '(Try again)', lang: tl });
+                        anyFailed = true;
+                        translations.push({ text: '', lang: tl });
                     }
                 }
             }
+            const msgId = generateMsgId();
             const msg: Message = {
-                id: generateMsgId(),
+                id: msgId,
                 text,
                 originalText: text,
                 translations,
                 speaker: activeSpeaker,
                 lang: fromLang,
-                tone: activeTone || undefined,
+                tone: capturedTone || undefined,
                 isNewMessage: true,
                 mode: viewMode,
                 sessionId: sessionId.current,
+                isRegenerating: anyFailed,
             };
             addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
-            lastMessageIdRef.current = msg.id;
+            lastMessageIdRef.current = msgId;
+            if (anyFailed) {
+                retryTranslationsAsync(msgId, text, fromLang, targetLangs, capturedTone);
+            }
         } catch {
+            const msgId = generateMsgId();
             const msg: Message = {
-                id: generateMsgId(),
+                id: msgId,
                 text,
                 originalText: text,
-                translations: targetLangs.map(tl => ({ text: '(Try again)', lang: tl })),
+                translations: targetLangs.map(tl => ({ text: '', lang: tl })),
                 speaker: activeSpeaker,
                 lang: getLang(activeSpeaker),
                 isNewMessage: true,
                 mode: viewMode,
                 sessionId: sessionId.current,
+                isRegenerating: true,
             };
             addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
+            retryTranslationsAsync(msgId, text, getLang(activeSpeaker), targetLangs, capturedTone);
         }
         setLoading(false);
         isSendingRef.current = false;
@@ -995,48 +1052,40 @@ export default function ConversationScreen() {
         const fromLang = getLang(speaker);
         const targetLang = speaker === 0 ? lang1 : lang0;
         const speakerLabel = speaker === 0 ? 'A' : 'B';
+        const capturedTone = activeTone;
 
         setLoading(true);
+        let translatedText = '';
+        let failed = false;
         try {
-            let translatedText = '';
-            try {
-                if (conversationId) {
-                    const res = await apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang, activeTone || undefined);
-                    translatedText = sanitizeTranslation(res.translated_text) || '';
-                } else {
-                    const res = await translateSingle(text, fromLang, targetLang, activeTone || undefined, undefined, true);
-                    translatedText = sanitizeTranslation(res.output_text) || '';
-                }
-            } catch {
-                translatedText = '(Try again)';
+            if (conversationId) {
+                const res = await retryFn(() => apiSendMessage(conversationId, speakerLabel, text, fromLang, targetLang, capturedTone || undefined));
+                translatedText = sanitizeTranslation(res.translated_text) || '';
+            } else {
+                const res = await retryFn(() => translateSingle(text, fromLang, targetLang, capturedTone || undefined, undefined, true));
+                translatedText = sanitizeTranslation(res.output_text) || '';
             }
-            const msg: Message = {
-                id: generateMsgId(),
-                text,
-                originalText: text,
-                translations: [{ text: translatedText, lang: targetLang }],
-                speaker,
-                lang: fromLang,
-                tone: activeTone || undefined,
-                isNewMessage: true,
-                mode: 'face_to_face',
-                sessionId: sessionId.current,
-            };
-            addMessageToState(msg);
-            lastMessageIdRef.current = msg.id;
         } catch {
-            const msg: Message = {
-                id: generateMsgId(),
-                text,
-                originalText: text,
-                translations: [{ text: '(Try again)', lang: targetLang }],
-                speaker,
-                lang: fromLang,
-                isNewMessage: true,
-                mode: 'face_to_face',
-                sessionId: sessionId.current,
-            };
-            addMessageToState(msg);
+            failed = true;
+        }
+        const msgId = generateMsgId();
+        const msg: Message = {
+            id: msgId,
+            text,
+            originalText: text,
+            translations: [{ text: translatedText, lang: targetLang }],
+            speaker,
+            lang: fromLang,
+            tone: capturedTone || undefined,
+            isNewMessage: true,
+            mode: 'face_to_face',
+            sessionId: sessionId.current,
+            isRegenerating: failed,
+        };
+        addMessageToState(msg);
+        lastMessageIdRef.current = msgId;
+        if (failed) {
+            retryTranslationsAsync(msgId, text, fromLang, [targetLang], capturedTone);
         }
         setLoading(false);
     };
