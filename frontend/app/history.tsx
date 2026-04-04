@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
     StyleSheet,
@@ -36,7 +36,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { getHistory, toggleFavorite, deleteHistory, clearAllHistory, getConversationHistory, deleteConversation, toggleConversationStar, clearAllConversations } from '../src/lib/api';
 import { useTheme } from '../src/context/ThemeContext';
-import { SUPPORTED_LANGUAGES } from '../src/theme';
+import { SUPPORTED_LANGUAGES, LANGUAGE_COLORS } from '../src/theme';
+import { useConversation, Message } from '../src/context/ConversationContext';
 import { getDeviceId } from '../src/utils/device';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
 
@@ -222,30 +223,49 @@ function ConversationGroupCard({
                             return true;
                         });
                     })().map((msg) => {
-                        const isA = msg.speaker_abc === 'A';
+                        const speakerAbc = msg.speaker_abc;
+                        const isA = speakerAbc === 'A';
+                        const isC = speakerAbc === 'C';
                         const srcInitial = LANG_INITIALS[msg.language] ?? msg.language.slice(0, 1).toUpperCase();
+
+                        // Fallback target lang: pick the first participant whose index differs from speaker
+                        const speakerIdx = isA ? 0 : isC ? 2 : 1;
+                        const fallbackTargetLang =
+                            group.participants.find((_, i) => i !== speakerIdx)?.preferred_language ?? '?';
+
                         // Use parsed translations array; fall back to translated_text for old records
                         const transList: { lang: string; text: string }[] =
                             msg.translations && msg.translations.length > 0
                                 ? msg.translations
                                 : msg.translated_text
-                                    ? [{ lang: '?', text: msg.translated_text }]
+                                    ? [{ lang: fallbackTargetLang, text: msg.translated_text }]
                                     : [];
+
+                        // Color from message language (matches conversation screen language colors)
+                        const msgLangColor = LANGUAGE_COLORS[msg.language];
+                        const bubbleBg = msgLangColor
+                            ? msgLangColor.bg.replace('0.42', '0.2')
+                            : isA ? 'rgba(59,130,246,0.15)' : isC ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)';
+                        const bubbleBgDark = msgLangColor
+                            ? msgLangColor.bg.replace('0.42', '0.28')
+                            : isA ? 'rgba(59,130,246,0.25)' : isC ? 'rgba(245,158,11,0.25)' : 'rgba(239,68,68,0.25)';
+                        const labelCol = msgLangColor?.light ?? (isA ? '#3B82F6' : isC ? '#D97706' : '#EF4444');
+
                         return (
                             <View
                                 key={msg.message_id}
                                 style={[
                                     styles.convMsgRow,
-                                    isA ? styles.convMsgRight : styles.convMsgLeft,
+                                    isA ? styles.convMsgRight : isC ? styles.convMsgCenter : styles.convMsgLeft,
                                 ]}
                             >
                                 <View style={[
                                     styles.convBubble,
-                                    { backgroundColor: isA ? 'rgba(59,130,246,0.15)' : 'rgba(100,116,139,0.12)' },
-                                    isDarkMode && { backgroundColor: isA ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.07)' },
+                                    { backgroundColor: bubbleBg },
+                                    isDarkMode && { backgroundColor: bubbleBgDark },
                                 ]}>
                                     {/* Source language initial */}
-                                    <Text style={[styles.convSpeakerLabel, { color: isA ? '#3B82F6' : '#64748B' }]}>
+                                    <Text style={[styles.convSpeakerLabel, { color: labelCol }]}>
                                         {srcInitial}
                                     </Text>
                                     {/* Source text — bold */}
@@ -258,7 +278,7 @@ function ConversationGroupCard({
                                             <Text style={[styles.convTransInitial, isDarkMode && { color: '#8E8E93' }]}>
                                                 {LANG_INITIALS[tr.lang] ?? tr.lang.slice(0, 1).toUpperCase()}
                                             </Text>
-                                            <Text style={[styles.convMsgTrans, { flex: 1, flexWrap: 'wrap' }, isDarkMode && styles.textSecondary]}>
+                                            <Text style={[styles.convMsgTrans, { flexShrink: 1 }, isDarkMode && styles.textSecondary]}>
                                                 {tr.text}
                                             </Text>
                                         </View>
@@ -322,6 +342,12 @@ export default function HistoryScreen() {
     const { isDarkMode } = useTheme();
     const router = useRouter();
     const tts = useTextToSpeech();
+    const {
+        messages: ctxMessages,
+        conversationId: ctxConvId,
+        langs: ctxLangs,
+        viewMode: ctxViewMode,
+    } = useConversation();
     const [items, setItems] = useState<HistoryItem[]>([]);
     const [convGroups, setConvGroups] = useState<ConversationGroup[]>([]);
     const [loading, setLoading] = useState(true);
@@ -365,6 +391,34 @@ export default function HistoryScreen() {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // Overlay context messages onto the matching conversation group so history always
+    // reflects the current session state (including retroactively-regenerated translations)
+    const effectiveConvGroups = useMemo<ConversationGroup[]>(() => {
+        if (!ctxConvId || ctxMessages.length === 0) return convGroups;
+        return convGroups.map(group => {
+            if (group.conversation_id !== ctxConvId) return group;
+            // Map context Message[] → ConvMessage[]
+            const ctxConvMessages: ConvMessage[] = ctxMessages
+                .filter(m => m.mode !== 'face_to_face')
+                .map(m => ({
+                    message_id: m.id,
+                    speaker_abc: m.speaker === 0 ? 'A' : m.speaker === 1 ? 'B' : 'C',
+                    text: m.text,
+                    translated_text: m.translations[0]?.text ?? '',
+                    translations: m.translations.length > 0 ? m.translations : undefined,
+                    language: m.lang,
+                    timestamp: group.messages[0]?.timestamp ?? group.started_at,
+                }));
+            // Update participants to reflect current languages in the session
+            const numParticipants = ctxViewMode === 'three_way' ? 3 : 2;
+            const ctxParticipants: ConvParticipant[] = Array.from({ length: numParticipants }, (_, i) => ({
+                speaker_label: (['A', 'B', 'C'] as const)[i],
+                preferred_language: ctxLangs[i as 0 | 1 | 2],
+            }));
+            return { ...group, messages: ctxConvMessages, participants: ctxParticipants };
+        });
+    }, [convGroups, ctxConvId, ctxMessages, ctxLangs, ctxViewMode]);
 
     // Re-fetch every time the tab comes into focus so new translations appear immediately
     useFocusEffect(
@@ -601,7 +655,7 @@ export default function HistoryScreen() {
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
                 ) : activeTab === 'favorites' ? (() => {
-                    const starredConvs = convGroups.filter(g => g.is_starred);
+                    const starredConvs = effectiveConvGroups.filter(g => g.is_starred);
                     const favItems = items.filter(i => i.outputs?.some(o => o.is_favorite));
                     const favSections = groupBySections(favItems);
 
@@ -668,7 +722,7 @@ export default function HistoryScreen() {
                         .filter(i => i.translation_type !== 'chat')
                         .map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp }));
 
-                    const convItems: MixedItem[] = convGroups.map(g => ({
+                    const convItems: MixedItem[] = effectiveConvGroups.map(g => ({
                         type: 'conversation' as const,
                         group: g,
                         timestamp: g.messages.length > 0
@@ -1023,6 +1077,7 @@ const styles = StyleSheet.create({
     convMsgRow: { marginBottom: 8 },
     convMsgLeft: { alignItems: 'flex-start' },
     convMsgRight: { alignItems: 'flex-end' },
+    convMsgCenter: { alignItems: 'center' },
     convBubble: {
         maxWidth: '82%',
         borderRadius: 14,
@@ -1053,6 +1108,7 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
         gap: 5,
         marginTop: 3,
+        flexShrink: 1,
     },
     convTransInitial: {
         fontSize: 9,
