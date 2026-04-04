@@ -1,7 +1,3 @@
-"""
-Ano-Kamo Backend Main Application
-FastAPI setup with CORS, routers, and middleware
-"""
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -14,7 +10,6 @@ from app.core.config import settings
 from app.db.session import init_db
 from app.services.community_service import evolution_loop
 
-# Setup logging
 logger = logging.getLogger(__name__)
 
 _evolution_task = None
@@ -22,18 +17,13 @@ _evolution_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for startup and shutdown events
-    """
     global _evolution_task
-    # Startup
     logger.info("Starting Ano-Kamo Backend...")
     init_db()
     logger.info("Database initialized")
     _evolution_task = asyncio.create_task(evolution_loop())
     logger.info("Evolution Loop background task started")
     yield
-    # Shutdown
     if _evolution_task:
         _evolution_task.cancel()
         try:
@@ -43,7 +33,6 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Ano-Kamo Backend...")
 
 
-# Create FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     description="AI-powered Filipino language translation API",
@@ -51,7 +40,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -60,7 +48,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(api_v1_router, prefix="/api/v1", tags=["v1"])
 
 

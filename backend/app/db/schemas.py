@@ -1,7 +1,3 @@
-"""
-Pydantic Schemas for Request/Response Validation
-Covers all ERD entities for the Ano-Kamo application.
-"""
 from datetime import datetime
 from typing import Optional, List
 

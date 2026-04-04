@@ -1,6 +1,3 @@
-"""
-Translation Endpoints — Text and Multi-target translation
-"""
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -26,14 +23,13 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
     Single target translation with context-aware AI.
     Checks community-submitted phrases first.
     """
-    # Validate input text
     if not request.text or not request.text.strip():
         raise HTTPException(
             status_code=422,
             detail="Input text is required and cannot be empty."
         )
 
-    # RAG: Get community-verified phrases for this language pair
+    # Inject community-verified phrases into the translation request (RAG).
     community_phrases = []
     try:
         verified = get_verified_phrases(db, source_lang=request.source_lang, target_lang=request.target_lang)
@@ -59,14 +55,14 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
             detail="Translation service is temporarily unavailable. Please try again."
         )
 
-    # Check if translation failed
     if result.get("output_text") == "(Try again)":
         raise HTTPException(
             status_code=503,
             detail="Translation service is temporarily unavailable. Please try again."
         )
 
-    # Persist to DB unless caller requests skip (e.g. conversation retranslation should not create text history)
+    # skip_history is set by the conversation endpoint to avoid creating duplicate history entries
+    # for messages that go through the translate endpoint internally.
     translation_id = None
     if not request.skip_history:
         try:
@@ -106,14 +102,13 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
     """
     Multi-target translation (one input → up to 2 outputs).
     """
-    # Validate input text
     if not request.text or not request.text.strip():
         raise HTTPException(
             status_code=422,
             detail="Input text is required and cannot be empty."
         )
 
-    # RAG: Get community-verified phrases
+    # Inject community-verified phrases for RAG-assisted translation.
     community_phrases = []
     try:
         verified = get_verified_phrases(db, source_lang=request.source_lang)
@@ -139,14 +134,12 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
             detail="Translation service is temporarily unavailable. Please try again."
         )
 
-    # Check if any translation failed
     if any(text == "(Try again)" for text in result.get("output_texts", [])):
         raise HTTPException(
             status_code=503,
             detail="Translation service is temporarily unavailable. Please try again."
         )
 
-    # Persist (gracefully handle schema drift)
     translation_id = None
     try:
         t = create_translation(

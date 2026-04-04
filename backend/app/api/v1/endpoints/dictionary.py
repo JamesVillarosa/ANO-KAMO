@@ -1,6 +1,3 @@
-"""
-Dictionary Endpoints — Word lookup with Gemini AI + DB caching
-"""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -26,7 +23,6 @@ async def lookup_word(request: DictionaryLookupRequest, db: Session = Depends(ge
         target_lang=request.target_lang,
     )
 
-    # Record lookup
     if result.get("entry_id"):
         create_dictionary_lookup(
             db,

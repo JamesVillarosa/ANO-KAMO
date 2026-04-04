@@ -86,8 +86,6 @@ const generateMsgId = (): string => {
     });
 };
 
-// interfaces moved to ConversationContext
-
 const FALLBACK_COLOR = { bg: 'rgba(148,163,184,0.42)', text: '#0F172A', trans: 'rgba(0,0,0,0.58)', light: '#64748B' };
 const getColorForLang = (langCode: string) => LANGUAGE_COLORS[langCode] || FALLBACK_COLOR;
 
@@ -141,7 +139,7 @@ function ChatBubble({
             const anim = Animated.loop(
                 Animated.timing(shimmerAnim, {
                     toValue: 1,
-                    duration: 600, // Phase 11.2: 0.6s sweep
+                    duration: 600,
                     useNativeDriver: true,
                 })
             );
@@ -294,7 +292,6 @@ function ChatBubble({
                     </Text>
                 </View>
 
-                {/* Phase 11.1: Source Utility Row (Right-Aligned) */}
                 <View style={styles.bubbleUtilityRow}>
                     <TouchableOpacity
                         onPress={() => tts.speak(msg.text, msg.lang)}
@@ -540,7 +537,6 @@ export default function ConversationScreen() {
 
     const [isSyncShimmering, setIsSyncShimmering] = useState(false);
 
-    // Custom Glassmorphic Modal state (Phase 8.1)
     const [confirmModal, setConfirmModal] = useState<{
         visible: boolean;
         title: string;
@@ -1519,7 +1515,6 @@ export default function ConversationScreen() {
                     </BlurView>
                 </TouchableOpacity>
 
-                {/* Phase 9: Mode-Specific Branding */}
                 <Text style={[styles.headerModeBranding, isDarkMode && { color: '#F8FAFC' }]}>
                     Chat
                 </Text>
@@ -1774,7 +1769,6 @@ export default function ConversationScreen() {
                 }}
             />
 
-            {/* Confirmation Modal (Phase 8.1) */}
             <Portal>
                 <PaperModal
                     visible={confirmModal.visible}
@@ -2303,7 +2297,6 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
     },
 
-    // ── Phase 5 Tone Selector ──
     toneTrigger: {
         padding: 6,
         marginRight: 4,
@@ -2368,7 +2361,6 @@ const styles = StyleSheet.create({
         color: '#F8FAFC',
     },
 
-    // ── Phase 8 Glass Modals ──
     glassModalContainer: {
         margin: 20,
         borderRadius: 28,

@@ -1,6 +1,3 @@
-"""
-Conversation Endpoints — Session management + messages with tone detection
-"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -64,11 +61,9 @@ async def send_message(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Detect tone once
     detected_tone = TranslationService.detect_tone(request.text)
     tone_to_use = request.tone or detected_tone
 
-    # Resolve target language list (support both single and multi-target)
     if request.target_langs:
         target_langs = request.target_langs
     elif request.target_lang:
@@ -76,7 +71,6 @@ async def send_message(
     else:
         raise HTTPException(status_code=400, detail="target_lang or target_langs is required")
 
-    # Translate to each target language
     translations = []
     for tl in target_langs:
         result = TranslationService.translate_text(
@@ -93,7 +87,6 @@ async def send_message(
     else:
         translated_text_stored = json.dumps(translations, ensure_ascii=False)
 
-    # Get/create tone record
     tone_record = get_or_create_tone(db, tone_to_use)
 
     msg = add_message(
@@ -165,8 +158,8 @@ async def refine_message(
     db: Session = Depends(get_db),
 ):
     """
-    Phase 12.1: Refinement Endpoint.
-    Rewrites source and regenerates all translations based on new tone.
+    Rewrite the source message in a new tone and regenerate all target translations.
+    Used when a speaker wants to resend their message with a different register.
     """
     result = TranslationService.refine_and_translate(
         original_text=request.original_text,
@@ -192,7 +185,7 @@ async def validate_custom_tone(request: ValidateToneRequest):
 
     api_key = settings.GEMINI_API_KEY
     if not api_key:
-        # Fallback: basic word-count check
+        # No API key available — fall back to a simple word-count heuristic.
         return {"valid": len(tone.split()) <= 5}
 
     prompt = (
@@ -227,10 +220,9 @@ async def validate_custom_tone(request: ValidateToneRequest):
         return {"valid": False}
 
 
-# Legacy endpoint for simple conversation turns (no session)
 @router.post("/conversation/turn", response_model=ConversationTurnResponse)
 async def conversation_turn(request: ConversationTurnRequest, db: Session = Depends(get_db)):
-    """Quick single conversation turn without session management."""
+    """Single-turn translation without a persistent conversation session."""
     detected_tone = TranslationService.detect_tone(request.text)
     tone_to_use = request.tone or detected_tone
 

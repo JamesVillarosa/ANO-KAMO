@@ -8,15 +8,15 @@ export interface Translation {
 export interface Message {
     id: string;
     text: string;
-    originalText?: string; // Prompt 3: original input before toning
+    originalText?: string; // Original input text before tone rewriting.
     translations: Translation[];
     speaker: number;
     lang: string;
-    tone?: string; // Phase 6.1: bubble-specific tone
-    isNewMessage?: boolean; // Track if this is a new message (for auto-TTS)
-    mode?: string; // Prompt 5: which view mode this message was created in
-    sessionId?: string | null; // Batch 5 Prompt 3: session-gated auto TTS
-    isRegenerating?: boolean; // Batch 5 Prompt 4: retroactive 3-way translation loading
+    tone?: string;
+    isNewMessage?: boolean;
+    mode?: string;
+    sessionId?: string | null; // Used to gate auto-TTS to the active session only.
+    isRegenerating?: boolean; // True while a message is being re-translated in 3-way mode.
 }
 
 interface ConversationContextProps {
@@ -26,7 +26,7 @@ interface ConversationContextProps {
     langs: { 0: string; 1: string; 2: string };
     activeSpeaker: number;
     conversationId: string | null;
-    activeTone: string | null; // Phase 6.3: session-wide tone
+    activeTone: string | null;
     hasSpoken: { 0: boolean; 1: boolean; 2: boolean };
     setViewMode: (mode: 'two_way' | 'three_way' | 'face_to_face') => void;
     setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;

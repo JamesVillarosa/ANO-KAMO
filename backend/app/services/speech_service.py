@@ -1,9 +1,3 @@
-"""
-Speech Service
-STT via Groq Cloud (Whisper V3) — free tier, high accuracy for Filipino languages
-TTS via Azure Cognitive Services — natural Filipino voice (BlessicaNeural)
-Fallback TTS via gTTS (Google Text-to-Speech) when Azure is unavailable
-"""
 import io
 import logging
 from typing import Optional

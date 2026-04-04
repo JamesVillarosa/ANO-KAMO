@@ -1,6 +1,3 @@
-"""
-Community Endpoints — Submit phrases, vote, and provide translation feedback
-"""
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -38,13 +35,13 @@ def _run_ai_scan(submission_id: int, term: str, meaning: str, origin: str, sampl
             sub.ai_reasoning = reasoning
             sub.last_scanned = datetime.utcnow()
 
-            # CASE A: Popular — auto-verify immediately
             if popularity == "popular":
+                # Widely used terms are auto-approved immediately.
                 sub.is_verified = True
                 sub.status = "approved"
                 logger.info(f"AI SCAN: '{term}' -> POPULAR (auto-verified)")
             else:
-                # CASE B/C: Rising/Unknown — enters Evolution Loop
+                # Rising or unknown terms enter the Evolution Loop for periodic re-evaluation.
                 sub.popularity_tier = "rising"
                 logger.info(f"AI SCAN: '{term}' -> RISING ({reasoning})")
 
@@ -73,7 +70,6 @@ async def submit_phrase(
         device_id=request.device_id,
     )
 
-    # Trigger AI Linguistic Gatekeeper scan in background
     background_tasks.add_task(
         _run_ai_scan,
         sub.id,

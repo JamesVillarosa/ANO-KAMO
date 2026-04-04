@@ -1,8 +1,3 @@
-"""
-Translation Service — AI Translations via Google Gemini
-Uses direct Gemini REST API (v1beta) for reliability.
-Model: gemini-2.5-flash-lite (fast, cheap, accurate for Filipino languages)
-"""
 import hashlib
 import json
 import logging
@@ -29,7 +24,6 @@ AVAILABLE_TONES = [
     "playful", "sarcastic", "angry", "urgent",
 ]
 
-# ─── 12 Filipino Cultural Tone Strategy Injections ───
 TONE_STRATEGIES: dict[str, str] = {
     "neutral": (
         "Translate naturally without any special tone. Plain, everyday Filipino."
@@ -178,7 +172,6 @@ class TranslationService:
             }
 
         try:
-            # Check in-memory cache first
             cache_key = _make_cache_key(source_lang, target_lang, tone, text)
             if cache_key in _translation_cache:
                 cached_text = _translation_cache[cache_key]
@@ -196,11 +189,9 @@ class TranslationService:
             src = SUPPORTED_LANGUAGES.get(source_lang, source_lang)
             tgt = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
 
-            # Build prompt
             parts = [f"{src}→{tgt}"]
             if tone:
                 parts.append(f"tone:{tone}")
-                # Inject cultural strategy if available
                 strategy = TONE_STRATEGIES.get(tone)
                 if strategy:
                     parts.append(f"STRATEGY: {strategy}")
@@ -215,7 +206,6 @@ class TranslationService:
 
             logger.info(f"Gemini prompt: {prompt}")
 
-            # Direct REST API call
             url = f"{API_BASE}/models/{MODEL}:generateContent?key={api_key}"
             payload = {
                 "system_instruction": {
@@ -297,7 +287,6 @@ class TranslationService:
                 except Exception as retry_err:
                     logger.warning(f"Identity retry also failed: {retry_err}")
 
-            # Store in cache
             _translation_cache[cache_key] = translated
 
             return {
@@ -311,7 +300,7 @@ class TranslationService:
         except Exception as e:
             logger.error(f"Gemini API call error: {type(e).__name__}: {e}\n{traceback.format_exc()}")
             detected = TranslationService._heuristic_tone(text)
-            # Phase 7.1: Retry once with neutral tone before giving up
+            # If a specific tone caused the failure, retry once without it before returning an error.
             if tone and tone != "neutral":
                 logger.info("Retrying with neutral tone as fallback...")
                 try:
@@ -328,7 +317,7 @@ class TranslationService:
                 "input_text": text,
                 "source_lang": source_lang,
                 "target_lang": target_lang,
-                "output_text": "(Try again)",  # Phase 7.2: user-friendly error
+                "output_text": "(Try again)",
                 "tone": tone or detected,
                 "detected_tone": detected,
             }
@@ -364,8 +353,6 @@ class TranslationService:
             "detected_tone": detected,
         }
 
-    # ────────────────── Refinement (Phase 12.1) ──────────────────
-
     @staticmethod
     def refine_and_translate(
         original_text: str,
@@ -374,8 +361,8 @@ class TranslationService:
         new_tone: str,
     ) -> dict:
         """
-        Phase 12.1 Refinement Pipeline:
-        Rewrite source text to match new_tone, then translate to target_langs.
+        Rewrite the source text to match a new tone, then produce translations for all target languages.
+        Both the refined source and the translations are returned in a single response.
         """
         api_key = TranslationService._get_api_key()
         if not api_key:

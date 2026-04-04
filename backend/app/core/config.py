@@ -1,30 +1,20 @@
-"""
-Application Configuration
-Settings loaded from environment variables via Pydantic
-"""
 from typing import Any
 
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings"""
-
-    # App Info
     APP_NAME: str = "Ano-Kamo Backend"
     VERSION: str = "0.1.0"
 
-    # Database
     DATABASE_URL: str = "sqlite:///./app.db"
 
-    # Debug & Logging
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
-    # CORS — allow all origins (dev mode)
+    # Allow all origins in development. Restrict this in production deployment.
     CORS_ORIGINS: list[str] = ["*"]
 
-    # External APIs
     GEMINI_API_KEY: str = ""
     WHISPER_API_KEY: str = ""
     GROQ_API_KEY: str = ""
@@ -32,8 +22,6 @@ class Settings(BaseSettings):
     AZURE_SPEECH_REGION: str = "southeastasia"
 
     class Config:
-        """Pydantic config"""
-
         env_file = ".env"
         case_sensitive = True
 
@@ -41,5 +29,4 @@ class Settings(BaseSettings):
         super().__init__(**data)
 
 
-# Global settings instance
 settings = Settings()

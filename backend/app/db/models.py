@@ -1,7 +1,3 @@
-"""
-SQLAlchemy Models for Ano-Kamo Backend
-Matches the ERD from the academic paper with all 11 entities.
-"""
 import uuid
 from datetime import datetime
 

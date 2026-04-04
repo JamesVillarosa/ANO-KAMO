@@ -1,287 +1,289 @@
-# Ano-Kamo? 🎤🌍
+# Ano-Kamo?
 
-**An AI-powered multimodal Filipino language translation app**
+Ano-Kamo? is a mobile translation application for Philippine languages. It supports text translation, real-time voice conversation, and camera-based OCR translation across Tagalog, Cebuano, Hiligaynon, and English. Translation is powered by Google Gemini with community-contributed glossary augmentation.
 
-Translate between Tagalog, Cebuano, and Hiligaynon with text, voice, and OCR capabilities. Powered by AI with community-driven phrase submissions and history tracking.
-
----
-
-## 🆕 Recent Updates (March 2026)
-
-**✅ Critical Fixes Implemented:**
-- ✅ **Fast Refresh** - Hot reload now works on web and iOS (Expo Go)
-- ✅ **Input Validation** - Empty/invalid input shows user-friendly messages
-- ✅ **Error Handling** - Translation errors show proper error messages (not raw JSON)
-- ✅ **Smart Translation** - 2-way → 3-way mode no longer re-translates unnecessarily
-
-**📋 See Documentation:**
-- `/COMPLETED_CHANGES.md` - Full list of changes made
-- `/IMPLEMENTATION_STATUS.md` - Detailed guide for remaining features
-- `/TESTING_GUIDE.md` - Step-by-step testing instructions
-
-**🧪 Test the fixes:** Run tests 1-5 in `/TESTING_GUIDE.md` (all should pass)
+The name comes from the Cebuano and Hiligaynon greeting meaning "How are you?" — reflecting the app's focus on enabling natural communication across Filipino language groups.
 
 ---
 
-## 🎯 Project Overview
+## Supported Languages
 
-Ano-Kamo? is a full-stack application designed to break language barriers within the Philippines by providing seamless translation across three major Filipino languages:
-- **Tagalog** (Filipino)
-- **Cebuano** (Bisaya)
-- **Hiligaynon** (Ilonggo)
+| Code | Language |
+|---|---|
+| `tl` | Tagalog |
+| `ceb` | Cebuano |
+| `hil` | Hiligaynon |
+| `en` | English |
 
-### Key Features
+---
 
-- **Text Translation**: Single or dual output translations
-- **Voice Conversation**: Real-time speech-to-text, translate, text-to-speech
-- **OCR Translation**: Extract text from images and translate
-- **Community Submissions**: Users can propose and vote on translations
-- **History & Favorites**: Track past translations and save favorites
-- **Tone/Sentiment Awareness**: Auto-detect or manually select translation tone
+## Features
 
-## 📁 Repository Structure
+**Text Translation**
+- Translate between any pair of the four supported languages
+- 2-way mode: one source to one target
+- 3-way mode: one source to two targets simultaneously
+- 12 tone options (Neutral, Formal, Respectful, Casual, Street, Taglish, Playful, Sarcastic, and more)
+- Custom tone input validated via Gemini
+- Community-verified phrase glossary injected into translation prompts (RAG)
+
+**Voice Conversation**
+- Real-time speech-to-text via Groq Whisper
+- Two-speaker and three-speaker conversation modes with automatic translation per turn
+- Text-to-speech playback via Azure Cognitive Services (Filipino neural voice)
+- Tone refinement: rewrite and retranslate a message in a different register
+
+**Camera / OCR**
+- Capture or select an image to extract and translate visible text
+- Text overlay with bounding boxes positioned on the original photo
+- Language switching retranslates without recapturing the image
+
+**Dictionary**
+- Tap any translated word to look up its definition, pronunciation, part of speech, synonyms, root word, and an example sentence
+- Results are cached in the database after the first lookup
+
+**History**
+- Full translation history grouped by date, filterable by device
+- Conversation session history with per-message breakdown
+- Favorite and star individual entries
+
+**Community**
+- Submit Filipino slang and regional phrases with a proposed translation
+- AI-powered Linguistic Gatekeeper (Gemini) evaluates cultural relevance on submission
+- Background Evolution Loop periodically re-evaluates rising terms and graduates them to the verified glossary
+- Community voting: submissions reaching 10 net upvotes are auto-approved
+
+---
+
+## Architecture
+
+The project is split into two independent services:
 
 ```
-ano-kamo/
-├── README.md (this file)
-├── backend/              # FastAPI server
-│   ├── README.md
-│   ├── pyproject.toml
-│   ├── .env.example
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── api/v1/
-│   │   │   ├── router.py
-│   │   │   └── endpoints/
-│   │   │       ├── translate.py
-│   │   │       ├── conversation.py
-│   │   │       ├── community.py
-│   │   │       ├── history.py
-│   │   │       └── health.py
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   └── logging.py
-│   │   ├── services/
-│   │   │   ├── translation_service.py
-│   │   │   └── speech_service.py
-│   │   ├── db/
-│   │   │   ├── session.py
-│   │   │   ├── base.py
-│   │   │   ├── models.py
-│   │   │   ├── schemas.py
-│   │   │   └── crud.py
-│   │   └── migrations/ (Alembic)
-│   └── tests/
-│
-└── frontend/             # React Native Expo app
-    ├── README.md
-    ├── package.json
-    ├── tsconfig.json
-    ├── .env.example
-    ├── app/ (Expo Router)
-    │   ├── _layout.tsx
-    │   ├── index.tsx
-    │   ├── translate.tsx
-    │   ├── conversation.tsx
-    │   ├── ocr.tsx
-    │   ├── history.tsx
-    │   ├── community.tsx
-    │   └── settings.tsx
-    ├── src/
-    │   ├── components/
-    │   │   ├── LanguagePicker.tsx
-    │   │   ├── TranslationPanel.tsx
-    │   │   ├── ToneSelector.tsx
-    │   │   └── MessageBubble.tsx
-    │   ├── lib/
-    │   │   ├── api.ts
-    │   │   └── types.ts
-    │   └── state/
-    │       └── useHistoryStore.ts
-    ├── assets/
-    └── .gitignore
+ANOKAMO/
+├── backend/        # FastAPI REST API (Python)
+└── frontend/       # React Native + Expo mobile app (TypeScript)
 ```
 
-## 🛠 Tech Stack
+The mobile app communicates with the backend over HTTP. During development, the backend is exposed to the device via a local network IP or a tunnel (ngrok/localtunnel).
+
+---
+
+## Tech Stack
 
 ### Backend
-- **Python 3.11+**
-- **FastAPI** - Modern web framework
-- **Uvicorn** - ASGI server
-- **Pydantic v2** - Data validation
-- **SQLAlchemy 2.0** - ORM
-- **Alembic** - Database migrations
-- **SQLite** - Development database (easily swap to PostgreSQL)
-- **httpx** - Async HTTP client for external APIs
-- **pytest** - Testing framework
+- Python 3.11+
+- FastAPI with Uvicorn
+- SQLAlchemy 2.0 (ORM) + Alembic (migrations)
+- SQLite for development, compatible with PostgreSQL for production
+- Pydantic v2 for request/response validation
+- httpx for external API calls
+- Google Gemini 2.5 Flash-Lite (translation, OCR, dictionary, tone validation)
+- Groq Cloud Whisper large-v3-turbo (speech-to-text)
+- Azure Cognitive Services (text-to-speech, Filipino neural voice)
+- gTTS as fallback TTS when Azure is unavailable
 
 ### Frontend
-- **React Native with Expo** - Cross-platform mobile
-- **TypeScript** - Type safety
-- **Expo Router** - Navigation
-- **axios** - HTTP client
-- **react-native-paper** - UI components
-- **iOS/Android support**
+- React Native 0.81 with Expo 54
+- TypeScript 5.3
+- Expo Router 6 (file-based navigation)
+- React Native Paper 5 (Material Design components)
+- Axios (HTTP client)
+- Expo Camera, Image Picker, AV (media access)
+- Expo Blur (native blur effects on iOS)
+- React Context for conversation and theme state
 
-## 🚀 Getting Started
+---
 
-### Prerequisites
+## Getting Started
+
+### Requirements
 
 - Python 3.11+
 - Node.js 18+ and npm
-- Git
+- A Google Gemini API key
+- A Groq API key (for speech-to-text)
+- An Azure Cognitive Services speech key (for text-to-speech)
 
-### Backend Setup
+### Backend
 
 ```bash
 cd backend
 
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# Install dependencies
 pip install -e .
 
-# Set up environment variables
 cp .env.example .env
-# Edit .env if needed (defaults should work for local dev)
+# Edit .env and add your API keys
 
-# Run database migrations
 alembic upgrade head
 
-# Start the server
 uvicorn app.main:app --reload --port 8000
 ```
 
-Server runs at `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+The API runs at `http://localhost:8000`. Documentation is available at `/docs`.
 
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
 
-# Install dependencies
 npm install
 
-# Set up environment variables
-cp .env.example .env
-# Update EXPO_PUBLIC_API_BASE_URL if backend is not at localhost:8000
+# Set the backend URL to your machine's local IP address
+echo "EXPO_PUBLIC_API_BASE_URL=http://<your-ip>:8000" > .env
 
-# Start Expo
 npx expo start
 ```
 
-Then:
-- Press `i` for iOS simulator (macOS only)
-- Press `a` for Android emulator
-- Scan QR code with Expo Go app on physical device
+On the Expo developer menu, press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with the Expo Go app on a physical device.
 
-## 📚 API Endpoints
+---
+
+## API Reference
+
+All endpoints are prefixed with `/api/v1`.
 
 ### Health
-- `GET /api/v1/health` - Server status
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Server status and timestamp |
 
 ### Translation
-- `POST /api/v1/translate` - Translate text to one language
-  ```json
-  {
-    "text": "Hello",
-    "source_lang": "en",
-    "target_lang": "tl",
-    "tone": "neutral"
-  }
-  ```
 
-- `POST /api/v1/translate/multi` - Translate to multiple languages
-  ```json
-  {
-    "text": "Hello",
-    "source_lang": "en",
-    "target_langs": ["tl", "ceb"],
-    "tone": "neutral"
-  }
-  ```
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/translate` | Translate to a single target language |
+| POST | `/translate/multi` | Translate to up to two target languages |
+
+```json
+// POST /translate
+{
+  "text": "Kamusta ka?",
+  "source_lang": "tl",
+  "target_lang": "ceb",
+  "tone": "casual",
+  "device_id": "optional-uuid"
+}
+```
 
 ### Conversation
-- `POST /api/v1/conversation/turn` - Single conversation turn with tone detection
-  ```json
-  {
-    "text": "How are you?",
-    "source_lang": "en",
-    "target_lang": "tl",
-    "tone": null
-  }
-  ```
 
-### History & Favorites
-- `GET /api/v1/history` - Get translation history
-- `POST /api/v1/history` - Save translation to history
-- `POST /api/v1/favorites` - Add to favorites
-- `GET /api/v1/favorites` - Get favorited translations
-- `DELETE /api/v1/favorites/{id}` - Remove from favorites
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/conversation` | Start a new conversation session |
+| POST | `/conversation/{id}/message` | Send a message and receive translations |
+| GET | `/conversation/{id}/messages` | Get all messages in a session |
+| POST | `/conversation/refine` | Rewrite a message in a new tone and retranslate |
+| POST | `/conversation/turn` | Single-turn translation without a session |
+| POST | `/tone/validate` | Validate a custom tone string |
+
+### History
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/history` | List translation history (filter by `?device_id=`) |
+| POST | `/history` | Save a translation with one or more outputs |
+| DELETE | `/history/{id}` | Delete one translation |
+| DELETE | `/history/clear-all` | Delete all translation history |
+| GET | `/history/conversations` | List conversation sessions with messages |
+| DELETE | `/history/conversations/{id}` | Delete a conversation session |
+| DELETE | `/history/conversations/clear-all` | Delete all conversation sessions |
+| POST | `/history/conversations/{id}/star` | Toggle starred status |
+| POST | `/favorites/toggle` | Toggle favorite on a translation output |
+| GET | `/favorites` | List favorited outputs |
 
 ### Community
-- `GET /api/v1/community/submissions` - Get submissions
-- `POST /api/v1/community/submissions` - Submit a translation
 
-See [backend/README.md](backend/README.md) for detailed documentation and curl examples.
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/community/submissions` | Submit a phrase with a proposed translation |
+| GET | `/community/submissions` | List submissions (filter by `?status=`) |
+| POST | `/community/submissions/{id}/vote` | Vote on a submission (`?direction=1` or `-1`) |
+| POST | `/feedback` | Submit like/dislike on a translation |
+| GET | `/feedback/{id}/counts` | Get like and dislike counts |
 
-## 🔐 Environment Configuration
+### Dictionary
 
-Both backend and frontend use `.env.example` files (never commit real `.env` files):
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/dictionary/lookup` | Look up a word with full lexical details |
 
-**Backend (.env.example):**
-```
+### OCR
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/ocr/process-full` | Extract text from image, translate, return bounding boxes |
+| POST | `/ocr/translate-blocks` | Retranslate stored OCR blocks to a new language |
+| POST | `/ocr/extract` | Extract and translate text without bounding boxes (legacy) |
+
+### Speech
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/speech/transcribe` | Transcribe audio file to text (multipart/form-data) |
+| GET | `/speech/tts` | Convert text to speech, returns MP3 audio |
+
+---
+
+## Configuration
+
+### Backend (.env)
+
+```ini
 DATABASE_URL=sqlite:///./app.db
 DEBUG=False
 LOG_LEVEL=INFO
-CORS_ORIGINS=["http://localhost:3000","http://localhost:19000"]
-# API keys for external services (e.g., Gemini, Whisper)
-GEMINI_API_KEY=your-key-here
-WHISPER_API_KEY=your-key-here
+
+# Restrict in production to your frontend domain
+CORS_ORIGINS=["*"]
+
+GEMINI_API_KEY=
+GROQ_API_KEY=
+AZURE_SPEECH_KEY=
+AZURE_SPEECH_REGION=southeastasia
 ```
 
-**Frontend (.env.example):**
-```
-EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
+See `backend/.env.example` for the full template.
+
+### Frontend (.env)
+
+```ini
+EXPO_PUBLIC_API_BASE_URL=http://<backend-host>:8000
 ```
 
-## 🧪 Testing
+---
 
-### Backend Tests
+## Development
+
+### Running backend tests
 
 ```bash
 cd backend
 pytest tests/ -v
 ```
 
-### Frontend Testing
+### Clearing the Expo cache
 
-Coming soon with Jest/React Native Testing Library setup.
+```bash
+cd frontend
+npx expo start --clear
+```
 
-## 📖 Documentation
+### Resetting the database
 
-- [Backend README](backend/README.md) - Setup, architecture, API details, curl examples
-- [Frontend README](frontend/README.md) - Setup, screens, components, build instructions
-
-## 🤝 Contributing
-
-1. Create a feature branch
-2. Make changes
-3. Test thoroughly
-4. Submit pull request
-
-## 📝 License
-
-MIT License - see LICENSE file for details
-
-## 🙏 Acknowledgments
-
-Built to celebrate and preserve Filipino languages through technology.
+```bash
+cd backend
+rm app.db
+alembic upgrade head
+```
 
 ---
 
-**Questions or Issues?** Open an issue or check the individual README files in backend/ and frontend/.
+## Documentation
+
+- [Backend README](backend/README.md) — setup, models, full API reference with curl examples
+- [Frontend README](frontend/README.md) — setup, screen descriptions, component overview, build instructions

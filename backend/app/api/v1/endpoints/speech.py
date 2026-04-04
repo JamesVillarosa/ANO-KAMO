@@ -1,6 +1,3 @@
-"""
-Speech Endpoints — STT (Groq Whisper) and TTS (gTTS)
-"""
 from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import Response
 

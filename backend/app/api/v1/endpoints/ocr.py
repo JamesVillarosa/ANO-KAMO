@@ -1,6 +1,3 @@
-"""
-OCR Endpoints — Text extraction, translation, and overlay via Gemini Vision
-"""
 import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -74,7 +71,6 @@ async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends
         target_lang=request.target_lang,
     )
 
-    # Save to history
     if result.get("full_extracted_text"):
         try:
             t = create_translation(

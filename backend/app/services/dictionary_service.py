@@ -1,8 +1,3 @@
-"""
-Dictionary Service — Word lookup via Gemini REST API with DB caching
-Uses direct httpx REST calls to Gemini 2.0 Flash-Lite (v1beta) for reliability.
-Provides pronunciation, definition, part of speech, example sentences, synonyms, and root word.
-"""
 import json
 import logging
 from typing import Optional

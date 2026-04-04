@@ -85,12 +85,12 @@ export default function HomeScreen() {
     getDeviceId().then(id => { deviceIdRef.current = id; });
   }, []);
 
-  // Track what changed to avoid unnecessary re-translations (PROMPT 7)
+  // Track prior values so we only re-translate when something meaningful changed.
   const prevSourceTextRef = useRef('');
   const prevSourceLangRef = useRef(sourceLang);
   const prevTargetLang1Ref = useRef(targetLang1);
   const prevTargetLang2Ref = useRef(targetLang2);
-  // Guard against concurrent translateMulti calls (prevents double-save in Strict Mode)
+  // Guard against concurrent translateMulti calls (prevents double-save in Strict Mode).
   const isTranslatingRef = useRef(false);
 
   // Feedback state
@@ -99,7 +99,6 @@ export default function HomeScreen() {
   const [showMenu1, setShowMenu1] = useState(false);
   const [showMenu2, setShowMenu2] = useState(false);
 
-  // Menu anchor positions for PROMPT 3
   const menuButtonRef1 = useRef<View>(null);
   const menuButtonRef2 = useRef<View>(null);
   const [menuPosition1, setMenuPosition1] = useState({ x: 0, y: 0, width: 0, height: 0 });
@@ -169,7 +168,7 @@ export default function HomeScreen() {
     return () => sub.remove();
   }, [feedbackModalVisible, refineModal.visible, pickerTarget, dictVisible, breakdownVisible, showMenu1, showMenu2]);
 
-// PROMPT 7: Auto-clear input when source language changes
+  // Clear all state when the source language changes so stale translations are not displayed.
   useEffect(() => {
     if (isFirstSourceLangRender.current) {
       isFirstSourceLangRender.current = false;
@@ -221,7 +220,7 @@ export default function HomeScreen() {
     }
   }, [speech.isProcessing, speech.transcript]);
 
-  // PROMPT 7: Smart translation - only re-translate when necessary
+  // Re-translate only when the source text or a relevant language selection actually changes.
   useEffect(() => {
     if (!sourceText.trim() || sourceText.length < 2) {
       setTranslated1('');
@@ -457,7 +456,6 @@ export default function HomeScreen() {
 
         <View style={{ flex: 1 }} />
 
-        {/* 3-dot menu - PROMPT 3: Anchored positioning */}
         <View ref={target === 1 ? menuButtonRef1 : menuButtonRef2} collapsable={false}>
           <TouchableOpacity
             style={styles.iconCircle}
@@ -818,7 +816,6 @@ export default function HomeScreen() {
             </View>
           </Modal>
 
-        {/* PROMPT 3: Anchored Popover Menus */}
         <AnchoredPopoverMenu
           visible={showMenu1}
           onDismiss={() => setShowMenu1(false)}

@@ -1,360 +1,273 @@
 # Ano-Kamo Backend
 
-FastAPI server for AI-powered Filipino language translation.
+FastAPI server that powers the Ano-Kamo translation application. Handles text translation, voice transcription, OCR, dictionary lookups, conversation sessions, and community phrase submissions. All AI features are backed by Google Gemini and Groq Whisper.
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
-- Python 3.11+
-- pip
+## Prerequisites
 
-### Installation & Running
+- Python 3.11 or higher
+- A Google Gemini API key (required for translation, OCR, and dictionary)
+- A Groq API key (required for speech-to-text via Whisper)
+- An Azure Cognitive Services speech key (required for text-to-speech)
+
+---
+
+## Setup
 
 ```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+cd backend
 
-# Install dependencies
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+# Install the package and its dependencies
 pip install -e .
 
-# Create .env file from example
+# Create your environment file from the template
 cp .env.example .env
+# Edit .env and fill in your API keys
 
-# Run database migrations
+# Apply database migrations
 alembic upgrade head
 
-# Start server (development with auto-reload)
+# Start the development server
 uvicorn app.main:app --reload --port 8000
 ```
 
-Server will be available at:
-- **API**: `http://localhost:8000`
-- **Docs (Swagger UI)**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
+The API will be available at `http://localhost:8000`.
 
-## 📁 Project Structure
+Interactive documentation is served at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## Project Structure
 
 ```
 backend/
 ├── app/
-│   ├── main.py                 # FastAPI app setup
-│   ├── api/
-│   │   └── v1/
-│   │       ├── router.py       # API v1 routes
-│   │       └── endpoints/
-│   │           ├── health.py
-│   │           ├── translate.py
-│   │           ├── conversation.py
-│   │           ├── history.py
-│   │           └── community.py
+│   ├── main.py                     # FastAPI app, CORS middleware, lifespan hooks
+│   ├── api/v1/
+│   │   ├── router.py               # Combines all v1 endpoint routers
+│   │   └── endpoints/
+│   │       ├── health.py           # Health check
+│   │       ├── translate.py        # Single and multi-target translation
+│   │       ├── conversation.py     # Session-based conversation and tone refinement
+│   │       ├── history.py          # Translation and conversation history
+│   │       ├── community.py        # Community phrase submissions and voting
+│   │       ├── dictionary.py       # Word lookup
+│   │       ├── ocr.py              # Image OCR and translation
+│   │       └── speech.py           # Speech-to-text and text-to-speech
 │   ├── core/
-│   │   ├── config.py           # Config & env variables
-│   │   └── logging.py          # Logging setup
-│   ├── services/
-│   │   ├── translation_service.py   # Gemini integration
-│   │   └── speech_service.py        # Whisper integration
+│   │   ├── config.py               # Settings loaded from .env via Pydantic
+│   │   └── logging.py              # Rotating file + console logging setup
 │   ├── db/
-│   │   ├── session.py          # Database session
-│   │   ├── base.py             # Declarative base
-│   │   ├── models.py           # SQLAlchemy models
-│   │   ├── schemas.py          # Pydantic schemas
-│   │   └── crud.py             # CRUD operations
-│   └── migrations/             # Alembic migrations
+│   │   ├── base.py                 # SQLAlchemy declarative base
+│   │   ├── session.py              # Engine, session factory, and init_db()
+│   │   ├── models.py               # ORM models (11 entities)
+│   │   ├── schemas.py              # Pydantic request/response schemas
+│   │   └── crud.py                 # Database access functions
+│   ├── services/
+│   │   ├── translation_service.py  # Gemini translation, tone detection, refinement
+│   │   ├── speech_service.py       # Groq Whisper STT + Azure/gTTS TTS
+│   │   ├── ocr_service.py          # Gemini Vision OCR with bounding boxes
+│   │   ├── dictionary_service.py   # Gemini dictionary lookup with DB caching
+│   │   └── community_service.py    # Linguistic Gatekeeper + Evolution Loop
+│   └── migrations/                 # Alembic migration scripts
 ├── tests/
+│   ├── conftest.py
 │   ├── test_health.py
 │   └── test_translate.py
-├── pyproject.toml              # Project metadata & dependencies
-├── .env.example                # Environment template
-└── README.md                   # This file
+├── pyproject.toml                  # Package metadata and dependencies
+├── alembic.ini                     # Alembic configuration
+└── .env.example                    # Environment variable template
 ```
 
-## 🗄️ Database Models
+---
 
-### TranslationHistory
-Stores all translations performed by users.
+## Database Models
 
-```python
-class TranslationHistory(Base):
-    id: int                      # Primary key
-    source_lang: str            # Source language code (e.g., "tl", "en")
-    target_langs: list[str]     # Target language codes (JSON)
-    input_text: str             # Original text
-    output_texts: list[str]     # Translated texts (JSON)
-    tone: str | None            # Tone used in translation
-    detected_tone: str | None   # Auto-detected tone
-    created_at: datetime
-    is_favorite: bool = False
-```
+The database contains 14 tables. The main entities are:
 
-### CommunitySubmission
-User-submitted phrase translations for community review.
+| Model | Description |
+|---|---|
+| `Device` | Identifies a mobile device by UUID |
+| `Translation` | One translation request (input text, language, method) |
+| `TranslationOutput` | One translated result per target language |
+| `Conversation` | A two-way or three-way conversation session |
+| `Participant` | A speaker within a conversation with their preferred language |
+| `Message` | A single message within a conversation |
+| `Tone` | A reusable tone label (neutral, formal, casual, etc.) |
+| `OcrRequest` | An OCR session linked to a device |
+| `OcrText` | Extracted text from an OCR request |
+| `DictionaryEntry` | A cached word entry with definition, pronunciation, and examples |
+| `DictionaryLookup` | A record of a word lookup event |
+| `CommunitySubmission` | A user-submitted phrase with proposed translation |
+| `TranslationCache` | In-database cache for translation results |
+| `TranslationFeedback` | Like/dislike feedback on a translation output |
 
-```python
-class CommunitySubmission(Base):
-    id: int
-    phrase: str                 # Original phrase
-    source_lang: str
-    target_lang: str
-    proposed_translation: str
-    notes: str | None           # Optional notes from submitter
-    created_at: datetime
-    status: str = "pending"     # pending, approved, rejected
-```
+---
 
-## 📡 API Endpoints
+## API Reference
 
-### Health Check
+All endpoints are prefixed with `/api/v1`.
+
+### Health
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Returns server status and current timestamp |
+
+### Translation
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/translate` | Translate text to a single target language |
+| POST | `/translate/multi` | Translate text to up to two target languages simultaneously |
+
+Supported language codes: `tl` (Tagalog), `ceb` (Cebuano), `hil` (Hiligaynon), `en` (English).
+
 ```bash
-curl http://localhost:8000/api/v1/health
-```
-
-Response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-01-15T10:30:00Z"
-}
-```
-
-### Translate Single Language
-```bash
+# Single translation
 curl -X POST http://localhost:8000/api/v1/translate \
   -H "Content-Type: application/json" \
-  -d '{
-    "text": "Hello, how are you?",
-    "source_lang": "en",
-    "target_lang": "tl",
-    "tone": "friendly"
-  }'
-```
+  -d '{"text": "Kumusta ka?", "source_lang": "tl", "target_lang": "en", "tone": "casual"}'
 
-Response:
-```json
-{
-  "input_text": "Hello, how are you?",
-  "source_lang": "en",
-  "target_lang": "tl",
-  "output_text": "Halo, paano ka?",
-  "tone": "friendly",
-  "detected_tone": "friendly"
-}
-```
-
-### Translate Multiple Languages
-```bash
+# Multi-target translation
 curl -X POST http://localhost:8000/api/v1/translate/multi \
   -H "Content-Type: application/json" \
-  -d '{
-    "text": "Hello, how are you?",
-    "source_lang": "en",
-    "target_langs": ["tl", "ceb"],
-    "tone": "neutral"
-  }'
+  -d '{"text": "Kumusta ka?", "source_lang": "tl", "target_langs": ["ceb", "hil"]}'
 ```
 
-Response:
-```json
-{
-  "input_text": "Hello, how are you?",
-  "source_lang": "en",
-  "target_langs": ["tl", "ceb"],
-  "output_texts": [
-    "Halo, paano ka?",
-    "Halo, paano ka?"
-  ],
-  "tone": "neutral",
-  "detected_tone": "neutral"
-}
+### Conversation
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/conversation` | Create a new conversation session |
+| POST | `/conversation/{id}/message` | Send a message and receive translations |
+| GET | `/conversation/{id}/messages` | Retrieve all messages in a session |
+| POST | `/conversation/refine` | Rewrite a message in a new tone and retranslate |
+| POST | `/conversation/turn` | Single-turn translation without a session |
+| POST | `/tone/validate` | Validate a custom tone string |
+
+### History
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/history` | List translation history, optionally filtered by `device_id` |
+| POST | `/history` | Create a history entry with one or more outputs |
+| DELETE | `/history/{id}` | Delete a single translation from history |
+| DELETE | `/history/clear-all` | Delete all translation history |
+| GET | `/history/conversations` | List conversation sessions with their messages |
+| DELETE | `/history/conversations/{id}` | Delete a conversation and all its messages |
+| DELETE | `/history/conversations/clear-all` | Delete all conversations |
+| POST | `/history/conversations/{id}/star` | Toggle starred status on a conversation |
+| POST | `/favorites/toggle` | Toggle favorite status on a translation output |
+| GET | `/favorites` | List favorited translation outputs |
+
+### Community
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/community/submissions` | Submit a new phrase with a proposed translation |
+| GET | `/community/submissions` | List submissions, optionally filtered by status |
+| POST | `/community/submissions/{id}/vote` | Upvote or downvote a submission |
+| POST | `/feedback` | Submit like/dislike feedback on a translation |
+| GET | `/feedback/{id}/counts` | Get like and dislike counts for a translation |
+
+### Dictionary
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/dictionary/lookup` | Look up a word's definition, pronunciation, synonyms, and examples |
+
+### OCR
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/ocr/process-full` | Extract text from an image, translate, and return bounding boxes |
+| POST | `/ocr/translate-blocks` | Retranslate existing OCR blocks to a different language |
+| POST | `/ocr/extract` | Legacy: extract and translate without bounding boxes |
+
+### Speech
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/speech/transcribe` | Transcribe audio to text via Groq Whisper |
+| GET | `/speech/tts` | Convert text to speech via Azure (MP3 response) |
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and set the following variables:
+
+```ini
+DATABASE_URL=sqlite:///./app.db
+
+DEBUG=False
+LOG_LEVEL=INFO
+
+# Allow all origins during development. Restrict in production.
+CORS_ORIGINS=["*"]
+
+# Required for translation, OCR, and dictionary features
+GEMINI_API_KEY=
+
+# Required for speech-to-text (Groq Cloud Whisper)
+GROQ_API_KEY=
+
+# Required for text-to-speech (Azure Cognitive Services)
+AZURE_SPEECH_KEY=
+AZURE_SPEECH_REGION=southeastasia
 ```
 
-### Conversation Turn
+---
+
+## Database Migrations
+
+The project uses Alembic for schema migrations.
+
 ```bash
-curl -X POST http://localhost:8000/api/v1/conversation/turn \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "How are you doing today?",
-    "source_lang": "en",
-    "target_lang": "tl",
-    "tone": null
-  }'
+# Apply all pending migrations
+alembic upgrade head
+
+# Create a new migration after modifying models.py
+alembic revision --autogenerate -m "description of change"
+
+# Revert the most recent migration
+alembic downgrade -1
 ```
 
-Response:
-```json
-{
-  "input_text": "How are you doing today?",
-  "source_lang": "en",
-  "target_lang": "tl",
-  "output_text": "Paano ka ngayon?",
-  "detected_tone": "casual",
-  "tone": "casual"
-}
-```
+On startup, `init_db()` is called automatically. It runs `CREATE TABLE IF NOT EXISTS` for all models and applies any additive schema patches (e.g., adding columns) gracefully.
 
-### Get History
-```bash
-curl http://localhost:8000/api/v1/history
-```
+---
 
-### Save to History
-```bash
-curl -X POST http://localhost:8000/api/v1/history \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_lang": "en",
-    "target_langs": ["tl"],
-    "input_text": "Hello",
-    "output_texts": ["Halo"],
-    "tone": "neutral"
-  }'
-```
+## Running Tests
 
-### Add to Favorites
-```bash
-curl -X POST http://localhost:8000/api/v1/favorites \
-  -H "Content-Type: application/json" \
-  -d '{"history_id": 1}'
-```
-
-### Get Favorites
-```bash
-curl http://localhost:8000/api/v1/favorites
-```
-
-### Remove from Favorites
-```bash
-curl -X DELETE http://localhost:8000/api/v1/favorites/1
-```
-
-### Submit Community Phrase
-```bash
-curl -X POST http://localhost:8000/api/v1/community/submissions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phrase": "Mahal kita",
-    "source_lang": "tl",
-    "target_lang": "en",
-    "proposed_translation": "I love you",
-    "notes": "Common Filipino expression"
-  }'
-```
-
-### Get Community Submissions
-```bash
-curl http://localhost:8000/api/v1/community/submissions
-```
-
-## 🛠️ Development
-
-### Run Tests
 ```bash
 pytest tests/ -v
 ```
 
-### Check Coverage
+---
+
+## Troubleshooting
+
+**Port already in use**
 ```bash
-pytest tests/ --cov=app --cov-report=html
-```
-
-### Format Code
-```bash
-# Using black
-black app/
-
-# Using isort for imports
-isort app/
-```
-
-### Lint
-```bash
-# Using flake8
-flake8 app/
-
-# Using pylint
-pylint app/
-```
-
-## 🔧 Configuration
-
-All configuration comes from environment variables in `.env`:
-
-```ini
-# Database
-DATABASE_URL=sqlite:///./app.db
-
-# Debugging
-DEBUG=False
-LOG_LEVEL=INFO
-
-# CORS (for frontend)
-CORS_ORIGINS=["http://localhost:3000","http://localhost:19000"]
-
-# External APIs (placeholder - add real keys when ready)
-GEMINI_API_KEY=your-key-here
-WHISPER_API_KEY=your-key-here
-```
-
-See `.env.example` for all available options.
-
-## 🗄️ Database Migrations
-
-Using Alembic for migrations:
-
-```bash
-# Create a new migration
-alembic revision --autogenerate -m "Add new field"
-
-# Apply migrations
-alembic upgrade head
-
-# Revert last migration
-alembic downgrade -1
-```
-
-## 🔮 Future Enhancements
-
-- [ ] Real Gemini API integration for translations
-- [ ] Whisper API integration for STT/TTS
-- [ ] User authentication (JWT)
-- [ ] Rate limiting
-- [ ] Caching (Redis)
-- [ ] WebSocket for real-time conversation
-- [ ] Advanced tone detection with ML models
-- [ ] Support for more Filipino dialects
-- [ ] Admin dashboard for community submissions
-
-## 🐛 Troubleshooting
-
-### Port Already in Use
-```bash
-# Change port
 uvicorn app.main:app --reload --port 8001
 ```
 
-### Database Locked
+**Database locked or corrupted**
 ```bash
-# Delete database and restart
 rm app.db
 alembic upgrade head
 ```
 
-### Import Errors
+**Import errors after installing a new dependency**
 ```bash
-# Reinstall in editable mode
 pip install -e .
 ```
-
-## 📝 Notes
-
-- All endpoints return JSON
-- Use standard HTTP status codes (200, 201, 400, 404, 500)
-- Timestamps are in ISO 8601 format
-- Language codes follow ISO 639-1 standard (tl=Tagalog, ceb=Cebuano, etc.)
-
-## 📚 Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [SQLAlchemy 2.0 Docs](https://docs.sqlalchemy.org/20/)
-- [Alembic Documentation](https://alembic.sqlalchemy.org/)
-- [Pydantic v2 Docs](https://docs.pydantic.dev/2.0/)

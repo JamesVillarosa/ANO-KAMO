@@ -1,7 +1,3 @@
-"""
-Community Service — Linguistic Gatekeeper & Evolution Loop
-Uses Gemini 2.0 Flash-Lite to evaluate cultural popularity of submitted slang.
-"""
 import asyncio
 import json
 import logging

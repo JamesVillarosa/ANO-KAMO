@@ -1,16 +1,11 @@
-"""
-Logging Configuration
-"""
 import logging
 import logging.config
 from datetime import datetime
 
 from app.core.config import settings
 
-# Log format
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Logging configuration
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,

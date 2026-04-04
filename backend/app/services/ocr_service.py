@@ -1,8 +1,3 @@
-"""
-OCR Service — Text extraction and translation via Gemini Vision.
-Single-call approach: OCR + translate + bounding boxes in one Gemini API call.
-No Tesseract dependency required.
-"""
 import base64
 import io
 import json
