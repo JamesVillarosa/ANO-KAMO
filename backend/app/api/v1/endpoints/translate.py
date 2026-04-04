@@ -12,6 +12,7 @@ from app.db.schemas import (
     TranslateMultiRequest, TranslateMultiResponse,
 )
 from app.services.translation_service import TranslationService
+from app.utils.validation import is_valid_translation_input
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,11 +24,9 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
     Single target translation with context-aware AI.
     Checks community-submitted phrases first.
     """
-    if not request.text or not request.text.strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Input text is required and cannot be empty."
-        )
+    is_valid, error_msg = is_valid_translation_input(request.text)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail=error_msg)
 
     # Inject community-verified phrases into the translation request (RAG).
     community_phrases = []
@@ -102,11 +101,9 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
     """
     Multi-target translation (one input → up to 2 outputs).
     """
-    if not request.text or not request.text.strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Input text is required and cannot be empty."
-        )
+    is_valid, error_msg = is_valid_translation_input(request.text)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail=error_msg)
 
     # Inject community-verified phrases for RAG-assisted translation.
     community_phrases = []

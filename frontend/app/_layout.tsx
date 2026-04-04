@@ -1,3 +1,7 @@
+import { LogBox } from 'react-native';
+// expo-av is deprecated in SDK 54 but still functional; suppress until migrated to expo-audio
+LogBox.ignoreLogs(['[expo-av]: Expo AV has been deprecated']);
+
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
 import { TouchableOpacity, View, Platform } from 'react-native';

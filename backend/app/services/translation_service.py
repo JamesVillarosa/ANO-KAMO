@@ -115,9 +115,16 @@ def _validate_output_language(text: str, target_lang: str) -> bool:
     markers = LANGUAGE_MARKERS.get(target_lang, [])
     if not markers:
         return True
+    words = text.split()
+    # Skip validation for very short texts — single words / short phrases
+    # are often shared across Filipino languages and will false-fail
+    if len(words) < 4:
+        return True
     text_lower = text.lower()
     matches = sum(1 for m in markers if f" {m} " in f" {text_lower} ")
-    return matches >= 2
+    # Short-medium texts only need 1 marker; longer texts need 2
+    threshold = 1 if len(words) < 8 else 2
+    return matches >= threshold
 
 MODEL = "gemini-2.5-flash-lite"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -226,11 +233,11 @@ class TranslationService:
             def _call_gemini(payload_data):
                 retryable = {429, 500, 502, 503, 504}
                 last_exc: Exception | None = None
-                for attempt in range(4):  # up to 4 attempts
+                for attempt in range(3):  # up to 3 attempts
                     with httpx.Client(timeout=20.0) as client:
                         resp = client.post(url, json=payload_data)
                     if resp.status_code in retryable:
-                        wait = 1.5 * (2 ** attempt)  # 1.5s, 3s, 6s, 12s
+                        wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
                         logger.warning(f"Gemini {resp.status_code} on attempt {attempt + 1}, retrying in {wait}s")
                         last_exc = Exception(f"API {resp.status_code}: {resp.text[:200]}")
                         time.sleep(wait)
@@ -270,8 +277,11 @@ class TranslationService:
                 except Exception as retry_err:
                     logger.warning(f"Retry also failed: {retry_err}")
 
-            # Also retry if output is identical to source (no translation happened)
-            if translated.strip().lower() == text.strip().lower() and source_lang != target_lang:
+            # Also retry if output is identical to source (no translation happened).
+            # Skip for short texts — single words can legitimately be identical across languages.
+            if (translated.strip().lower() == text.strip().lower()
+                    and source_lang != target_lang
+                    and len(text.split()) > 2):
                 logger.warning("Output identical to source, retrying...")
                 retry_prompt = (
                     f"Translate the following text into {tgt_name} ONLY. "

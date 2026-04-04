@@ -22,6 +22,7 @@ from app.db.schemas import (
     RefineRequest, RefineResponse,
 )
 from app.services.translation_service import TranslationService
+from app.utils.validation import is_valid_translation_input
 
 router = APIRouter()
 
@@ -57,6 +58,10 @@ async def send_message(
     db: Session = Depends(get_db),
 ):
     """Send a message in a conversation. Auto-detects tone and translates."""
+    is_valid, error_msg = is_valid_translation_input(request.text)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail=error_msg)
+
     conv = get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -223,6 +228,10 @@ async def validate_custom_tone(request: ValidateToneRequest):
 @router.post("/conversation/turn", response_model=ConversationTurnResponse)
 async def conversation_turn(request: ConversationTurnRequest, db: Session = Depends(get_db)):
     """Single-turn translation without a persistent conversation session."""
+    is_valid, error_msg = is_valid_translation_input(request.text)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail=error_msg)
+
     detected_tone = TranslationService.detect_tone(request.text)
     tone_to_use = request.tone or detected_tone
 

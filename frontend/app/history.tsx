@@ -10,13 +10,10 @@ import {
     Platform,
     StatusBar,
     LayoutAnimation,
-    UIManager,
+
     BackHandler,
 } from 'react-native';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { Text, ActivityIndicator, Portal, Modal as PaperModal } from 'react-native-paper';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
 import FluidAura from '../src/components/FluidAura';

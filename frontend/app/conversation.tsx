@@ -11,15 +11,12 @@ import {
     Dimensions,
     Animated,
     LayoutAnimation,
-    UIManager,
+
     StatusBar,
     BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassBlur as BlurView } from '../src/components/GlassBlur';
@@ -70,6 +67,7 @@ import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 import { useConversation, Message, Translation } from '../src/context/ConversationContext';
 import { getDeviceId } from '../src/utils/device';
+import { isValidTranslationInput, getValidationErrorMessage } from '../src/utils/validation';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1175,8 +1173,13 @@ export default function ConversationScreen() {
     };
 
     const handleSendMessage = async () => {
-        if (!inputText.trim()) return;
-        await handleAutoSend(inputText.trim());
+        const trimmed = inputText.trim();
+        if (!trimmed) return;
+        if (!isValidTranslationInput(trimmed)) {
+            Alert.alert('Invalid Input', getValidationErrorMessage(trimmed));
+            return;
+        }
+        await handleAutoSend(trimmed);
     };
 
     const clearConversation = () => {

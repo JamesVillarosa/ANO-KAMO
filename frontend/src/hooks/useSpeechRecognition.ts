@@ -12,6 +12,36 @@ const SILENCE_THRESHOLD = -40;       // dB — below this = silence
 const SILENCE_DURATION_MS = 3000;    // auto-stop after 3s of silence
 const METERING_INTERVAL_MS = 300;    // check audio level every 300ms
 
+// Speech-optimised recording preset — mono 16 kHz 32 kbps.
+// Whisper is trained at 16 kHz mono, so quality above this is wasted.
+// Smaller files (~20 KB per 5 s) upload faster through localtunnel.
+const SPEECH_RECORDING_OPTIONS: Audio.RecordingOptions = {
+    isMeteringEnabled: true,
+    android: {
+        extension: '.m4a',
+        outputFormat: 2,  // MPEG_4
+        audioEncoder: 3,  // AAC
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 32000,
+    },
+    ios: {
+        extension: '.m4a',
+        outputFormat: '.mp4',
+        audioQuality: 64,  // MEDIUM
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        bitRate: 32000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+    },
+    web: {
+        mimeType: 'audio/webm',
+        bitsPerSecond: 32000,
+    },
+};
+
 interface SpeechRecognitionHook {
     isListening: boolean;
     transcript: string;
@@ -67,10 +97,16 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
 
             // Send to Groq Whisper via backend
             const result = await transcribeAudio(uri, langCode);
-            const text = result.text || '';
+            const text = (result.text || '').trim();
 
-            setTranscript(text);
-            setInterimTranscript('');
+            if (!text) {
+                // Empty transcript = silence / no voice detected
+                setInterimTranscript('No voice detected. Please speak.');
+                setTimeout(() => setInterimTranscript(''), 2500);
+            } else {
+                setTranscript(text);
+                setInterimTranscript('');
+            }
             setIsProcessing(false);
 
             // CRITICAL: Reset stopping flag so mic can be used again
@@ -109,13 +145,8 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
             setInterimTranscript('Listening...');
             isStoppingRef.current = false;
 
-            // Start recording with metering enabled
-            const { recording } = await Audio.Recording.createAsync(
-                {
-                    ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-                    isMeteringEnabled: true,
-                }
-            );
+            // Start recording with speech-optimised preset (mono 16 kHz)
+            const { recording } = await Audio.Recording.createAsync(SPEECH_RECORDING_OPTIONS);
 
             recordingRef.current = recording;
             startTimeRef.current = Date.now();

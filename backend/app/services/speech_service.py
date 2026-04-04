@@ -98,6 +98,23 @@ class SpeechService:
                 result = response.json()
                 text = result.get("text", "").strip()
                 logger.info(f"Transcribed ({language}): {text[:100]}")
+
+                # Whisper hallucinates the prompt hint when there is silence.
+                # Detect this by checking if the transcript is a substring of the
+                # prompt, or if >60 % of its words appear in the prompt.
+                if text and prompt_hint:
+                    text_lower = text.lower()
+                    prompt_lower = prompt_hint.lower()
+                    if text_lower in prompt_lower:
+                        logger.info("Prompt hallucination detected (substring match) — returning empty")
+                        text = ""
+                    else:
+                        text_words = set(text_lower.split())
+                        prompt_words = set(prompt_lower.replace(",", "").split())
+                        if text_words and len(text_words & prompt_words) / len(text_words) > 0.6:
+                            logger.info(f"Prompt hallucination detected (word overlap) — returning empty")
+                            text = ""
+
                 return {
                     "text": text,
                     "language": language,
