@@ -120,9 +120,16 @@ export function useTextToSpeech(): TextToSpeechHook {
             } else {
                 // Native: fetch with headers first (bypasses tunnel browser-warning pages
                 // that cause the native media player to receive HTML instead of audio).
-                const response = await fetch(ttsUrl, {
-                    headers: { 'ngrok-skip-browser-warning': 'true' },
-                });
+                // Retry up to 2 times on transient gateway errors (502/503/504).
+                let response: Response | null = null;
+                for (let attempt = 0; attempt <= 2; attempt++) {
+                    response = await fetch(ttsUrl, {
+                        headers: { 'ngrok-skip-browser-warning': 'true' },
+                    });
+                    if (response.ok || ![502, 503, 504].includes(response.status)) break;
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+                }
+                response = response!;
 
                 if (!response.ok) {
                     throw new Error(`TTS request failed with status ${response.status}`);

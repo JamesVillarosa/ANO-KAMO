@@ -6,6 +6,7 @@ Model: gemini-2.5-flash-lite (fast, cheap, accurate for Filipino languages)
 import hashlib
 import json
 import logging
+import time
 import traceback
 from typing import Optional, List
 
@@ -233,21 +234,31 @@ class TranslationService:
             }
 
             def _call_gemini(payload_data):
-                with httpx.Client(timeout=15.0) as client:
-                    resp = client.post(url, json=payload_data)
-                if resp.status_code != 200:
-                    raise Exception(f"API {resp.status_code}: {resp.text[:200]}")
-                raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                logger.info(f"Gemini raw response: {raw_text}")
-                parsed_data = _parse_response(raw_text)
-                t_text = parsed_data.get("t", "")
-                if not t_text:
-                    t_text = raw_text
-                    logger.warning(f"No 't' key in parsed response, using raw: {raw_text}")
-                tone_val = parsed_data.get("tone", "neutral")
-                if tone_val not in AVAILABLE_TONES:
-                    tone_val = "neutral"
-                return t_text, tone_val
+                retryable = {429, 500, 502, 503, 504}
+                last_exc: Exception | None = None
+                for attempt in range(4):  # up to 4 attempts
+                    with httpx.Client(timeout=20.0) as client:
+                        resp = client.post(url, json=payload_data)
+                    if resp.status_code in retryable:
+                        wait = 1.5 * (2 ** attempt)  # 1.5s, 3s, 6s, 12s
+                        logger.warning(f"Gemini {resp.status_code} on attempt {attempt + 1}, retrying in {wait}s")
+                        last_exc = Exception(f"API {resp.status_code}: {resp.text[:200]}")
+                        time.sleep(wait)
+                        continue
+                    if resp.status_code != 200:
+                        raise Exception(f"API {resp.status_code}: {resp.text[:200]}")
+                    raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    logger.info(f"Gemini raw response: {raw_text}")
+                    parsed_data = _parse_response(raw_text)
+                    t_text = parsed_data.get("t", "")
+                    if not t_text:
+                        t_text = raw_text
+                        logger.warning(f"No 't' key in parsed response, using raw: {raw_text}")
+                    tone_val = parsed_data.get("tone", "neutral")
+                    if tone_val not in AVAILABLE_TONES:
+                        tone_val = "neutral"
+                    return t_text, tone_val
+                raise last_exc or Exception("Gemini API failed after retries")
 
             translated, detected = _call_gemini(payload)
 

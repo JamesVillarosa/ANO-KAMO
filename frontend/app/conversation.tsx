@@ -440,6 +440,9 @@ export default function ConversationScreen() {
     const [loading, setLoading] = useState(false);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+    // Concurrent-send guard — prevents double-send when onSubmitEditing + onPress both fire
+    const isSendingRef = useRef(false);
+
     // Duplicate-message guard — prevents the same message ID from being added twice
     const addedMessageIds = useRef(new Set<string>());
     const addMessageToState = useCallback((newMessage: Message) => {
@@ -894,6 +897,9 @@ export default function ConversationScreen() {
     // Standard mode send
     const handleAutoSend = async (text: string) => {
         if (!text.trim()) return;
+        if (isSendingRef.current) return;
+        isSendingRef.current = true;
+        setInputText(''); // clear immediately so a second tap sees an empty field
 
         // Smart bubble regeneration: if langs or mode changed since last send, regenerate first
         const currentLangs = { 0: lang0, 1: lang1, 2: lang2 };
@@ -958,7 +964,6 @@ export default function ConversationScreen() {
             };
             addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
-            setInputText('');
             lastMessageIdRef.current = msg.id;
         } catch {
             const msg: Message = {
@@ -974,9 +979,9 @@ export default function ConversationScreen() {
             };
             addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
-            setInputText('');
         }
         setLoading(false);
+        isSendingRef.current = false;
     };
 
     // Face-to-Face send
@@ -1511,7 +1516,7 @@ export default function ConversationScreen() {
             <ScrollView
                 ref={scrollRef}
                 style={styles.chatArea}
-                contentContainerStyle={styles.chatContent}
+                contentContainerStyle={[styles.chatContent, { paddingBottom: 220 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
@@ -1806,7 +1811,7 @@ const styles = StyleSheet.create({
 
     // ── Chat (Standard mode) ──
     chatArea: { flex: 1 },
-    chatContent: { padding: 16, paddingBottom: 150 },
+    chatContent: { padding: 16 },
 
     emptyState: { alignItems: 'center', marginTop: 60 },
     emptyTitle: { fontSize: 18, fontWeight: '700', color: '#94A3B8', marginTop: 14 },
@@ -1820,6 +1825,7 @@ const styles = StyleSheet.create({
 
     bubble: {
         padding: 14,
+        paddingBottom: 20,
         borderRadius: 22,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.55)',
@@ -1935,6 +1941,7 @@ const styles = StyleSheet.create({
         gap: 12,
         marginTop: 6,
         paddingTop: 6,
+        paddingBottom: 4,
         flexShrink: 0,
         flexWrap: 'wrap',
     },
