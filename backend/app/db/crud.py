@@ -77,21 +77,27 @@ def create_translation_output(
     db.refresh(o)
     return o
 
-def update_translation_output(
+def create_translation_output_if_new(
     db: Session,
     translation_id: str,
     target_language: str,
     output_text: str,
 ) -> Optional[TranslationOutput]:
-    """Update the first TranslationOutput for a given translation_id with new target lang and text."""
-    o = db.query(TranslationOutput).filter(
-        TranslationOutput.translation_id == translation_id
+    """Create a TranslationOutput only if one doesn't already exist for this translation_id + target_language."""
+    existing = db.query(TranslationOutput).filter(
+        TranslationOutput.translation_id == translation_id,
+        TranslationOutput.target_language == target_language,
     ).first()
-    if o:
-        o.target_language = target_language
-        o.output_text = output_text
-        db.commit()
-        db.refresh(o)
+    if existing:
+        return None  # Already saved — skip
+    o = TranslationOutput(
+        translation_id=translation_id,
+        target_language=target_language,
+        output_text=output_text,
+    )
+    db.add(o)
+    db.commit()
+    db.refresh(o)
     return o
 
 def create_translation_with_outputs(

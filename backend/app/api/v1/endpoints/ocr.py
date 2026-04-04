@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.services.ocr_service import OcrService
 from app.db.session import get_db
-from app.db.crud import create_translation, create_translation_output, update_translation_output
+from app.db.crud import create_translation, create_translation_output, create_translation_output_if_new
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -143,20 +143,20 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest, db: Session =
             "lines": block.get("lines", 1),
         })
 
-    # Update history if translation_id was provided (language switch after capture)
+    # Append to history if translation_id was provided and this target language is new
     if request.translation_id:
         try:
             full_translated = " ".join(
                 b["translated_text"] for b in result_blocks if b.get("translated_text")
             )
-            update_translation_output(
+            create_translation_output_if_new(
                 db,
                 translation_id=request.translation_id,
                 target_language=request.target_lang,
                 output_text=full_translated,
             )
         except Exception as e:
-            logger.warning(f"OCR history update skipped: {e}")
+            logger.warning(f"OCR history append skipped: {e}")
 
     return {"blocks": result_blocks}
 
