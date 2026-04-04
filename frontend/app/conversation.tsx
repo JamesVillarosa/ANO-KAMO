@@ -123,6 +123,9 @@ function ChatBubble({
     const [showCustomInput, setShowCustomInput] = useState(false);
     const [customToneInput, setCustomToneInput] = useState('');
     const [customToneLoading, setCustomToneLoading] = useState(false);
+    const [customToneError, setCustomToneError] = useState('');
+    const [kbHeight, setKbHeight] = useState(0);
+    const menuTopAnim = useRef(new Animated.Value(0)).current;
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     const showShimmer = isSyncShimmering;
@@ -143,6 +146,32 @@ function ChatBubble({
         }
     }, [showShimmer]);
 
+    useEffect(() => {
+        const { height: screenH } = Dimensions.get('window');
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const show = Keyboard.addListener(showEvent, e => {
+            const kbH = e.endCoordinates.height;
+            setKbHeight(kbH);
+            // Slide popup up to sit above the keyboard
+            Animated.timing(menuTopAnim, {
+                toValue: Math.max(8, screenH - kbH - 320),
+                duration: e.duration || 250,
+                useNativeDriver: false,
+            }).start();
+        });
+        const hide = Keyboard.addListener(hideEvent, e => {
+            setKbHeight(0);
+            // Restore to original tap position
+            Animated.timing(menuTopAnim, {
+                toValue: toneMenuAnchor.y,
+                duration: e.duration || 200,
+                useNativeDriver: false,
+            }).start();
+        });
+        return () => { show.remove(); hide.remove(); };
+    }, [toneMenuAnchor.y]);
+
     const shimmerTranslate = shimmerAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [-width, width],
@@ -152,11 +181,16 @@ function ChatBubble({
         const { pageX, pageY } = event.nativeEvent;
         const MENU_WIDTH = 240;
         const MARGIN = 16;
-        const screenWidth = Dimensions.get('window').width;
-        const popupX = Math.max(MARGIN, Math.min(screenWidth - MENU_WIDTH - MARGIN, pageX - MENU_WIDTH / 2));
-        setToneMenuAnchor({ x: popupX, y: pageY + 10 });
+        const { width: screenW, height: screenH } = Dimensions.get('window');
+        const popupX = Math.max(MARGIN, Math.min(screenW - MENU_WIDTH - MARGIN, pageX - MENU_WIDTH / 2));
+        const popupY = pageY + 10;
+        // If keyboard is already visible, open above it immediately
+        const initialTop = kbHeight > 0 ? Math.max(8, screenH - kbHeight - 290) : popupY;
+        menuTopAnim.setValue(initialTop);
+        setToneMenuAnchor({ x: popupX, y: popupY });
         setShowCustomInput(false);
         setCustomToneInput('');
+        setCustomToneError('');
         setToneMenuVisible(true);
     };
 
@@ -186,20 +220,22 @@ function ChatBubble({
         const trimmed = customToneInput.trim();
         if (!trimmed) { triggerShake(); return; }
         setCustomToneLoading(true);
+        setCustomToneError('');
         try {
             const res = await validateCustomTone(trimmed);
             if (res.valid) {
                 setShowCustomInput(false);
                 setToneMenuVisible(false);
+                setCustomToneError('');
                 onRetranslate?.(msg.id, trimmed);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             } else {
                 triggerShake();
-                onShowToast?.("That's not a valid tone. Try something like 'Poetic', 'Excited', or 'Disgusted'.");
+                setCustomToneError(`"${trimmed}" is not a recognized tone. Try something like 'Poetic', 'Formal', or 'Urgent'.`);
             }
         } catch {
             triggerShake();
-            onShowToast?.("That's not a valid tone. Try something like 'Poetic', 'Excited', or 'Disgusted'.");
+            setCustomToneError("Couldn't validate tone. Check your connection and try again.");
         } finally {
             setCustomToneLoading(false);
         }
@@ -326,61 +362,72 @@ function ChatBubble({
                     <>
                         <TouchableOpacity
                             style={StyleSheet.absoluteFill}
-                            onPress={() => { setToneMenuVisible(false); setShowCustomInput(false); setCustomToneInput(''); }}
+                            onPress={() => { setToneMenuVisible(false); setShowCustomInput(false); setCustomToneInput(''); setCustomToneError(''); }}
                         />
-                        <BlurView
-                            intensity={50}
-                            tint={isDarkMode ? 'dark' : 'light'}
+                        {/* Animated.View drives smooth position above the keyboard */}
+                        <Animated.View
                             style={[
                                 styles.toneMenuScroll,
-                                { top: toneMenuAnchor.y, left: toneMenuAnchor.x },
+                                { top: menuTopAnim, left: toneMenuAnchor.x },
                                 isDarkMode && styles.bubbleMenuDark,
                             ]}
                         >
-                            <ScrollView style={{ maxHeight: 400 }}>
-                                {TONE_OPTIONS.map(tone => (
-                                    <TouchableOpacity
-                                        key={tone}
-                                        style={styles.menuItem}
-                                        onPress={() => handleToneSelect(tone)}
-                                    >
-                                        <View style={[styles.toneMenuDot, { backgroundColor: TONE_COLORS[tone] }]} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>
-                                                {TONE_LABELS[tone].name}
-                                            </Text>
-                                            <Text style={[styles.toneMenuDesc, isDarkMode && { color: '#94A3B8' }]}>
-                                                {TONE_LABELS[tone].description}
-                                            </Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                ))}
-                                {showCustomInput && (
-                                    <View style={[styles.customToneRow, { paddingHorizontal: 10, paddingBottom: 8 }]}>
-                                        <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-                                            <TextInput
-                                                style={[styles.customToneInput, isDarkMode && styles.customToneInputDark]}
-                                                placeholder="e.g. poetic, baby talk..."
-                                                placeholderTextColor="#94A3B8"
-                                                value={customToneInput}
-                                                onChangeText={setCustomToneInput}
-                                                autoFocus
-                                                onSubmitEditing={handleCustomToneSubmit}
-                                            />
-                                        </Animated.View>
+                            <BlurView
+                                intensity={50}
+                                tint={isDarkMode ? 'dark' : 'light'}
+                                style={{ borderRadius: 14, overflow: 'hidden' }}
+                            >
+                                <ScrollView style={{ maxHeight: kbHeight > 0 ? 220 : 400 }}>
+                                    {TONE_OPTIONS.map(tone => (
                                         <TouchableOpacity
-                                            style={[styles.menuItem, { justifyContent: 'center', opacity: customToneLoading ? 0.5 : 1 }]}
-                                            onPress={handleCustomToneSubmit}
-                                            disabled={customToneLoading}
+                                            key={tone}
+                                            style={styles.menuItem}
+                                            onPress={() => handleToneSelect(tone)}
                                         >
-                                            <Text style={[styles.menuText, { color: '#3B82F6' }]}>
-                                                {customToneLoading ? 'Validating...' : 'Apply Custom Tone'}
-                                            </Text>
+                                            <View style={[styles.toneMenuDot, { backgroundColor: TONE_COLORS[tone] }]} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.menuText, isDarkMode && { color: '#F8FAFC' }]}>
+                                                    {TONE_LABELS[tone].name}
+                                                </Text>
+                                                <Text style={[styles.toneMenuDesc, isDarkMode && { color: '#94A3B8' }]}>
+                                                    {TONE_LABELS[tone].description}
+                                                </Text>
+                                            </View>
                                         </TouchableOpacity>
-                                    </View>
-                                )}
-                            </ScrollView>
-                        </BlurView>
+                                    ))}
+                                    {showCustomInput && (
+                                        <View style={[styles.customToneRow, { paddingHorizontal: 10, paddingBottom: 8 }]}>
+                                            <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+                                                <TextInput
+                                                    style={[styles.customToneInput, isDarkMode && styles.customToneInputDark]}
+                                                    placeholder="e.g. straightforward, excited..."
+                                                    placeholderTextColor="#94A3B8"
+                                                    value={customToneInput}
+                                                    onChangeText={(v) => { setCustomToneInput(v); setCustomToneError(''); }}
+                                                    autoFocus
+                                                    onSubmitEditing={handleCustomToneSubmit}
+                                                    returnKeyType="done"
+                                                />
+                                            </Animated.View>
+                                            {customToneError ? (
+                                                <Text style={{ color: '#EF4444', fontSize: 11, paddingHorizontal: 4, paddingTop: 2, paddingBottom: 4 }}>
+                                                    {customToneError}
+                                                </Text>
+                                            ) : null}
+                                            <TouchableOpacity
+                                                style={[styles.menuItem, { justifyContent: 'center', opacity: customToneLoading ? 0.5 : 1 }]}
+                                                onPress={handleCustomToneSubmit}
+                                                disabled={customToneLoading}
+                                            >
+                                                <Text style={[styles.menuText, { color: '#3B82F6' }]}>
+                                                    {customToneLoading ? 'Validating...' : 'Apply Custom Tone'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </ScrollView>
+                            </BlurView>
+                        </Animated.View>
                     </>
                 )}
             </Portal>
