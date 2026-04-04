@@ -100,6 +100,7 @@ function ChatBubble({
     isSyncShimmering,
     onShowToast,
     currentMode,
+    isInverted,
 }: {
     msg: Message;
     alignment: 'left' | 'right' | 'center';
@@ -110,6 +111,7 @@ function ChatBubble({
     isSyncShimmering?: boolean;
     currentMode?: string;
     onShowToast?: (msg: string) => void;
+    isInverted?: boolean;
 }) {
     const langColor = getColorForLang(msg.lang);
     // Dark-mode-aware color overrides — base colors are designed for light backgrounds
@@ -183,9 +185,14 @@ function ChatBubble({
         const { pageX, pageY } = event.nativeEvent;
         const MENU_WIDTH = 240;
         const MARGIN = 16;
+        const POPUP_HEIGHT = 300;
         const { width: screenW, height: screenH } = Dimensions.get('window');
         const popupX = Math.max(MARGIN, Math.min(screenW - MENU_WIDTH - MARGIN, pageX - MENU_WIDTH / 2));
-        const popupY = pageY + 10;
+        // For inverted section: center popup in the top portion of screen
+        // For normal section: position popup above the tap point
+        const popupY = isInverted
+            ? Math.max(8, screenH * 0.12)
+            : Math.max(20, pageY - POPUP_HEIGHT);
         // If keyboard is already visible, open above it immediately
         const initialTop = kbHeight > 0 ? Math.max(8, screenH - kbHeight - 290) : popupY;
         menuTopAnim.setValue(initialTop);
@@ -371,6 +378,7 @@ function ChatBubble({
                                 styles.toneMenuScroll,
                                 { top: menuTopAnim, left: toneMenuAnchor.x },
                                 isDarkMode && styles.bubbleMenuDark,
+                                isInverted && { transform: [{ rotate: '180deg' }] },
                             ]}
                         >
                             <BlurView
@@ -1289,6 +1297,7 @@ export default function ConversationScreen() {
                                 isSyncShimmering={isSyncShimmering}
                                 onShowToast={(m) => { setSnackbarMessage(m); setSnackbarVisible(true); }}
                                 currentMode="face_to_face"
+                                isInverted={true}
                             />
                         ))}
                     </ScrollView>
