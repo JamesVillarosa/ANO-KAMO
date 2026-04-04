@@ -104,8 +104,14 @@ SYSTEM_INSTRUCTION = (
 # Language markers for output validation
 LANGUAGE_MARKERS = {
     "tl": ["ang", "ng", "mga", "sa", "ay", "na", "ko", "mo", "niya", "kami", "sila", "hindi", "ito"],
-    "ceb": ["nga", "ko", "ni", "kamo", "siya", "ako", "nako", "nato", "wala", "dili", "kini", "kanato"],
-    "hil": ["ang", "sang", "nga", "ko", "ikaw", "siya", "kita", "indi", "wala", "ini", "sina", "naton"],
+    # Distinctly Cebuano words: ug (and), og (a/of), atong (our), alang (for),
+    # aron (in order to), kon (if), dili (not), nga (the/that), nako (my/me)
+    "ceb": ["nga", "ug", "og", "ko", "ni", "atong", "alang", "aron", "kon",
+            "kamo", "siya", "ako", "nako", "nato", "wala", "dili", "kini", "kanato"],
+    # Distinctly Hiligaynon words: kag (and), gid (indeed), kay (because),
+    # sang (of the), lang (only), man (also), indi (not)
+    "hil": ["ang", "sang", "kag", "gid", "kay", "nga", "ko", "ikaw", "siya",
+            "kita", "indi", "wala", "ini", "sina", "naton", "lang", "man"],
     "en": ["the", "is", "are", "was", "were", "and", "that", "this", "have", "for", "not", "with"],
 }
 
@@ -508,7 +514,11 @@ def _parse_response(raw: str) -> dict:
         text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
         text = text.strip()
     try:
-        return json.loads(text)
+        # Use raw_decode so that any trailing garbage (repeated fragments that
+        # Gemini sometimes appends) is silently ignored instead of raising.
+        decoder = json.JSONDecoder()
+        obj, _ = decoder.raw_decode(text)
+        return obj
     except json.JSONDecodeError as e:
         logger.warning(f"JSON parse failed: {e} — raw: {raw}")
         return {"t": raw.strip().strip('"').strip("'"), "tone": "neutral"}
