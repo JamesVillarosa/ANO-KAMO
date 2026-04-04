@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -117,9 +118,42 @@ export function useTextToSpeech(): TextToSpeechHook {
                 setTtsState('playing');
                 await sound.playAsync();
             } else {
-                // Native: load with shouldPlay:false, then play separately
+                // Native: fetch with headers first (bypasses tunnel browser-warning pages
+                // that cause the native media player to receive HTML instead of audio).
+                const response = await fetch(ttsUrl, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`TTS request failed with status ${response.status}`);
+                }
+
+                // 204 No Content = backend has no audio for this language
+                if (response.status === 204) {
+                    setTtsState('idle');
+                    setPlayingText('');
+                    return;
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+                if (arrayBuffer.byteLength === 0) {
+                    setTtsState('idle');
+                    setPlayingText('');
+                    return;
+                }
+
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                const base64 = btoa(binary);
+
+                const tempUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
+                await FileSystem.writeAsStringAsync(tempUri, base64, {
+                    encoding: 'base64',
+                });
+
                 const { sound } = await Audio.Sound.createAsync(
-                    { uri: ttsUrl, headers: { 'ngrok-skip-browser-warning': 'true' } },
+                    { uri: tempUri },
                     { shouldPlay: false, progressUpdateIntervalMillis: 100 }
                 );
                 soundRef.current = sound;
@@ -130,6 +164,7 @@ export function useTextToSpeech(): TextToSpeechHook {
                         setPlayingText('');
                         sound.unloadAsync();
                         soundRef.current = null;
+                        FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
                     }
                 });
 
