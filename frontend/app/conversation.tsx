@@ -1249,8 +1249,8 @@ export default function ConversationScreen() {
             <View style={[styles.container, isDarkMode && styles.containerDark]}>
                 <FluidAura isDarkMode={isDarkMode} />
 
-                {/* ═══ TOP SECTION (rotated 180°) — Speaker B ═══ */}
-                <View style={[styles.f2fSection, { transform: [{ rotate: '180deg' }], paddingBottom: insets.top + 8 }]}>
+                {/* ═══ TOP SECTION — Speaker B (Inverted) ═══ */}
+                <View style={[styles.f2fSection, { paddingTop: 40, paddingBottom: 50, transform: [{ rotate: '180deg' }] }]}>
                     {/* Language label + picker */}
                     <TouchableOpacity
                         style={[styles.f2fLangChip, { backgroundColor: topColor.bg, borderColor: topColor.light }]}
@@ -1357,7 +1357,7 @@ export default function ConversationScreen() {
                 </View>
 
                 {/* ═══ BOTTOM SECTION — Speaker A ═══ */}
-                <View style={[styles.f2fSection, { paddingBottom: 110 }]}>
+                <View style={[styles.f2fSection, { paddingBottom: 140, paddingTop: 40 }]}>
                     {/* Language label + picker */}
                     <TouchableOpacity
                         style={[styles.f2fLangChip, { backgroundColor: bottomColor.bg, borderColor: bottomColor.light }]}
