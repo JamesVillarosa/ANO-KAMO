@@ -784,8 +784,9 @@ export default function ConversationScreen() {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
         // 3-way → 2-way: do NOT delete translations — ChatBubble hides the 3rd row via currentMode prop
+        // Sync lastRegenLangsRef so a lang2 change made during 3-way doesn't spuriously fire
+        // a regen on the first 2-way send (lang2 is irrelevant in 2-way).
         if (mode === 'two_way' && viewMode === 'three_way') {
-            // Sync regen refs so next send does not trigger a redundant regen
             lastRegenLangsRef.current = { 0: lang0, 1: lang1, 2: lang2 };
             lastRegenModeRef.current = 'two_way';
         }
@@ -901,15 +902,19 @@ export default function ConversationScreen() {
         isSendingRef.current = true;
         setInputText(''); // clear immediately so a second tap sees an empty field
 
-        // Smart bubble regeneration: if langs or mode changed since last send, regenerate first
+        // Smart bubble regeneration rules:
+        //  1. Mode switch alone → NEVER regenerate (3-way messages stay as-is until Speaker C speaks)
+        //  2. lang0/lang1 change → regenerate (their speakers are locked once they speak)
+        //  3. lang2 change alone → skip; wait for Speaker C's first message
+        //  4. Speaker C sends their FIRST message → retroactively add 3rd-lang to all existing bubbles
         const currentLangs = { 0: lang0, 1: lang1, 2: lang2 };
         const currentMode = viewMode;
         const snapshotMsgs = messages; // capture before any state update
-        if (lastRegenLangsRef.current !== null && snapshotMsgs.length > 0) {
+        if (snapshotMsgs.length > 0) {
             const prev = lastRegenLangsRef.current;
-            const langsChanged = prev[0] !== currentLangs[0] || prev[1] !== currentLangs[1] || prev[2] !== currentLangs[2];
-            const modeChanged = lastRegenModeRef.current !== currentMode;
-            if (langsChanged || modeChanged) {
+            const activeLangsChanged = prev !== null && (prev[0] !== currentLangs[0] || prev[1] !== currentLangs[1]);
+            const speaker3FirstSend = activeSpeaker === 2 && !hasSpoken[2] && currentMode === 'three_way';
+            if (activeLangsChanged || speaker3FirstSend) {
                 await regenerateAllBubbles(currentLangs, currentMode, snapshotMsgs);
             }
         }
