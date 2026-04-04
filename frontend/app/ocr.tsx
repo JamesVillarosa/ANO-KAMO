@@ -71,6 +71,7 @@ interface RawOcrBlock {
     text: string;
     box: number[]; // [x, y, width, height]
     confidence: number;
+    lines?: number; // source text line count (preserved for font sizing across language switches)
 }
 
 interface TranslatedOcrBlock {
@@ -78,6 +79,7 @@ interface TranslatedOcrBlock {
     translated_text: string;
     box: number[];
     confidence: number;
+    lines?: number;
 }
 
 function showToast(msg: string) {
@@ -141,8 +143,13 @@ export default function OCRScreen() {
         try {
             const result = await ocrTranslateBlocks(rawOcrBlocks, srcLang, tgtLang, deviceIdRef.current);
             if (result.blocks) {
-                setTranslatedBlocks(result.blocks);
-                setFullTranslatedText(result.blocks.map(b => b.translated_text).filter(Boolean).join(' '));
+                // Merge lines from rawOcrBlocks (not returned by translate-blocks endpoint)
+                const merged = result.blocks.map((b, i) => ({
+                    ...b,
+                    lines: rawOcrBlocks[i]?.lines,
+                }));
+                setTranslatedBlocks(merged);
+                setFullTranslatedText(merged.map(b => b.translated_text).filter(Boolean).join(' '));
             }
         } catch (e) {
             console.error('Retranslate error:', e);
@@ -168,11 +175,12 @@ export default function OCRScreen() {
             }
 
             setOcrImageDims({ width: result.image_width, height: result.image_height });
-            // Store raw blocks (text + coords only) for language-switch retranslation
+            // Store raw blocks (text + coords + lines) for language-switch retranslation
             setRawOcrBlocks(result.blocks.map((b: any) => ({
                 text: b.text,
                 box: b.box,
                 confidence: b.confidence,
+                lines: b.lines,
             })));
             setTranslatedBlocks(result.blocks);
             setFullTranslatedText(result.full_translated_text || '');
@@ -334,11 +342,33 @@ export default function OCRScreen() {
                             const [bx, by, bw, bh] = block.box;
                             if (!block.translated_text || bw < 1 || bh < 1) return null;
 
-                            const left = bx * scaleX;
-                            const top = by * scaleY;
-                            const width = Math.max(bw * scaleX, 30);
-                            const height = Math.max(bh * scaleY, 16);
-                            const fontSize = Math.max(Math.min(height * 0.6, 14), 9);
+                            // Expand each side by 4% as a coverage buffer for irregular/graffiti text
+                            // where Gemini may slightly underestimate the bounding box extent.
+                            const expandX = bw * 0.04;
+                            const expandY = bh * 0.04;
+                            const left = Math.max(0, (bx - expandX) * scaleX);
+                            const top = Math.max(0, (by - expandY) * scaleY);
+                            const width = Math.max(20, Math.min((bw + expandX * 2) * scaleX, effectiveW - left));
+                            const height = Math.max(14, Math.min((bh + expandY * 2) * scaleY, effectiveH - top));
+
+                            // Font size anchored to source-text geometry so it stays stable across
+                            // language switches. Same three-constraint approach as translate.tsx:
+                            // 1. Gemini line-height: (height / srcLines) × 0.78
+                            // 2. Geometric fallback when srcLines is unreliable
+                            const srcLines = Math.max(1, block.lines ?? 1);
+                            const fsByLines = (height / srcLines) * 0.78;
+                            const geoLines = Math.max(1, Math.round(height / Math.max(width * 0.38, 1)));
+                            const fsByGeo = (height / geoLines) * 0.78;
+                            const fontSize = Math.max(9, Math.min(fsByLines, fsByGeo, 120));
+
+                            // Mirror source text casing: all-caps source → all-caps translation
+                            const srcText = block.text ?? '';
+                            const isAllCaps = srcText.length > 0 &&
+                                srcText === srcText.toUpperCase() &&
+                                /[A-Za-z\u00C0-\u024F]/.test(srcText);
+                            const displayText = isAllCaps
+                                ? block.translated_text.toUpperCase()
+                                : block.translated_text;
 
                             return (
                                 <TouchableOpacity
@@ -348,6 +378,7 @@ export default function OCRScreen() {
                                         top,
                                         width,
                                         height,
+                                        overflow: 'hidden',
                                         backgroundColor: isDarkMode
                                             ? 'rgba(30,30,30,0.92)'
                                             : 'rgba(255,255,255,0.92)',
@@ -358,12 +389,14 @@ export default function OCRScreen() {
                                     <Text
                                         style={[styles.overlayText, {
                                             fontSize,
+                                            lineHeight: fontSize * 1.15,
                                             color: isDarkMode ? '#FFF' : '#1C1C1E',
                                         }]}
-                                        numberOfLines={2}
+                                        numberOfLines={0}
                                         adjustsFontSizeToFit
+                                        minimumFontScale={0.35}
                                     >
-                                        {block.translated_text}
+                                        {displayText}
                                     </Text>
                                 </TouchableOpacity>
                             );
@@ -755,6 +788,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 2,
+        paddingVertical: 1,
     },
     overlayText: {
         fontWeight: '500',
