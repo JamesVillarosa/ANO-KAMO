@@ -116,7 +116,7 @@ export default function TranslateScreen() {
     const [dictTgtLang, setDictTgtLang] = useState('');
     const [breakdownVisible, setBreakdownVisible] = useState(false);
     const glowAnim = useRef(new Animated.Value(0)).current;
-    const translationIdRef = useRef('');
+    const translationIdRef = useRef<string | null>(null);
 
     const showNotif = (msg: string) => { setNotifMessage(msg); setNotifVisible(true); };
 
@@ -173,7 +173,7 @@ export default function TranslateScreen() {
         setFeedbackGiven(null);
         setScreenState('result');
         setLoading(true);
-        translationIdRef.current = Date.now().toString();
+        translationIdRef.current = null;
         try {
             const deviceId = await getDeviceId();
             const result = await ocrProcessFull(base64, targetLang, sourceLang, deviceId);
@@ -186,6 +186,9 @@ export default function TranslateScreen() {
                 setRawBlocks(result.blocks.map((b: OcrBlock) => ({ ...b })));
                 setFullTranslation(result.full_translated_text ?? '');
                 setOcrSize({ width: result.image_width, height: result.image_height });
+                if (result.translation_id) {
+                    translationIdRef.current = result.translation_id;
+                }
             }
         } catch (err: any) {
             showNotif(err.message || 'Failed to process image.');
@@ -228,7 +231,7 @@ export default function TranslateScreen() {
         setRetranslating(true);
         try {
             const raw = rawBlocks.map(b => ({ text: b.text, box: b.box, confidence: b.confidence, lines: b.lines ?? 1 }));
-            const result = await ocrTranslateBlocks(raw, srcLang, tgtLang);
+            const result = await ocrTranslateBlocks(raw, srcLang, tgtLang, undefined, translationIdRef.current || undefined);
             if (result.blocks?.length) {
                 // Preserve original source geometry (box, lines, text) so font size
                 // stays stable — only update translated_text from the API response.
@@ -306,13 +309,13 @@ export default function TranslateScreen() {
         setFeedbackGiven(type);
         triggerGlow();
         try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch { }
-        try { await submitFeedback(translationIdRef.current, type); } catch { }
+        try { await submitFeedback(translationIdRef.current || '', type); } catch { }
     };
 
     const handleSubmitRefinement = async () => {
         if (!refineText.trim()) return;
         try {
-            await submitFeedback(translationIdRef.current, 'dislike', refineText.trim());
+            await submitFeedback(translationIdRef.current || '', 'dislike', refineText.trim());
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             showToast('Suggestion submitted! Thank you.');
         } catch { }

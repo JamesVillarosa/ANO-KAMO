@@ -77,6 +77,23 @@ def create_translation_output(
     db.refresh(o)
     return o
 
+def update_translation_output(
+    db: Session,
+    translation_id: str,
+    target_language: str,
+    output_text: str,
+) -> Optional[TranslationOutput]:
+    """Update the first TranslationOutput for a given translation_id with new target lang and text."""
+    o = db.query(TranslationOutput).filter(
+        TranslationOutput.translation_id == translation_id
+    ).first()
+    if o:
+        o.target_language = target_language
+        o.output_text = output_text
+        db.commit()
+        db.refresh(o)
+    return o
+
 def create_translation_with_outputs(
     db: Session,
     input_text: str,

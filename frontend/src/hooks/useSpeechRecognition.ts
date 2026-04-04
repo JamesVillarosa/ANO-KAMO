@@ -9,7 +9,7 @@ import { transcribeAudio } from '../lib/api';
 
 // Silence detection config
 const SILENCE_THRESHOLD = -40;       // dB — below this = silence
-const SILENCE_DURATION_MS = 4000;    // auto-stop after 4s of silence
+const SILENCE_DURATION_MS = 3000;    // auto-stop after 3s of silence
 const METERING_INTERVAL_MS = 300;    // check audio level every 300ms
 
 interface SpeechRecognitionHook {
@@ -18,6 +18,7 @@ interface SpeechRecognitionHook {
     interimTranscript: string;
     startListening: () => void;
     stopListening: () => void;
+    resetTranscript: () => void;
     isSupported: boolean;
     isProcessing: boolean;
 }
@@ -199,12 +200,18 @@ export function useSpeechRecognition(langCode: string): SpeechRecognitionHook {
         await processRecording(rec);
     }, [processRecording]);
 
+    const resetTranscript = useCallback(() => {
+        setTranscript('');
+        setInterimTranscript('');
+    }, []);
+
     return {
         isListening,
         transcript,
         interimTranscript,
         startListening,
         stopListening,
+        resetTranscript,
         isSupported,
         isProcessing,
     };

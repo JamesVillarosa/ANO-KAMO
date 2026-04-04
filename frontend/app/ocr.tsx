@@ -125,6 +125,7 @@ export default function OCRScreen() {
     const [breakdownText, setBreakdownText] = useState('');
 
     const deviceIdRef = useRef<string | undefined>(undefined);
+    const translationIdRef = useRef<string | null>(null);
 
     useEffect(() => {
         getDeviceId().then(id => { deviceIdRef.current = id; });
@@ -141,7 +142,7 @@ export default function OCRScreen() {
     const retranslateBlocks = async (srcLang: string, tgtLang: string) => {
         setIsRetranslating(true);
         try {
-            const result = await ocrTranslateBlocks(rawOcrBlocks, srcLang, tgtLang, deviceIdRef.current);
+            const result = await ocrTranslateBlocks(rawOcrBlocks, srcLang, tgtLang, deviceIdRef.current, translationIdRef.current || undefined);
             if (result.blocks) {
                 // Merge lines from rawOcrBlocks (not returned by translate-blocks endpoint)
                 const merged = result.blocks.map((b, i) => ({
@@ -163,6 +164,7 @@ export default function OCRScreen() {
         setTranslatedBlocks([]);
         setRawOcrBlocks([]);
         setCaptureMode(mode);
+        translationIdRef.current = null;
 
         try {
             const deviceId = deviceIdRef.current || await getDeviceId();
@@ -184,6 +186,9 @@ export default function OCRScreen() {
             })));
             setTranslatedBlocks(result.blocks);
             setFullTranslatedText(result.full_translated_text || '');
+            if (result.translation_id) {
+                translationIdRef.current = result.translation_id;
+            }
         } catch (err) {
             console.error('OCR error:', err);
             showToast('Could not process image. Please try again.');

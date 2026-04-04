@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.services.ocr_service import OcrService
 from app.db.session import get_db
-from app.db.crud import create_translation, create_translation_output
+from app.db.crud import create_translation, create_translation_output, update_translation_output
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,6 +34,7 @@ class OcrProcessFullResponse(BaseModel):
     image_height: int
     full_extracted_text: str = ""
     full_translated_text: str = ""
+    translation_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -42,6 +43,7 @@ class OcrTranslateBlocksRequest(BaseModel):
     source_lang: str = Field("tl")
     target_lang: str = Field("en")
     device_id: Optional[str] = None
+    translation_id: Optional[str] = Field(None, description="Existing translation ID to update history")
 
 
 class OcrTranslateBlocksResponse(BaseModel):
@@ -71,6 +73,7 @@ async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends
         target_lang=request.target_lang,
     )
 
+    translation_id = None
     if result.get("full_extracted_text"):
         try:
             t = create_translation(
@@ -88,14 +91,16 @@ async def ocr_process_full(request: OcrProcessFullRequest, db: Session = Depends
                 target_language=request.target_lang,
                 output_text=result.get("full_translated_text", ""),
             )
+            translation_id = t.translation_id
         except Exception as e:
             logger.warning(f"OCR history save skipped: {e}")
 
+    result["translation_id"] = translation_id
     return result
 
 
 @router.post("/ocr/translate-blocks", response_model=OcrTranslateBlocksResponse)
-async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
+async def ocr_translate_blocks(request: OcrTranslateBlocksRequest, db: Session = Depends(get_db)):
     """
     Translate pre-extracted OCR blocks without re-running OCR.
     Used for language-switching after a capture — reuses stored blocks.
@@ -137,6 +142,22 @@ async def ocr_translate_blocks(request: OcrTranslateBlocksRequest):
             "confidence": block.get("confidence", 0),
             "lines": block.get("lines", 1),
         })
+
+    # Update history if translation_id was provided (language switch after capture)
+    if request.translation_id:
+        try:
+            full_translated = " ".join(
+                b["translated_text"] for b in result_blocks if b.get("translated_text")
+            )
+            update_translation_output(
+                db,
+                translation_id=request.translation_id,
+                target_language=request.target_lang,
+                output_text=full_translated,
+            )
+        except Exception as e:
+            logger.warning(f"OCR history update skipped: {e}")
+
     return {"blocks": result_blocks}
 
 

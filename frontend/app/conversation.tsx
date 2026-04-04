@@ -874,6 +874,18 @@ export default function ConversationScreen() {
         sessionId.current = Date.now().toString() + Math.random().toString(36).substr(2, 9);
         tts.stop();
 
+        // Clear input field and reset all speech transcripts to prevent
+        // stale transcript from triggering auto-send on mode switch
+        setInputText('');
+        speech.resetTranscript();
+        speechBottom.resetTranscript();
+        speechTop.resetTranscript();
+
+        // Stop any active listening sessions
+        if (speech.isListening) speech.stopListening();
+        if (speechBottom.isListening) speechBottom.stopListening();
+        if (speechTop.isListening) speechTop.stopListening();
+
         if (Platform.OS === 'ios' || Platform.OS === 'android') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
