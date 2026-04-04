@@ -1483,11 +1483,14 @@ export default function ConversationScreen() {
                                 }}
                             >
                                 <View style={[styles.langDot, { backgroundColor: langColor.light }]} />
-                                <Text style={[
-                                    styles.speakerChipText,
-                                    { color: isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B') },
-                                    hasSpoken[i as 0 | 1 | 2] && { opacity: 0.6 },
-                                ]}>
+                                <Text
+                                    numberOfLines={1}
+                                    style={[
+                                        styles.speakerChipText,
+                                        { color: isActive ? '#FFF' : (isDarkMode ? '#F8FAFC' : '#1E293B') },
+                                        hasSpoken[i as 0 | 1 | 2] && { opacity: 0.6 },
+                                    ]}
+                                >
                                     {SUPPORTED_LANGUAGES[langCode]}
                                 </Text>
                                 {hasSpoken[i as 0 | 1 | 2]
@@ -1771,28 +1774,33 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     speakerChip: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
+        justifyContent: 'center',
+        paddingHorizontal: 8,
         paddingVertical: 7,
         borderRadius: 16,
         borderWidth: 1.5,
         backgroundColor: 'rgba(255,255,255,0.5)',
         borderColor: 'rgba(255,255,255,0.3)',
+        minWidth: 0,
     },
     langDot: {
         width: 8,
         height: 8,
         borderRadius: 4,
-        marginRight: 6,
+        marginRight: 4,
+        flexShrink: 0,
     },
     speakerChipText: {
         fontSize: 12,
         fontWeight: '700',
         marginRight: 3,
+        flexShrink: 1,
     },
     clearBtn: {
-        marginLeft: 'auto',
+        flexShrink: 0,
         padding: 6,
     },
 
