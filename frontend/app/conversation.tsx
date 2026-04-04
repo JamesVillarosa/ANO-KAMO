@@ -116,6 +116,12 @@ function ChatBubble({
     onShowToast?: (msg: string) => void;
 }) {
     const langColor = getColorForLang(msg.lang);
+    // Dark-mode-aware color overrides — base colors are designed for light backgrounds
+    const textColor    = isDarkMode ? '#F1F5F9'                  : langColor.text;
+    const transColor   = isDarkMode ? 'rgba(255,255,255,0.82)'   : langColor.trans;
+    const labelColor   = isDarkMode ? 'rgba(255,255,255,0.55)'   : 'rgba(0,0,0,0.45)';
+    const iconColor    = isDarkMode ? '#60A5FA'                  : '#3B82F6';
+    const dividerColor = isDarkMode ? 'rgba(255,255,255,0.12)'   : 'rgba(0,0,0,0.1)';
     const shimmerAnim = useRef(new Animated.Value(0)).current;
     const [toneMenuVisible, setToneMenuVisible] = useState(false);
     const [toneMenuAnchor, setToneMenuAnchor] = useState({ x: 0, y: 0 });
@@ -270,7 +276,7 @@ function ChatBubble({
                 )}
 
                 <View style={styles.bubbleHeader}>
-                    <Text style={styles.bubbleSpeakerLabel}>
+                    <Text style={[styles.bubbleSpeakerLabel, { color: labelColor }]}>
                         {SUPPORTED_LANGUAGES[msg.lang]}
                     </Text>
                     {msg.tone && (
@@ -283,7 +289,7 @@ function ChatBubble({
                 </View>
 
                 <View style={styles.bubbleTextContainer}>
-                    <Text style={[styles.bubbleText, { color: langColor.text, flex: 1 }]}>
+                    <Text style={[styles.bubbleText, { color: textColor, flex: 1 }]}>
                         {msg.text}
                     </Text>
                 </View>
@@ -294,13 +300,13 @@ function ChatBubble({
                         onPress={() => tts.speak(msg.text, msg.lang)}
                         style={styles.utilityBtn}
                     >
-                        <Volume2 size={16} color="rgba(0,0,0,0.5)" />
+                        <Volume2 size={16} color={iconColor} />
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => openDictionary(msg.text, msg.lang, msg.translations[0]?.lang || 'en')}
                         style={styles.utilityBtn}
                     >
-                        <BookOpen size={16} color="rgba(0,0,0,0.5)" />
+                        <BookOpen size={16} color={iconColor} />
                     </TouchableOpacity>
                     {onRetranslate && (
                         <TouchableOpacity
@@ -311,7 +317,7 @@ function ChatBubble({
                             }}
                             style={styles.utilityBtn}
                         >
-                            <SlidersHorizontal size={14} color="rgba(0,0,0,0.5)" />
+                            <SlidersHorizontal size={14} color={iconColor} />
                             {showToneTooltip && (
                                 <View style={styles.toneTooltip}>
                                     <Text style={styles.toneTooltipText}>Tone</Text>
@@ -328,14 +334,14 @@ function ChatBubble({
                     const trColor = getColorForLang(tr.lang);
                     return (
                         <View key={idx}>
-                            <View style={[styles.bubbleDivider, { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
+                            <View style={[styles.bubbleDivider, { backgroundColor: dividerColor }]} />
                             <View style={[styles.transRow, idx === 0 && { marginTop: 8 }]}>
                                 <View style={[styles.transLangDot, { backgroundColor: trColor.light }]} />
-                                <Text style={styles.transLangLabel}>
+                                <Text style={[styles.transLangLabel, { color: labelColor }]}>
                                     {SUPPORTED_LANGUAGES[tr.lang]}
                                 </Text>
                             </View>
-                            <Text style={[styles.transText, { color: langColor.trans }]}>
+                            <Text style={[styles.transText, { color: transColor }]}>
                                 {tr.text}
                             </Text>
                             <View style={[styles.bubbleUtilityRow, { marginTop: 4 }]}>
@@ -343,13 +349,13 @@ function ChatBubble({
                                     onPress={() => tts.speak(tr.text, tr.lang)}
                                     style={styles.utilityBtn}
                                 >
-                                    <Volume2 size={16} color="rgba(0,0,0,0.5)" />
+                                    <Volume2 size={16} color={iconColor} />
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => openDictionary(tr.text, tr.lang, msg.lang)}
                                     style={styles.utilityBtn}
                                 >
-                                    <BookOpen size={16} color="rgba(0,0,0,0.5)" />
+                                    <BookOpen size={16} color={iconColor} />
                                 </TouchableOpacity>
                             </View>
                         </View>
