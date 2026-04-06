@@ -12,7 +12,7 @@ from app.db.crud import get_rising_submissions, graduate_submission, mark_submis
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gemini-2.0-flash-lite"
+MODEL = "gemini-2.5-flash-lite"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 # How often the Evolution Loop runs (seconds)
