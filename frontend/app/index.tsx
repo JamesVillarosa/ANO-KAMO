@@ -7,6 +7,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
   Dimensions,
   Animated,
   Modal,
@@ -813,33 +814,70 @@ export default function HomeScreen() {
                   Your feedback is important to us!
                 </Text>
 
-                <View style={styles.feedbackActionRow}>
-                  <TouchableOpacity
-                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(34,197,94,0.12)' }]}
-                    onPress={() => {
-                      if (activeFeedbackTarget) {
-                        handleFeedback(activeFeedbackTarget.id, 'like', activeFeedbackTarget.target);
-                      }
-                      setFeedbackModalVisible(false);
-                    }}
-                  >
-                    <ThumbsUp size={24} color="#22C55E" />
-                    <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Helpful</Text>
-                  </TouchableOpacity>
+                {(() => {
+                  const currentFeedback = activeFeedbackTarget?.target === 1 ? feedbackGiven1 : feedbackGiven2;
+                  return (
+                    <View style={styles.feedbackActionRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.largeFeedbackBtn,
+                          { backgroundColor: currentFeedback === 'like' ? 'rgba(34,197,94,0.28)' : 'rgba(34,197,94,0.12)' },
+                          currentFeedback === 'like' && { borderWidth: 1.5, borderColor: '#22C55E' },
+                        ]}
+                        onPress={() => {
+                          if (activeFeedbackTarget) {
+                            handleFeedback(activeFeedbackTarget.id, 'like', activeFeedbackTarget.target);
+                          }
+                          setFeedbackModalVisible(false);
+                        }}
+                      >
+                        <ThumbsUp size={24} color="#22C55E" />
+                        <Text style={[styles.largeFeedbackText, { color: '#22C55E' }]}>Helpful</Text>
+                      </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.largeFeedbackBtn, { backgroundColor: 'rgba(239,68,68,0.12)' }]}
-                    onPress={() => {
-                      if (activeFeedbackTarget) {
-                        handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
-                      }
-                      setFeedbackModalVisible(false);
-                    }}
-                  >
-                    <ThumbsDown size={24} color="#EF4444" />
-                    <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Not helpful</Text>
-                  </TouchableOpacity>
-                </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.largeFeedbackBtn,
+                          { backgroundColor: currentFeedback === 'dislike' ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.12)' },
+                          currentFeedback === 'dislike' && { borderWidth: 1.5, borderColor: '#EF4444' },
+                        ]}
+                        onPress={() => {
+                          if (activeFeedbackTarget) {
+                            handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
+                          }
+                          setFeedbackModalVisible(false);
+                          // Offer to suggest a better translation after "Not helpful"
+                          const outputText = activeFeedbackTarget?.target === 1 ? translated1 : translated2;
+                          if (outputText) {
+                            setTimeout(() => {
+                              Alert.alert(
+                                'Suggest Better Translation?',
+                                'Would you like to suggest a better translation?',
+                                [
+                                  { text: 'No', style: 'cancel' },
+                                  {
+                                    text: 'Yes', onPress: () => {
+                                      setRefineText(outputText);
+                                      setRefineModal({
+                                        visible: true,
+                                        translationId: activeFeedbackTarget?.target === 1 ? translationId1 : translationId2,
+                                        originalText: outputText,
+                                        target: activeFeedbackTarget?.target ?? 1,
+                                      });
+                                    },
+                                  },
+                                ],
+                              );
+                            }, 300);
+                          }
+                        }}
+                      >
+                        <ThumbsDown size={24} color="#EF4444" />
+                        <Text style={[styles.largeFeedbackText, { color: '#EF4444' }]}>Not helpful</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
               </BlurView>
             </View>
           </Modal>

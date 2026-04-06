@@ -14,7 +14,7 @@ const API = `${BASE_URL}/api/v1`;
 export type TtsState = 'idle' | 'loading' | 'playing';
 
 interface TextToSpeechHook {
-    speak: (text: string, langCode: string) => void;
+    speak: (text: string, langCode: string, onFinish?: () => void) => void;
     stop: () => void;
     isSupported: boolean;
     ttsState: TtsState;
@@ -52,7 +52,7 @@ export function useTextToSpeech(): TextToSpeechHook {
         setPlayingText('');
     }, []);
 
-    const speak = useCallback(async (text: string, langCode: string) => {
+    const speak = useCallback(async (text: string, langCode: string, onFinish?: () => void) => {
         // Collapse newlines/vertical spacing into single spaces so TTS reads
         // multi-line signage (e.g. "Bawal\nTumawid\nDito") as one flowing sentence.
         const normalizedText = text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -117,6 +117,7 @@ export function useTextToSpeech(): TextToSpeechHook {
                         sound.unloadAsync();
                         soundRef.current = null;
                         URL.revokeObjectURL(blobUrl);
+                        onFinish?.();
                     }
                 });
 
@@ -177,6 +178,7 @@ export function useTextToSpeech(): TextToSpeechHook {
                         sound.unloadAsync();
                         soundRef.current = null;
                         FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
+                        onFinish?.();
                     }
                 });
 

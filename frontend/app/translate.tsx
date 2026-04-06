@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     Image,
     ActivityIndicator,
+    Alert,
     Dimensions,
     ScrollView,
     Platform,
@@ -778,7 +779,11 @@ export default function TranslateScreen() {
                         </Text>
                         <View style={styles.feedbackBtns}>
                             <TouchableOpacity
-                                style={[styles.feedbackBtn, { backgroundColor: 'rgba(34,197,94,0.12)' }]}
+                                style={[
+                                    styles.feedbackBtn,
+                                    { backgroundColor: feedbackGiven === 'like' ? 'rgba(34,197,94,0.28)' : 'rgba(34,197,94,0.12)' },
+                                    feedbackGiven === 'like' && { borderWidth: 1.5, borderColor: '#22C55E' },
+                                ]}
                                 onPress={() => {
                                     handleFeedback('like');
                                     setFeedbackModalVisible(false);
@@ -788,10 +793,31 @@ export default function TranslateScreen() {
                                 <Text style={[styles.feedbackBtnText, { color: '#22C55E' }]}>Helpful</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={[styles.feedbackBtn, { backgroundColor: 'rgba(239,68,68,0.12)' }]}
+                                style={[
+                                    styles.feedbackBtn,
+                                    { backgroundColor: feedbackGiven === 'dislike' ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.12)' },
+                                    feedbackGiven === 'dislike' && { borderWidth: 1.5, borderColor: '#EF4444' },
+                                ]}
                                 onPress={() => {
                                     handleFeedback('dislike');
                                     setFeedbackModalVisible(false);
+                                    // Offer to suggest a better translation
+                                    const outputText = fullTranslation;
+                                    if (outputText) {
+                                        setTimeout(() => {
+                                            Alert.alert(
+                                                'Suggest Better Translation?',
+                                                'Would you like to suggest a better translation?',
+                                                [
+                                                    { text: 'No', style: 'cancel' },
+                                                    {
+                                                        text: 'Yes', onPress: () =>
+                                                            setRefineModal({ visible: true, originalText: outputText }),
+                                                    },
+                                                ],
+                                            );
+                                        }, 300);
+                                    }
                                 }}
                             >
                                 <ThumbsDown size={24} color="#EF4444" />

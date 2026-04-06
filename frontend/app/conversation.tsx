@@ -802,6 +802,36 @@ export default function ConversationScreen() {
         }
     }, [messages, viewMode]);
 
+    // ── Auto-TTS when a new message arrives in standard (2-way / 3-way) mode ──
+    useEffect(() => {
+        if (viewMode === 'face_to_face') return;
+        if (messages.length === 0) return;
+        const latest = messages[messages.length - 1];
+        if (latest.id === lastMessageIdRef.current) return;
+        if (!latest.isNewMessage) return;
+        if (!latest.sessionId || latest.sessionId !== sessionId.current) return;
+        // Wait until translation is ready (isRegenerating means it's still being fetched)
+        if (latest.isRegenerating) return;
+        if (latest.translations.length === 0 || !latest.translations[0]?.text) return;
+
+        // Mark as handled before speaking to prevent double-fire from re-renders
+        lastMessageIdRef.current = latest.id;
+        const capturedSession = sessionId.current;
+
+        const tr1 = latest.translations[0];
+        if (viewMode === 'three_way' && latest.translations.length > 1) {
+            const tr2 = latest.translations[1];
+            // Play first target, then second target when first finishes
+            tts.speak(tr1.text, tr1.lang, () => {
+                if (sessionId.current === capturedSession && tr2?.text) {
+                    tts.speak(tr2.text, tr2.lang);
+                }
+            });
+        } else {
+            tts.speak(tr1.text, tr1.lang);
+        }
+    }, [messages, viewMode]);
+
     const scrollRef = useRef<ScrollView>(null);
     const scrollTopRef = useRef<ScrollView>(null);
     const scrollBottomRef = useRef<ScrollView>(null);
