@@ -100,9 +100,7 @@ export default function HomeScreen() {
   // Incremented on every effect run; in-flight callbacks compare against this
   // to detect whether their result has been superseded by a newer input.
   const translationGenRef = useRef(0);
-  // Tracks the last successfully-saved translation ID so it can be deleted
-  // when a new translate cycle begins, preventing partial inputs from polluting history.
-  const savedTranslationIdRef = useRef<string>('');
+
 
   // Feedback state
   const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
@@ -251,11 +249,6 @@ export default function HomeScreen() {
     setLoading2(false);
 
     if (!sourceText.trim() || sourceText.length < 2) {
-      // Clear the saved translation from history when input is wiped
-      if (savedTranslationIdRef.current && deviceIdRef.current) {
-        deleteHistory(savedTranslationIdRef.current, deviceIdRef.current).catch(() => {});
-        savedTranslationIdRef.current = '';
-      }
       setTranslated1('');
       setTranslated2('');
       setTranslationId1('');
@@ -301,11 +294,7 @@ export default function HomeScreen() {
           // Guard: prevent duplicate saves if this timer fires more than once (Strict Mode)
           if (isTranslatingRef.current) return;
           isTranslatingRef.current = true;
-          // Delete previous history entry before saving the new one
-          if (savedTranslationIdRef.current && deviceIdRef.current) {
-            deleteHistory(savedTranslationIdRef.current, deviceIdRef.current).catch(() => {});
-            savedTranslationIdRef.current = '';
-          }
+
           setLoading1(true);
           setLoading2(true);
           setFeedbackGiven1(null);
@@ -323,7 +312,7 @@ export default function HomeScreen() {
             setTranslated2(res.output_texts?.[1] || '');
             setTranslationId1(res.translation_id || '');
             setTranslationId2(res.translation_id || '');
-            savedTranslationIdRef.current = res.translation_id || '';
+
           } catch (error: any) {
             if (translationGenRef.current !== myGen) return;
             const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
@@ -342,11 +331,6 @@ export default function HomeScreen() {
       } else {
         // 2-Way: single call
         if (sourceTextChanged || sourceLangChanged || targetLang1Changed) {
-          // Delete previous history entry before saving the new one
-          if (savedTranslationIdRef.current && deviceIdRef.current) {
-            deleteHistory(savedTranslationIdRef.current, deviceIdRef.current).catch(() => {});
-            savedTranslationIdRef.current = '';
-          }
           setLoading1(true);
           setFeedbackGiven1(null);
           try {
@@ -360,7 +344,7 @@ export default function HomeScreen() {
             }
             setTranslated1(res1.output_text || '');
             setTranslationId1(res1.translation_id || '');
-            savedTranslationIdRef.current = res1.translation_id || '';
+
           } catch (error: any) {
             if (translationGenRef.current !== myGen) return;
             const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
