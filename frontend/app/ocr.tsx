@@ -18,8 +18,6 @@ import {
     Platform,
     ActivityIndicator,
     Modal,
-    Alert,
-    ToastAndroid,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -55,6 +53,7 @@ import LanguagePicker from '../src/components/LanguagePicker';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 import { useTextToSpeech } from '../src/hooks/useTextToSpeech';
+import GlassNotification from '../src/components/GlassNotification';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -82,11 +81,6 @@ interface TranslatedOcrBlock {
     lines?: number;
 }
 
-function showToast(msg: string) {
-    if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
-    else Alert.alert('', msg);
-}
-
 // ─── Component ───
 
 export default function OCRScreen() {
@@ -94,6 +88,10 @@ export default function OCRScreen() {
     const insets = useSafeAreaInsets();
     const tts = useTextToSpeech();
     const activeGradient = isDarkMode ? darkGradientColors : gradientColors;
+
+    const [notifVisible, setNotifVisible] = useState(false);
+    const [notifMessage, setNotifMessage] = useState('');
+    const showToast = (msg: string) => { setNotifMessage(msg); setNotifVisible(true); };
 
     // Camera
     const [permission, requestPermission] = useCameraPermissions();
@@ -524,6 +522,12 @@ export default function OCRScreen() {
                         setTimeout(() => setDictVisible(true), 300);
                     }}
                 />
+                <GlassNotification
+                    visible={notifVisible}
+                    message={notifMessage}
+                    onHide={() => setNotifVisible(false)}
+                    isDarkMode={isDarkMode}
+                />
             </View>
         );
     }
@@ -597,6 +601,12 @@ export default function OCRScreen() {
                 selected={targetLang}
                 exclude={[sourceLang]}
                 title="Translate To"
+            />
+            <GlassNotification
+                visible={notifVisible}
+                message={notifMessage}
+                onHide={() => setNotifVisible(false)}
+                isDarkMode={isDarkMode}
             />
         </View>
     );

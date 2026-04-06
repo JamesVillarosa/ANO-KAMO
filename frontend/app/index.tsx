@@ -7,10 +7,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Dimensions,
   Animated,
-  ToastAndroid,
   Modal,
   BackHandler,
 } from 'react-native';
@@ -45,6 +43,7 @@ import {
 import { useTheme } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 import LanguagePicker from '../src/components/LanguagePicker';
+import GlassNotification from '../src/components/GlassNotification';
 import WordCardModal from '../src/components/WordCardModal';
 import SentenceBreakdownSheet from '../src/components/SentenceBreakdownSheet';
 import AnchoredPopoverMenu from '../src/components/AnchoredPopoverMenu';
@@ -126,6 +125,10 @@ export default function HomeScreen() {
   const [dictSourceLang, setDictSourceLang] = useState('');
   const [dictTargetLang, setDictTargetLang] = useState('');
   const [breakdownVisible, setBreakdownVisible] = useState(false);
+
+  const [notifVisible, setNotifVisible] = useState(false);
+  const [notifMessage, setNotifMessage] = useState('');
+  const showNotif = (msg: string) => { setNotifMessage(msg); setNotifVisible(true); };
 
   // Input ref for focus after clearing
   const inputRef = useRef<any>(null);
@@ -363,17 +366,13 @@ export default function HomeScreen() {
     try {
       await Clipboard.setStringAsync(text);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Copied to clipboard', ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Copied', 'Text copied to clipboard');
-      }
+      showNotif('Copied to clipboard');
     } catch { }
   };
 
   const openDictionary = (text: string, src: string, tgt: string) => {
     if (!text.trim()) {
-      showToast("Generate a translation first to use the dictionary.");
+      showNotif("Generate a translation first to use the dictionary.");
       return;
     }
 
@@ -388,14 +387,6 @@ export default function HomeScreen() {
     } else {
       setDictWord(text);
       setBreakdownVisible(true);
-    }
-  };
-
-  const showToast = (message: string) => {
-    if (Platform.OS === 'android') {
-      ToastAndroid.show(message, ToastAndroid.SHORT);
-    } else {
-      Alert.alert('', message);
     }
   };
 
@@ -438,7 +429,7 @@ export default function HomeScreen() {
     try {
       await submitFeedback(refineModal.translationId, 'dislike', refineText.trim());
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToast('Suggestion submitted! Thank you.');
+      showNotif('Suggestion submitted! Thank you.');
     } catch { }
     setRefineModal({ visible: false, translationId: '', originalText: '', target: 1 });
     setRefineText('');
@@ -878,6 +869,13 @@ export default function HomeScreen() {
               },
             },
           ]}
+          isDarkMode={isDarkMode}
+        />
+
+        <GlassNotification
+          visible={notifVisible}
+          message={notifMessage}
+          onHide={() => setNotifVisible(false)}
           isDarkMode={isDarkMode}
         />
         </View>

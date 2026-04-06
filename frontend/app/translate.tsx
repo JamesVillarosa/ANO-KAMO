@@ -18,8 +18,6 @@ import {
     Platform,
     Modal,
     Animated,
-    ToastAndroid,
-    Alert,
     TextInput as RNTextInput,
     BackHandler,
 } from 'react-native';
@@ -153,14 +151,6 @@ export default function TranslateScreen() {
         return () => sub.remove();
     }, [feedbackModalVisible, refineModal.visible, pickerTarget, dictVisible, breakdownVisible, screenState]);
 
-    const showToast = (msg: string) => {
-        if (Platform.OS === 'android') {
-            ToastAndroid.show(msg, ToastAndroid.SHORT);
-        } else {
-            Alert.alert('', msg);
-        }
-    };
-
     // ─── Core pipeline ────────────────────────────────────────────
 
     const processImage = async (uri: string, base64: string, w: number, h: number) => {
@@ -279,12 +269,12 @@ export default function TranslateScreen() {
         try {
             await Clipboard.setStringAsync(text);
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Copied to clipboard');
+            showNotif('Copied to clipboard');
         } catch { }
     };
 
     const openDictionary = (text: string) => {
-        if (!text.trim()) { showToast('No translation to look up.'); return; }
+        if (!text.trim()) { showNotif('No translation to look up.'); return; }
         setDictSrcLang(sourceLang);
         setDictTgtLang(targetLang);
         const words = text.trim().split(/\s+/).filter(w => w.length > 0);
@@ -317,7 +307,7 @@ export default function TranslateScreen() {
         try {
             await submitFeedback(translationIdRef.current || '', 'dislike', refineText.trim());
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Suggestion submitted! Thank you.');
+            showNotif('Suggestion submitted! Thank you.');
         } catch { }
         setRefineModal({ visible: false, originalText: '' });
         setRefineText('');

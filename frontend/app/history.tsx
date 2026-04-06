@@ -138,6 +138,7 @@ function ConversationGroupCard({
     isDarkMode,
     onDelete,
     onToggleStar,
+    showDelete = true,
 }: {
     group: ConversationGroup;
     isExpanded: boolean;
@@ -145,6 +146,7 @@ function ConversationGroupCard({
     isDarkMode: boolean;
     onDelete: () => void;
     onToggleStar: () => void;
+    showDelete?: boolean;
 }) {
     const timestamp = formatTimestamp(group.started_at);
     const langs = group.participants.map(p =>
@@ -200,9 +202,11 @@ function ConversationGroupCard({
                         fill={group.is_starred ? '#F59E0B' : 'none'}
                     />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]} onPress={onDelete}>
-                    <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
-                </TouchableOpacity>
+                {showDelete && (
+                    <TouchableOpacity style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]} onPress={onDelete}>
+                        <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                    </TouchableOpacity>
+                )}
             </View>
 
             {/* Expanded: mini chat log */}
@@ -539,7 +543,7 @@ export default function HistoryScreen() {
 
     const sections = groupBySections(filtered);
 
-    const renderItem = ({ item }: { item: HistoryItem }) => {
+    const renderItem = ({ item, showDelete = true }: { item: HistoryItem; showDelete?: boolean }) => {
         const type = item.translation_type || 'text';
         const badge = TYPE_BADGE[type] || TYPE_BADGE.text;
         const firstOutput = item.outputs?.[0];
@@ -598,7 +602,7 @@ export default function HistoryScreen() {
                         <View style={{ flex: 1 }} />
                         <TouchableOpacity
                             style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]}
-                            onPress={() => firstOutput && handleToggleFav(firstOutput.output_id)}
+                            onPress={() => handleToggleAllFav(item)}
                         >
                             <Star
                                 size={15}
@@ -606,12 +610,14 @@ export default function HistoryScreen() {
                                 fill={isFav ? '#F59E0B' : 'none'}
                             />
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]}
-                            onPress={() => handleDelete(item)}
-                        >
-                            <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
-                        </TouchableOpacity>
+                        {showDelete && (
+                            <TouchableOpacity
+                                style={[styles.actionBtn, isDarkMode && styles.actionBtnDark]}
+                                onPress={() => handleDelete(item)}
+                            >
+                                <Trash2 size={15} color={isDarkMode ? '#64748B' : '#94A3B8'} />
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </BlurView>
             </TouchableOpacity>
@@ -659,9 +665,12 @@ export default function HistoryScreen() {
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
                 ) : activeTab === 'favorites' ? (() => {
+                    type FavMixedItem =
+                        | { type: 'single'; item: HistoryItem; timestamp: string }
+                        | { type: 'conversation'; group: ConversationGroup; timestamp: string };
+
                     const starredConvs = effectiveConvGroups.filter(g => g.is_starred);
                     const favItems = items.filter(i => i.outputs?.some(o => o.is_favorite));
-                    const favSections = groupBySections(favItems);
 
                     if (starredConvs.length === 0 && favItems.length === 0) {
                         return (
@@ -677,41 +686,57 @@ export default function HistoryScreen() {
                         );
                     }
 
+                    const favMixed: FavMixedItem[] = [
+                        ...favItems.map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp })),
+                        ...starredConvs.map(g => ({
+                            type: 'conversation' as const,
+                            group: g,
+                            timestamp: g.messages.length > 0
+                                ? g.messages[g.messages.length - 1].timestamp
+                                : g.started_at,
+                        })),
+                    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+                    const favSectionMap = new Map<string, FavMixedItem[]>();
+                    for (const fi of favMixed) {
+                        const key = getSectionTitle(fi.timestamp);
+                        if (!favSectionMap.has(key)) favSectionMap.set(key, []);
+                        favSectionMap.get(key)!.push(fi);
+                    }
+
                     return (
                         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-                            {starredConvs.length > 0 && (
-                                <View>
+                            {Array.from(favSectionMap.entries()).map(([sectionTitle, sectionItems]) => (
+                                <View key={sectionTitle}>
                                     <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
-                                        CONVERSATIONS
+                                        {sectionTitle.toUpperCase()}
                                     </Text>
-                                    {starredConvs.map(group => (
-                                        <ConversationGroupCard
-                                            key={group.conversation_id}
-                                            group={group}
-                                            isExpanded={expandedConvId === group.conversation_id}
-                                            isDarkMode={isDarkMode}
-                                            onToggle={() => {
-                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setExpandedConvId(prev =>
-                                                    prev === group.conversation_id ? null : group.conversation_id
-                                                );
-                                            }}
-                                            onDelete={() => handleDeleteConversation(group.conversation_id)}
-                                            onToggleStar={() => handleToggleConvStar(group.conversation_id)}
-                                        />
-                                    ))}
-                                </View>
-                            )}
-                            {favSections.map(section => (
-                                <View key={section.title}>
-                                    <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
-                                        {section.title.toUpperCase()}
-                                    </Text>
-                                    {section.data.map(item => (
-                                        <React.Fragment key={item.translation_id}>
-                                            {renderItem({ item } as any)}
-                                        </React.Fragment>
-                                    ))}
+                                    {sectionItems.map(fi => {
+                                        if (fi.type === 'conversation') {
+                                            return (
+                                                <ConversationGroupCard
+                                                    key={fi.group.conversation_id}
+                                                    group={fi.group}
+                                                    isExpanded={expandedConvId === fi.group.conversation_id}
+                                                    isDarkMode={isDarkMode}
+                                                    showDelete={false}
+                                                    onToggle={() => {
+                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                        setExpandedConvId(prev =>
+                                                            prev === fi.group.conversation_id ? null : fi.group.conversation_id
+                                                        );
+                                                    }}
+                                                    onDelete={() => handleDeleteConversation(fi.group.conversation_id)}
+                                                    onToggleStar={() => handleToggleConvStar(fi.group.conversation_id)}
+                                                />
+                                            );
+                                        }
+                                        return (
+                                            <React.Fragment key={fi.item.translation_id}>
+                                                {renderItem({ item: fi.item, showDelete: false })}
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </View>
                             ))}
                         </ScrollView>
