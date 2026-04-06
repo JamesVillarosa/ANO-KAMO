@@ -850,18 +850,24 @@ export default function HomeScreen() {
                           currentFeedback === 'dislike' && { borderWidth: 1.5, borderColor: '#EF4444' },
                         ]}
                         onPress={() => {
+                          const currentFeedback = activeFeedbackTarget?.target === 1 ? feedbackGiven1 : feedbackGiven2;
+                          const isRemoving = currentFeedback === 'dislike';
+
                           if (activeFeedbackTarget) {
                             handleFeedback(activeFeedbackTarget.id, 'dislike', activeFeedbackTarget.target);
                           }
                           setFeedbackModalVisible(false);
-                          // Offer to suggest a better translation after "Not helpful"
-                          const outputText = activeFeedbackTarget?.target === 1 ? translated1 : translated2;
-                          if (outputText) {
-                            setTimeout(() => {
-                              setPendingSuggestText(outputText);
-                              setPendingSuggestTarget(activeFeedbackTarget?.target ?? 1);
-                              setSuggestConfirmVisible(true);
-                            }, 300);
+
+                          // Only offer to suggest if we are SETTING a dislike (not removing it)
+                          if (!isRemoving) {
+                            const outputText = activeFeedbackTarget?.target === 1 ? translated1 : translated2;
+                            if (outputText) {
+                              setTimeout(() => {
+                                setPendingSuggestText(outputText);
+                                setPendingSuggestTarget(activeFeedbackTarget?.target ?? 1);
+                                setSuggestConfirmVisible(true);
+                              }, 300);
+                            }
                           }
                         }}
                       >

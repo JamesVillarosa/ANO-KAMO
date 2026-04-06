@@ -802,14 +802,18 @@ export default function TranslateScreen() {
                                     feedbackGiven === 'dislike' && { borderWidth: 1.5, borderColor: '#EF4444' },
                                 ]}
                                 onPress={() => {
+                                    const wasDisliked = feedbackGiven === 'dislike';
                                     handleFeedback('dislike');
                                     setFeedbackModalVisible(false);
-                                    // Offer to suggest a better translation
-                                    const outputText = fullTranslation;
-                                    if (outputText) {
-                                        setTimeout(() => {
-                                            setSuggestConfirmVisible(true);
-                                        }, 300);
+
+                                    // Only offer to suggest if we are SETTING a dislike (not removing it)
+                                    if (!wasDisliked) {
+                                        const outputText = fullTranslation;
+                                        if (outputText) {
+                                            setTimeout(() => {
+                                                setSuggestConfirmVisible(true);
+                                            }, 300);
+                                        }
                                     }
                                 }}
                             >
