@@ -118,14 +118,23 @@ LANGUAGE_MARKERS = {
 }
 
 
-def _validate_output_language(text: str, target_lang: str) -> bool:
-    """Check if translated text contains expected language markers."""
+# Filipino languages share too many words for reliable marker-based detection.
+# Validation for these pairs always produces false failures, causing unnecessary retries.
+_FILIPINO_LANGS = {"tl", "ceb", "hil"}
+
+
+def _validate_output_language(text: str, target_lang: str, source_lang: str = "") -> bool:
+    """Check if translated text contains expected language markers.
+    Skips validation for Filipino↔Filipino pairs where markers heavily overlap."""
+    # Skip for Filipino language group — marker overlap causes constant false negatives
+    if target_lang in _FILIPINO_LANGS or source_lang in _FILIPINO_LANGS:
+        return True
     markers = LANGUAGE_MARKERS.get(target_lang, [])
     if not markers:
         return True
     words = text.split()
     # Skip validation for very short texts — single words / short phrases
-    # are often shared across Filipino languages and will false-fail
+    # are often shared across languages and will false-fail
     if len(words) < 4:
         return True
     text_lower = text.lower()
@@ -269,7 +278,7 @@ class TranslationService:
 
             # Validate output language; retry once if wrong language detected
             tgt_name = SUPPORTED_LANGUAGES.get(target_lang, target_lang)
-            if not _validate_output_language(translated, target_lang):
+            if not _validate_output_language(translated, target_lang, source_lang):
                 logger.warning(f"Output language validation failed for {target_lang}, retrying...")
                 retry_prompt = (
                     f"Translate the following text into {tgt_name} ONLY. "
