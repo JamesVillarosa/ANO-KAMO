@@ -92,6 +92,9 @@ export default function HomeScreen() {
   const prevTargetLang2Ref = useRef(targetLang2);
   // Guard against concurrent translateMulti calls (prevents double-save in Strict Mode).
   const isTranslatingRef = useRef(false);
+  // Incremented on every effect run; in-flight callbacks compare against this
+  // to detect whether their result has been superseded by a newer input.
+  const translationGenRef = useRef(0);
 
   // Feedback state
   const [feedbackGiven1, setFeedbackGiven1] = useState<'like' | 'dislike' | null>(null);
@@ -222,6 +225,16 @@ export default function HomeScreen() {
 
   // Re-translate only when the source text or a relevant language selection actually changes.
   useEffect(() => {
+    // Each run gets a unique generation number. Any in-flight callback from a
+    // previous run will see its generation no longer matches and will bail out,
+    // preventing stale results from overwriting a newer translation.
+    const myGen = ++translationGenRef.current;
+
+    // Stop any visible loading spinner immediately when the input changes —
+    // the in-flight request's finally{} block will be ignored via the gen check.
+    setLoading1(false);
+    setLoading2(false);
+
     if (!sourceText.trim() || sourceText.length < 2) {
       setTranslated1('');
       setTranslated2('');
@@ -258,6 +271,9 @@ export default function HomeScreen() {
     prevTargetLang2Ref.current = targetLang2;
 
     const timer = setTimeout(async () => {
+      // If the user changed the input while we were waiting, abort.
+      if (translationGenRef.current !== myGen) return;
+
       if (mode === '3way') {
         // 3-Way: one bundled call → one Translation + 2 outputs in history
         const needsAny = sourceTextChanged || sourceLangChanged || targetLang1Changed || targetLang2Changed || !translated2;
@@ -271,11 +287,13 @@ export default function HomeScreen() {
           setFeedbackGiven2(null);
           try {
             const res = await translateMulti(sourceText, sourceLang, [targetLang1, targetLang2], undefined, deviceIdRef.current);
+            if (translationGenRef.current !== myGen) return;
             setTranslated1(res.output_texts?.[0] || '');
             setTranslated2(res.output_texts?.[1] || '');
             setTranslationId1(res.translation_id || '');
             setTranslationId2(res.translation_id || '');
           } catch (error: any) {
+            if (translationGenRef.current !== myGen) return;
             const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
               ? 'Translation service is temporarily unavailable. Please try again.'
               : 'Translation unavailable. Please try again.';
@@ -283,9 +301,11 @@ export default function HomeScreen() {
             setTranslated2(errorMsg);
           } finally {
             isTranslatingRef.current = false;
+            if (translationGenRef.current === myGen) {
+              setLoading1(false);
+              setLoading2(false);
+            }
           }
-          setLoading1(false);
-          setLoading2(false);
         }
       } else {
         // 2-Way: single call
@@ -294,15 +314,20 @@ export default function HomeScreen() {
           setFeedbackGiven1(null);
           try {
             const res1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceIdRef.current);
+            if (translationGenRef.current !== myGen) return;
             setTranslated1(res1.output_text || '');
             setTranslationId1(res1.translation_id || '');
           } catch (error: any) {
+            if (translationGenRef.current !== myGen) return;
             const errorMsg = error?.message?.includes('503') || error?.message?.includes('unavailable')
               ? 'Translation service is temporarily unavailable. Please try again.'
               : 'Translation unavailable. Please try again.';
             setTranslated1(errorMsg);
+          } finally {
+            if (translationGenRef.current === myGen) {
+              setLoading1(false);
+            }
           }
-          setLoading1(false);
         }
       }
     }, 800);

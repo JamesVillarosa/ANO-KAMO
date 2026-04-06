@@ -442,28 +442,35 @@ export default function HistoryScreen() {
         return () => sub.remove();
     }, [confirmModal.visible, detailItem, router]);
 
-    const handleToggleFav = async (outputId: string) => {
-        const toggle = (prev: HistoryItem[]) => prev.map(item => ({
-            ...item,
-            outputs: item.outputs.map(o =>
-                o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
-            ),
-        }));
-        const toggleDetail = (prev: HistoryItem | null) => prev ? {
-            ...prev,
-            outputs: prev.outputs.map(o =>
-                o.output_id === outputId ? { ...o, is_favorite: !o.is_favorite } : o
-            ),
-        } : null;
-        // Optimistic update — reflect immediately in UI
-        setItems(toggle);
-        setDetailItem(toggleDetail);
+    // Single Save button saves/unsaves ALL outputs of a translation at once.
+    const handleToggleAllFav = async (item: HistoryItem) => {
+        const allFav = item.outputs.every(o => o.is_favorite);
+        const newState = !allFav;
+
+        const applyState = (outputs: typeof item.outputs) =>
+            outputs.map(o => ({ ...o, is_favorite: newState }));
+
+        // Optimistic update
+        setItems(prev => prev.map(i =>
+            i.translation_id === item.translation_id
+                ? { ...i, outputs: applyState(i.outputs) }
+                : i
+        ));
+        setDetailItem(prev => prev?.translation_id === item.translation_id
+            ? { ...prev, outputs: applyState(prev.outputs) }
+            : prev
+        );
+
         try {
-            await toggleFavorite(outputId);
+            // Only call API for outputs whose state actually needs to change
+            const needsToggle = item.outputs.filter(o => o.is_favorite !== newState);
+            await Promise.all(needsToggle.map(o => toggleFavorite(o.output_id)));
         } catch {
             // Revert on error
-            setItems(toggle);
-            setDetailItem(toggleDetail);
+            setItems(prev => prev.map(i =>
+                i.translation_id === item.translation_id ? item : i
+            ));
+            setDetailItem(prev => prev?.translation_id === item.translation_id ? item : prev);
         }
     };
 
@@ -860,6 +867,20 @@ export default function HistoryScreen() {
                                         <Copy size={15} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                                         <Text style={[styles.detailBtnText, isDarkMode && styles.textSecondary]}>Copy</Text>
                                     </TouchableOpacity>
+                                    {/* Single Save — saves ALL translations for this entry */}
+                                    <TouchableOpacity
+                                        style={[styles.detailBtn, isDarkMode && styles.detailBtnDark]}
+                                        onPress={() => handleToggleAllFav(detailItem)}
+                                    >
+                                        <Star
+                                            size={15}
+                                            color={detailItem.outputs.every(o => o.is_favorite) ? '#F59E0B' : (isDarkMode ? '#64748B' : '#94A3B8')}
+                                            fill={detailItem.outputs.every(o => o.is_favorite) ? '#F59E0B' : 'none'}
+                                        />
+                                        <Text style={[styles.detailBtnText, isDarkMode && styles.textSecondary]}>
+                                            {detailItem.outputs.every(o => o.is_favorite) ? 'Saved' : 'Save'}
+                                        </Text>
+                                    </TouchableOpacity>
                                 </View>
 
                                 {/* Outputs */}
@@ -885,19 +906,6 @@ export default function HistoryScreen() {
                                             >
                                                 <Copy size={15} color={isDarkMode ? '#94A3B8' : '#64748B'} />
                                                 <Text style={[styles.detailBtnText, isDarkMode && styles.textSecondary]}>Copy</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={[styles.detailBtn, isDarkMode && styles.detailBtnDark]}
-                                                onPress={() => handleToggleFav(output.output_id)}
-                                            >
-                                                <Star
-                                                    size={15}
-                                                    color={output.is_favorite ? '#F59E0B' : (isDarkMode ? '#64748B' : '#94A3B8')}
-                                                    fill={output.is_favorite ? '#F59E0B' : 'none'}
-                                                />
-                                                <Text style={[styles.detailBtnText, isDarkMode && styles.textSecondary]}>
-                                                    {output.is_favorite ? 'Saved' : 'Save'}
-                                                </Text>
                                             </TouchableOpacity>
                                         </View>
                                     </View>
