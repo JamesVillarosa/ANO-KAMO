@@ -131,7 +131,7 @@ interface ConversationGroup {
     messages: ConvMessage[];
 }
 
-function ConversationGroupCard({
+const ConversationGroupCard = React.memo(function ConversationGroupCard({
     group,
     isExpanded,
     onToggle,
@@ -292,7 +292,7 @@ function ConversationGroupCard({
             )}
         </BlurView>
     );
-}
+});
 
 // Merge duplicate chat items that share the same input_text/input_language
 // and were created within 5 seconds of each other (3-way chat creates one record per target lang)
@@ -555,11 +555,69 @@ export default function HistoryScreen() {
         );
     };
 
-    const filtered = activeTab === 'favorites'
-        ? items.filter(i => i.outputs?.some(o => o.is_favorite))
-        : items;
+    const filtered = useMemo(
+        () => activeTab === 'favorites'
+            ? items.filter(i => i.outputs?.some(o => o.is_favorite))
+            : items,
+        [activeTab, items]
+    );
 
-    const sections = groupBySections(filtered);
+    const sections = useMemo(() => groupBySections(filtered), [filtered]);
+
+    // Pre-compute favorites mixed list (avoids expensive sort/filter on every render)
+    const favMixedData = useMemo(() => {
+        type FavMixedItem =
+            | { type: 'single'; item: HistoryItem; timestamp: string }
+            | { type: 'conversation'; group: ConversationGroup; timestamp: string };
+
+        const starredConvs = effectiveConvGroups.filter(g => g.is_starred);
+        const favItems = items.filter(i => i.outputs?.some(o => o.is_favorite));
+        const mixed: FavMixedItem[] = [
+            ...favItems.map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp })),
+            ...starredConvs.map(g => ({
+                type: 'conversation' as const,
+                group: g,
+                timestamp: g.messages.length > 0 ? g.messages[g.messages.length - 1].timestamp : g.started_at,
+            })),
+        ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        const sectionMap = new Map<string, FavMixedItem[]>();
+        for (const fi of mixed) {
+            const key = getSectionTitle(fi.timestamp);
+            if (!sectionMap.has(key)) sectionMap.set(key, []);
+            sectionMap.get(key)!.push(fi);
+        }
+        return { mixed, sectionMap, starredConvs, favItems };
+    }, [effectiveConvGroups, items]);
+
+    // Pre-compute history mixed list
+    const historyMixedData = useMemo(() => {
+        type MixedItem =
+            | { type: 'single'; item: HistoryItem; timestamp: string }
+            | { type: 'conversation'; group: ConversationGroup; timestamp: string };
+
+        const singleItems: MixedItem[] = items
+            .filter(i => i.translation_type !== 'chat')
+            .map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp }));
+
+        const convItems: MixedItem[] = effectiveConvGroups.map(g => ({
+            type: 'conversation' as const,
+            group: g,
+            timestamp: g.messages.length > 0 ? g.messages[g.messages.length - 1].timestamp : g.started_at,
+        }));
+
+        const all: MixedItem[] = [...singleItems, ...convItems].sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        const sectionMap = new Map<string, MixedItem[]>();
+        for (const item of all) {
+            const key = getSectionTitle(item.timestamp);
+            if (!sectionMap.has(key)) sectionMap.set(key, []);
+            sectionMap.get(key)!.push(item);
+        }
+        return { all, sectionMap };
+    }, [effectiveConvGroups, items]);
 
     const renderItem = ({ item, showDelete = true }: { item: HistoryItem; showDelete?: boolean }) => {
         const type = item.translation_type || 'text';
@@ -682,49 +740,20 @@ export default function HistoryScreen() {
                     <View style={styles.center}>
                         <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#3B82F6'} size="large" />
                     </View>
-                ) : activeTab === 'favorites' ? (() => {
-                    type FavMixedItem =
-                        | { type: 'single'; item: HistoryItem; timestamp: string }
-                        | { type: 'conversation'; group: ConversationGroup; timestamp: string };
-
-                    const starredConvs = effectiveConvGroups.filter(g => g.is_starred);
-                    const favItems = items.filter(i => i.outputs?.some(o => o.is_favorite));
-
-                    if (starredConvs.length === 0 && favItems.length === 0) {
-                        return (
-                            <View style={styles.center}>
-                                <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
-                                <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
-                                    No favorites yet
-                                </Text>
-                                <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
-                                    Star a translation to save it here
-                                </Text>
-                            </View>
-                        );
-                    }
-
-                    const favMixed: FavMixedItem[] = [
-                        ...favItems.map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp })),
-                        ...starredConvs.map(g => ({
-                            type: 'conversation' as const,
-                            group: g,
-                            timestamp: g.messages.length > 0
-                                ? g.messages[g.messages.length - 1].timestamp
-                                : g.started_at,
-                        })),
-                    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-                    const favSectionMap = new Map<string, FavMixedItem[]>();
-                    for (const fi of favMixed) {
-                        const key = getSectionTitle(fi.timestamp);
-                        if (!favSectionMap.has(key)) favSectionMap.set(key, []);
-                        favSectionMap.get(key)!.push(fi);
-                    }
-
-                    return (
+                ) : activeTab === 'favorites' ? (
+                    favMixedData.starredConvs.length === 0 && favMixedData.favItems.length === 0 ? (
+                        <View style={styles.center}>
+                            <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                            <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
+                                No favorites yet
+                            </Text>
+                            <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
+                                Star a translation to save it here
+                            </Text>
+                        </View>
+                    ) : (
                         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-                            {Array.from(favSectionMap.entries()).map(([sectionTitle, sectionItems]) => (
+                            {Array.from(favMixedData.sectionMap.entries()).map(([sectionTitle, sectionItems]) => (
                                 <View key={sectionTitle}>
                                     <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
                                         {sectionTitle.toUpperCase()}
@@ -758,52 +787,19 @@ export default function HistoryScreen() {
                                 </View>
                             ))}
                         </ScrollView>
-                    );
-                })() : (() => {
-                    // Build unified history: non-chat items + conversation groups, sorted by date
-                    type MixedItem =
-                        | { type: 'single'; item: HistoryItem; timestamp: string }
-                        | { type: 'conversation'; group: ConversationGroup; timestamp: string };
-
-                    const singleItems: MixedItem[] = items
-                        .filter(i => i.translation_type !== 'chat')
-                        .map(i => ({ type: 'single' as const, item: i, timestamp: i.timestamp }));
-
-                    const convItems: MixedItem[] = effectiveConvGroups.map(g => ({
-                        type: 'conversation' as const,
-                        group: g,
-                        timestamp: g.messages.length > 0
-                            ? g.messages[g.messages.length - 1].timestamp
-                            : g.started_at,
-                    }));
-
-                    const all: MixedItem[] = [...singleItems, ...convItems].sort(
-                        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-
-                    if (all.length === 0) {
-                        return (
-                            <View style={styles.center}>
-                                <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
-                                <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
-                                    No translation history yet
-                                </Text>
-                                <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
-                                    Start translating to see your history here
-                                </Text>
-                            </View>
-                        );
-                    }
-
-                    // Group into date sections
-                    const sectionMap = new Map<string, MixedItem[]>();
-                    for (const item of all) {
-                        const key = getSectionTitle(item.timestamp);
-                        if (!sectionMap.has(key)) sectionMap.set(key, []);
-                        sectionMap.get(key)!.push(item);
-                    }
-
-                    return (
+                    )
+                ) : (
+                    historyMixedData.all.length === 0 ? (
+                        <View style={styles.center}>
+                            <Clock size={52} color={isDarkMode ? '#334155' : '#E2E8F0'} />
+                            <Text style={[styles.emptyText, isDarkMode && styles.textSecondary]}>
+                                No translation history yet
+                            </Text>
+                            <Text style={[styles.emptySubText, isDarkMode && { color: '#475569' }]}>
+                                Start translating to see your history here
+                            </Text>
+                        </View>
+                    ) : (
                         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
                             <View style={styles.clearAllRow}>
                                 <TouchableOpacity
@@ -814,7 +810,7 @@ export default function HistoryScreen() {
                                     <Text style={styles.clearAllText}>Clear All</Text>
                                 </TouchableOpacity>
                             </View>
-                            {Array.from(sectionMap.entries()).map(([sectionTitle, sectionItems]) => (
+                            {Array.from(historyMixedData.sectionMap.entries()).map(([sectionTitle, sectionItems]) => (
                                 <View key={sectionTitle}>
                                     <Text style={[styles.sectionHeader, isDarkMode && { color: '#64748B' }]}>
                                         {sectionTitle.toUpperCase()}
@@ -849,8 +845,8 @@ export default function HistoryScreen() {
                                 </View>
                             ))}
                         </ScrollView>
-                    );
-                })()}
+                    )
+                )}
             </View>
 
             {/* Detail Modal — conditionally rendered so it never intercepts back button when closed */}

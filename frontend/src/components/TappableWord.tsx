@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo, memo } from 'react';
 import { Text, TouchableOpacity, View, StyleSheet, Animated, ToastAndroid, Platform, Alert } from 'react-native';
 import WordCardModal from './WordCardModal';
 
@@ -16,7 +16,7 @@ interface TappableWordProps {
  * Tapping a word opens the WordCardModal dictionary lookup for that word.
  * Features: Dotted underline, 5% opacity background, and press animation.
  */
-export default function TappableWord({
+function TappableWord({
     text,
     sourceLang,
     targetLang,
@@ -70,7 +70,7 @@ export default function TappableWord({
         setSelectedWord(synonym);
     }, []);
 
-    const words = text.split(/(\s+)/);
+    const words = useMemo(() => text.split(/(\s+)/), [text]);
 
     return (
         <View style={styles.container}>
@@ -109,6 +109,8 @@ export default function TappableWord({
         </View>
     );
 }
+
+export default memo(TappableWord);
 
 const styles = StyleSheet.create({
     container: {

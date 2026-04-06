@@ -1093,16 +1093,18 @@ export default function ConversationScreen() {
                     targetLangs.forEach(tl => translations.push({ text: '', lang: tl }));
                 }
             } else {
-                // No conversation session — translate locally one at a time
-                for (const tl of targetLangs) {
-                    try {
-                        const res = await retryFn(() => translateSingle(text, fromLang, tl, capturedTone || undefined, undefined, true));
-                        translations.push({ text: sanitizeTranslation(res.output_text) || '', lang: tl });
-                    } catch {
+                // No conversation session — translate all targets in parallel
+                const results = await Promise.allSettled(
+                    targetLangs.map(tl => retryFn(() => translateSingle(text, fromLang, tl, capturedTone || undefined, undefined, true)))
+                );
+                results.forEach((result, i) => {
+                    if (result.status === 'fulfilled') {
+                        translations.push({ text: sanitizeTranslation(result.value.output_text) || '', lang: targetLangs[i] });
+                    } else {
                         anyFailed = true;
-                        translations.push({ text: '', lang: tl });
+                        translations.push({ text: '', lang: targetLangs[i] });
                     }
-                }
+                });
             }
             const msgId = generateMsgId();
             const msg: Message = {
@@ -1317,7 +1319,7 @@ export default function ConversationScreen() {
                             </View>
                         )}
                         {messages.map((msg) => (
-                            <ChatBubble
+                            <MemoizedChatBubble
                                 key={msg.id}
                                 msg={msg}
                                 alignment={msg.speaker === 1 ? 'right' : 'left'}
@@ -1425,7 +1427,7 @@ export default function ConversationScreen() {
                             </View>
                         )}
                         {messages.map((msg) => (
-                            <ChatBubble
+                            <MemoizedChatBubble
                                 key={msg.id}
                                 msg={msg}
                                 alignment={msg.speaker === 0 ? 'right' : 'left'}

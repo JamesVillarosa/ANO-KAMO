@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { GlassBlur as BlurView } from './GlassBlur';
 import { Text } from 'react-native-paper';
@@ -39,12 +39,19 @@ export default function WordCardModal({
     const tts = useTextToSpeech();
     const [loading, setLoading] = useState(false);
     const [entry, setEntry] = useState<WordEntry | null>(null);
+    const cache = useRef(new Map<string, WordEntry>());
 
     useEffect(() => {
         if (visible && word) {
+            const cacheKey = `${word}:${sourceLang}:${targetLang}`;
+            const cached = cache.current.get(cacheKey);
+            if (cached) {
+                setEntry(cached);
+                return;
+            }
             setLoading(true);
             dictionaryLookup(word, sourceLang, targetLang).then(res => {
-                setEntry({
+                const newEntry: WordEntry = {
                     word: res.word || word,
                     root: res.root || word,
                     pronunciation: res.pronunciation || '',
@@ -53,7 +60,9 @@ export default function WordCardModal({
                     synonyms: res.synonyms || [],
                     example: res.example_sentence || '',
                     exampleTranslation: res.example_translation || '',
-                });
+                };
+                cache.current.set(cacheKey, newEntry);
+                setEntry(newEntry);
                 setLoading(false);
             }).catch(() => {
                 setEntry({
@@ -71,7 +80,7 @@ export default function WordCardModal({
         } else {
             setEntry(null);
         }
-    }, [visible, word]);
+    }, [visible, word, sourceLang, targetLang]);
 
     const handleSynonymPress = (synonym: string) => {
         if (onSynonymPress) {

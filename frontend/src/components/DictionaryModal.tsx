@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, TouchableOpacity, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { GlassBlur as BlurView } from './GlassBlur';
 import { Text } from 'react-native-paper';
@@ -33,19 +33,28 @@ export default function DictionaryModal({
     const { isDarkMode } = useTheme();
     const [loading, setLoading] = useState(false);
     const [entry, setEntry] = useState<DictionaryEntry | null>(null);
+    const cache = useRef(new Map<string, DictionaryEntry>());
 
     useEffect(() => {
         if (visible && word) {
+            const cacheKey = `${word}:${sourceLang}:${targetLang}`;
+            const cached = cache.current.get(cacheKey);
+            if (cached) {
+                setEntry(cached);
+                return;
+            }
             setLoading(true);
             dictionaryLookup(word, sourceLang, targetLang).then(res => {
-                setEntry({
+                const newEntry: DictionaryEntry = {
                     word: res.word || word,
                     pronunciation: res.pronunciation || `/${word.toLowerCase()}/`,
                     meaning: res.definition || `Meaning of "${word}"`,
                     partOfSpeech: res.part_of_speech || 'Word',
                     synonyms: res.synonyms || [],
                     example: res.example_sentence || '',
-                });
+                };
+                cache.current.set(cacheKey, newEntry);
+                setEntry(newEntry);
                 setLoading(false);
             }).catch(() => {
                 setEntry({
@@ -61,7 +70,7 @@ export default function DictionaryModal({
         } else {
             setEntry(null);
         }
-    }, [visible, word]);
+    }, [visible, word, sourceLang, targetLang]);
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>

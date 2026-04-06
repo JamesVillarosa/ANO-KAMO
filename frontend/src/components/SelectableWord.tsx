@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import WordCardModal from './WordCardModal';
 
@@ -14,7 +14,7 @@ interface SelectableWordProps {
  * Renders translation text where each word is tappable.
  * Tapping a word opens the WordCardModal dictionary lookup for that word.
  */
-export default function SelectableWord({
+function SelectableWord({
     text,
     sourceLang,
     targetLang,
@@ -37,7 +37,7 @@ export default function SelectableWord({
         setSelectedWord(synonym);
     }, []);
 
-    const words = text.split(/(\s+)/);
+    const words = useMemo(() => text.split(/(\s+)/), [text]);
 
     return (
         <>
@@ -70,6 +70,8 @@ export default function SelectableWord({
         </>
     );
 }
+
+export default memo(SelectableWord);
 
 const styles = StyleSheet.create({
     word: {
