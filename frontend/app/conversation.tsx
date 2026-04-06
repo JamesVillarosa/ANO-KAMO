@@ -1117,7 +1117,6 @@ export default function ConversationScreen() {
             };
             addMessageToState(msg);
             markHasSpoken(activeSpeaker as 0 | 1 | 2);
-            lastMessageIdRef.current = msgId;
             if (anyFailed) {
                 retryTranslationsAsync(msgId, text, fromLang, targetLangs, capturedTone);
             }
@@ -1180,7 +1179,6 @@ export default function ConversationScreen() {
             isRegenerating: failed,
         };
         addMessageToState(msg);
-        lastMessageIdRef.current = msgId;
         if (failed) {
             retryTranslationsAsync(msgId, text, fromLang, [targetLang], capturedTone);
         }

@@ -27,6 +27,8 @@ export function useTextToSpeech(): TextToSpeechHook {
     const [playingText, setPlayingText] = useState('');
     // Prevents concurrent speak() calls (double-tap protection)
     const isLoadingRef = useRef(false);
+    // Cancellation token: incremented by stop() so speak() aborts after any async op
+    const cancelTokenRef = useRef(0);
     const isSupported = true;
 
     // Set up audio session once at mount so the first speak() has no setup delay
@@ -40,6 +42,8 @@ export function useTextToSpeech(): TextToSpeechHook {
     }, []);
 
     const stop = useCallback(async () => {
+        // Increment token so any in-flight speak() detects cancellation
+        cancelTokenRef.current += 1;
         isLoadingRef.current = false;
         if (soundRef.current) {
             try {
@@ -47,6 +51,10 @@ export function useTextToSpeech(): TextToSpeechHook {
                 await soundRef.current.unloadAsync();
             } catch { }
             soundRef.current = null;
+        }
+        // Cancel web speech fallback if active
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
         }
         setTtsState('idle');
         setPlayingText('');
@@ -62,6 +70,10 @@ export function useTextToSpeech(): TextToSpeechHook {
         // Double-tap guard: reject if a load is already in progress
         if (isLoadingRef.current) return;
         isLoadingRef.current = true;
+
+        // Capture token at the start — if it changes, stop() was called during our await
+        const myToken = ++cancelTokenRef.current;
+        const isCancelled = () => cancelTokenRef.current !== myToken;
 
         try {
             // Unload any previous sound first
@@ -87,6 +99,8 @@ export function useTextToSpeech(): TextToSpeechHook {
                     headers: { 'ngrok-skip-browser-warning': 'true' },
                 });
 
+                if (isCancelled()) { setTtsState('idle'); setPlayingText(''); return; }
+
                 if (!response.ok) {
                     setTtsState('idle');
                     _webSpeechFallback(text, langCode);
@@ -101,6 +115,8 @@ export function useTextToSpeech(): TextToSpeechHook {
                 }
 
                 const blob = await response.blob();
+                if (isCancelled()) { setTtsState('idle'); setPlayingText(''); return; }
+
                 const blobUrl = URL.createObjectURL(blob);
 
                 // Load with shouldPlay:false, then play separately
@@ -108,6 +124,15 @@ export function useTextToSpeech(): TextToSpeechHook {
                     { uri: blobUrl },
                     { shouldPlay: false, progressUpdateIntervalMillis: 100 }
                 );
+
+                if (isCancelled()) {
+                    sound.unloadAsync().catch(() => {});
+                    URL.revokeObjectURL(blobUrl);
+                    setTtsState('idle');
+                    setPlayingText('');
+                    return;
+                }
+
                 soundRef.current = sound;
 
                 sound.setOnPlaybackStatusUpdate((status) => {
@@ -129,6 +154,7 @@ export function useTextToSpeech(): TextToSpeechHook {
                 // Retry up to 2 times on transient gateway errors (502/503/504).
                 let response: Response | null = null;
                 for (let attempt = 0; attempt <= 2; attempt++) {
+                    if (isCancelled()) { setTtsState('idle'); setPlayingText(''); return; }
                     response = await fetch(ttsUrl, {
                         headers: { 'ngrok-skip-browser-warning': 'true' },
                     });
@@ -136,6 +162,8 @@ export function useTextToSpeech(): TextToSpeechHook {
                     if (attempt < 2) await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
                 }
                 response = response!;
+
+                if (isCancelled()) { setTtsState('idle'); setPlayingText(''); return; }
 
                 if (!response.ok) {
                     throw new Error(`TTS request failed with status ${response.status}`);
@@ -149,6 +177,8 @@ export function useTextToSpeech(): TextToSpeechHook {
                 }
 
                 const arrayBuffer = await response.arrayBuffer();
+                if (isCancelled()) { setTtsState('idle'); setPlayingText(''); return; }
+
                 if (arrayBuffer.byteLength === 0) {
                     setTtsState('idle');
                     setPlayingText('');
@@ -165,10 +195,26 @@ export function useTextToSpeech(): TextToSpeechHook {
                     encoding: 'base64',
                 });
 
+                if (isCancelled()) {
+                    FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
+                    setTtsState('idle');
+                    setPlayingText('');
+                    return;
+                }
+
                 const { sound } = await Audio.Sound.createAsync(
                     { uri: tempUri },
                     { shouldPlay: false, progressUpdateIntervalMillis: 100 }
                 );
+
+                if (isCancelled()) {
+                    sound.unloadAsync().catch(() => {});
+                    FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
+                    setTtsState('idle');
+                    setPlayingText('');
+                    return;
+                }
+
                 soundRef.current = sound;
 
                 sound.setOnPlaybackStatusUpdate((status) => {
