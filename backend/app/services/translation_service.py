@@ -24,6 +24,55 @@ AVAILABLE_TONES = [
     "playful", "sarcastic", "angry", "urgent",
 ]
 
+# Built-in Filipino cross-language slang glossary.
+# Each entry maps (source_lang, phrase) → (target_lang, translation).
+# Injected into the prompt whenever the phrase appears in the input text.
+BUILTIN_SLANG: list[dict] = [
+    # ── Tagalog slang ──
+    {"phrase": "char",       "source_lang": "tl",  "target_lang": "en",  "translation": "just kidding"},
+    {"phrase": "char",       "source_lang": "tl",  "target_lang": "ceb", "translation": "atik / atika"},
+    {"phrase": "char",       "source_lang": "tl",  "target_lang": "hil", "translation": "tikal"},
+    {"phrase": "charot",     "source_lang": "tl",  "target_lang": "en",  "translation": "just kidding"},
+    {"phrase": "charot",     "source_lang": "tl",  "target_lang": "ceb", "translation": "atik / atika"},
+    {"phrase": "charot",     "source_lang": "tl",  "target_lang": "hil", "translation": "tikal"},
+    {"phrase": "werpa",      "source_lang": "tl",  "target_lang": "en",  "translation": "power / strength"},
+    {"phrase": "werpa",      "source_lang": "tl",  "target_lang": "ceb", "translation": "kusog"},
+    {"phrase": "werpa",      "source_lang": "tl",  "target_lang": "hil", "translation": "baskog"},
+    {"phrase": "dasurv",     "source_lang": "tl",  "target_lang": "en",  "translation": "deserve"},
+    {"phrase": "dasurv",     "source_lang": "tl",  "target_lang": "ceb", "translation": "bagay / angay"},
+    {"phrase": "dasurv",     "source_lang": "tl",  "target_lang": "hil", "translation": "bagay gid / takus"},
+    {"phrase": "lodi",       "source_lang": "tl",  "target_lang": "en",  "translation": "idol"},
+    {"phrase": "lodi",       "source_lang": "tl",  "target_lang": "ceb", "translation": "idolo"},
+    {"phrase": "lodi",       "source_lang": "tl",  "target_lang": "hil", "translation": "idolo"},
+    {"phrase": "petmalu",    "source_lang": "tl",  "target_lang": "en",  "translation": "awesome / incredible"},
+    {"phrase": "petmalu",    "source_lang": "tl",  "target_lang": "ceb", "translation": "hait"},
+    {"phrase": "petmalu",    "source_lang": "tl",  "target_lang": "hil", "translation": "tigdag hawod / grabe gid"},
+    {"phrase": "shokot",     "source_lang": "tl",  "target_lang": "en",  "translation": "shook / shocked"},
+    {"phrase": "shokot",     "source_lang": "tl",  "target_lang": "ceb", "translation": "hadlok"},
+    {"phrase": "shokot",     "source_lang": "tl",  "target_lang": "hil", "translation": "hadluk / kulba"},
+    # ── Cebuano slang ──
+    {"phrase": "puryagaba",  "source_lang": "ceb", "target_lang": "tl",  "translation": "huwag naman sana"},
+    {"phrase": "puryagaba",  "source_lang": "ceb", "target_lang": "hil", "translation": "layo sa gaba"},
+    {"phrase": "puryagaba",  "source_lang": "ceb", "target_lang": "en",  "translation": "god forbid"},
+    {"phrase": "saba diha",  "source_lang": "ceb", "target_lang": "tl",  "translation": "manahimik ka nga"},
+    {"phrase": "saba diha",  "source_lang": "ceb", "target_lang": "en",  "translation": "be quiet / shut up"},
+    {"phrase": "saba diha",  "source_lang": "ceb", "target_lang": "hil", "translation": "shut up"},
+    # ── English slang ──
+    {"phrase": "no cap",     "source_lang": "en",  "target_lang": "tl",  "translation": "pramis"},
+    {"phrase": "no cap",     "source_lang": "en",  "target_lang": "ceb", "translation": "tinood lagi"},
+    {"phrase": "no cap",     "source_lang": "en",  "target_lang": "hil", "translation": "tuod gid"},
+    {"phrase": "bussin",     "source_lang": "en",  "target_lang": "tl",  "translation": "masarap"},
+    {"phrase": "bussin",     "source_lang": "en",  "target_lang": "ceb", "translation": "lami kaayo"},
+    {"phrase": "bussin",     "source_lang": "en",  "target_lang": "hil", "translation": "namit gid"},
+    # ── Hiligaynon slang ──
+    {"phrase": "kalan-onon", "source_lang": "hil", "target_lang": "tl",  "translation": "madali lang"},
+    {"phrase": "kalan-onon", "source_lang": "hil", "target_lang": "ceb", "translation": "sayun ra"},
+    {"phrase": "kalan-onon", "source_lang": "hil", "target_lang": "en",  "translation": "easy peasy"},
+    {"phrase": "tikalon",    "source_lang": "hil", "target_lang": "tl",  "translation": "mayabang"},
+    {"phrase": "tikalon",    "source_lang": "hil", "target_lang": "ceb", "translation": "pa-gara"},
+    {"phrase": "tikalon",    "source_lang": "hil", "target_lang": "en",  "translation": "boaster"},
+]
+
 TONE_STRATEGIES: dict[str, str] = {
     "neutral": (
         "Translate naturally without any special tone. Plain, everyday Filipino."
@@ -98,8 +147,14 @@ SYSTEM_INSTRUCTION = (
     "7. Never invent content not present in the source text.\n"
     "8. If a word has no direct translation, keep the original word — do not substitute random words.\n"
     "9. The output language must match the target language.\n"
-    "10. Handle Filipino 'tadbalik' or 'invertido' (reversed) slang semantically. \n"
-    "    For example, 'petmalu' (from 'malupet') should be translated to its English equivalent like 'awesome', 'incredible', or 'beast mode' rather than just 'extreme' or its Tagalog root.\n"
+    "10. Handle Filipino 'tadbalik' or 'invertido' (reversed) slang semantically.\n"
+    "    Translate slang to the TARGET LANGUAGE'S own vernacular equivalent — never copy the source slang word unchanged into another language's output.\n"
+    "    Cross-language slang equivalents (Tagalog → English / Cebuano / Hiligaynon):\n"
+    "      charot/char: eng=just kidding, ceb=atik/atika, hil=tikal\n"
+    "      petmalu: eng=awesome/incredible, ceb=hait, hil=tigdag hawod/grabe gid\n"
+    "      shokot: eng=shook/shocked, ceb=hadlok, hil=hadluk/kulba\n"
+    "      werpa: eng=power/strength, ceb=kusog, hil=baskog\n"
+    "    If a SLANG GLOSSARY is provided in the prompt, those verified entries OVERRIDE your defaults.\n"
     "Tones: neutral, formal, respectful, casual, street, taglish, bisaya_casual, hiligaynon_casual, playful, sarcastic, angry, urgent."
 )
 
@@ -219,12 +274,31 @@ class TranslationService:
                 strategy = TONE_STRATEGIES.get(tone)
                 if strategy:
                     parts.append(f"STRATEGY: {strategy}")
+            # Build glossary: built-in slang (phrase present in input) + community phrases
+            glossary_entries: list[str] = []
+            text_lower = text.lower()
+
+            for entry in BUILTIN_SLANG:
+                if entry["source_lang"] == source_lang and entry["target_lang"] == target_lang:
+                    phrase_lower = entry["phrase"].lower()
+                    # Whole-word / whole-phrase match against input
+                    padded = f" {text_lower} "
+                    if f" {phrase_lower} " in padded or text_lower == phrase_lower:
+                        glossary_entries.append(
+                            f'{entry["phrase"]} → {entry["translation"]}'
+                        )
+
             if community_phrases:
-                pairs = "; ".join(
-                    f'{p["phrase"]} → {p["proposed_translation"]}'
-                    for p in community_phrases[:10]
-                )
-                parts.append(f"COMMUNITY GLOSSARY (use these verified translations): {pairs}")
+                for p in community_phrases[:10]:
+                    # Include only entries that match this target lang (or untagged entries)
+                    if not p.get("target_lang") or p["target_lang"] == target_lang:
+                        glossary_entries.append(
+                            f'{p["phrase"]} → {p["proposed_translation"]}'
+                        )
+
+            if glossary_entries:
+                pairs = "; ".join(glossary_entries)
+                parts.append(f"SLANG GLOSSARY (verified — use these exactly): {pairs}")
             parts.append(text)
             prompt = "|".join(parts)
 

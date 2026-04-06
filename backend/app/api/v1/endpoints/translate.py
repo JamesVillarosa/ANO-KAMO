@@ -33,7 +33,11 @@ async def translate_single(request: TranslateRequest, db: Session = Depends(get_
     try:
         verified = get_verified_phrases(db, source_lang=request.source_lang, target_lang=request.target_lang)
         community_phrases = [
-            {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
+            {
+                "phrase": c.phrase,
+                "proposed_translation": c.proposed_translation,
+                "target_lang": c.target_lang,
+            }
             for c in verified
         ]
     except Exception as e:
@@ -110,7 +114,11 @@ async def translate_multi(request: TranslateMultiRequest, db: Session = Depends(
     try:
         verified = get_verified_phrases(db, source_lang=request.source_lang)
         community_phrases = [
-            {"phrase": c.phrase, "proposed_translation": c.proposed_translation}
+            {
+                "phrase": c.phrase,
+                "proposed_translation": c.proposed_translation,
+                "target_lang": c.target_lang,
+            }
             for c in verified
         ]
     except Exception as e:
