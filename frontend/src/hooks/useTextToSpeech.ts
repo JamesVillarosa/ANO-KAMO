@@ -53,7 +53,12 @@ export function useTextToSpeech(): TextToSpeechHook {
     }, []);
 
     const speak = useCallback(async (text: string, langCode: string) => {
-        if (!text.trim()) return;
+        // Collapse newlines/vertical spacing into single spaces so TTS reads
+        // multi-line signage (e.g. "Bawal\nTumawid\nDito") as one flowing sentence.
+        const normalizedText = text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        if (!normalizedText) return;
+        // Shadow the parameter so all downstream code uses the normalised string
+        text = normalizedText;
         // Double-tap guard: reject if a load is already in progress
         if (isLoadingRef.current) return;
         isLoadingRef.current = true;

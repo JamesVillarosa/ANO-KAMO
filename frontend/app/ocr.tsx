@@ -169,8 +169,8 @@ export default function OCRScreen() {
             const result = await ocrProcessFull(imageBase64, targetLang, sourceLang, deviceId);
 
             if (!result.blocks || result.blocks.length === 0) {
-                showToast('No text found in this image.');
                 resetCapture();
+                showToast('No text detected. Try a clearer or closer photo.');
                 return;
             }
 
@@ -189,8 +189,8 @@ export default function OCRScreen() {
             }
         } catch (err) {
             console.error('OCR error:', err);
-            showToast('Could not process image. Please try again.');
             resetCapture();
+            showToast('Could not process image. Please try again.');
         } finally {
             setIsProcessing(false);
         }

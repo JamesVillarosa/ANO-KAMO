@@ -32,7 +32,7 @@ import {
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { translateSingle, translateMulti, submitFeedback } from '../src/lib/api';
+import { translateSingle, translateMulti, submitFeedback, deleteHistory } from '../src/lib/api';
 import { getDeviceId } from '../src/utils/device';
 import {
   glassCard,
@@ -290,7 +290,13 @@ export default function HomeScreen() {
           setFeedbackGiven2(null);
           try {
             const res = await translateMulti(sourceText, sourceLang, [targetLang1, targetLang2], undefined, deviceIdRef.current);
-            if (translationGenRef.current !== myGen) return;
+            if (translationGenRef.current !== myGen) {
+                // User edited before result could be shown — remove stale history entry
+                if (res.translation_id && deviceIdRef.current) {
+                    deleteHistory(res.translation_id, deviceIdRef.current).catch(() => {});
+                }
+                return;
+            }
             setTranslated1(res.output_texts?.[0] || '');
             setTranslated2(res.output_texts?.[1] || '');
             setTranslationId1(res.translation_id || '');
@@ -317,7 +323,13 @@ export default function HomeScreen() {
           setFeedbackGiven1(null);
           try {
             const res1 = await translateSingle(sourceText, sourceLang, targetLang1, undefined, deviceIdRef.current);
-            if (translationGenRef.current !== myGen) return;
+            if (translationGenRef.current !== myGen) {
+                // User edited before result could be shown — remove stale history entry
+                if (res1.translation_id && deviceIdRef.current) {
+                    deleteHistory(res1.translation_id, deviceIdRef.current).catch(() => {});
+                }
+                return;
+            }
             setTranslated1(res1.output_text || '');
             setTranslationId1(res1.translation_id || '');
           } catch (error: any) {

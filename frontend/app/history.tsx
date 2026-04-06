@@ -339,6 +339,13 @@ function groupBySections(items: HistoryItem[]): Section[] {
     return Array.from(map.entries()).map(([title, data]) => ({ title, data }));
 }
 
+// Module-level cache: survives navigations within the same session.
+// Populated after every successful fetch so returning to the screen feels instant.
+const _historyCache: { items: HistoryItem[]; convGroups: ConversationGroup[] } = {
+    items: [],
+    convGroups: [],
+};
+
 export default function HistoryScreen() {
     const { isDarkMode } = useTheme();
     const router = useRouter();
@@ -374,18 +381,29 @@ export default function HistoryScreen() {
     };
 
     const fetchData = useCallback(async () => {
-        setLoading(true);
+        // Show cached data immediately — zero perceived latency on re-visit
+        if (_historyCache.items.length > 0 || _historyCache.convGroups.length > 0) {
+            setItems(mergeChatDuplicates(_historyCache.items));
+            setConvGroups(_historyCache.convGroups);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
         try {
             const deviceId = await getDeviceId();
             const [res, convRes] = await Promise.all([
-                getHistory(0, 200, deviceId),
+                getHistory(0, 100, deviceId),
                 getConversationHistory(deviceId).catch(() => []),
             ]);
-            setItems(mergeChatDuplicates(res || []));
-            setConvGroups(convRes || []);
+            const newItems = res || [];
+            const newConvGroups = convRes || [];
+            _historyCache.items = newItems;
+            _historyCache.convGroups = newConvGroups;
+            setItems(mergeChatDuplicates(newItems));
+            setConvGroups(newConvGroups);
         } catch {
-            setItems([]);
-            setConvGroups([]);
+            if (_historyCache.items.length === 0) setItems([]);
+            if (_historyCache.convGroups.length === 0) setConvGroups([]);
         } finally {
             setLoading(false);
         }
