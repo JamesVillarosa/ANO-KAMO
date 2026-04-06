@@ -72,6 +72,11 @@ export default function HomeScreen() {
 
   // Text state
   const [sourceText, setSourceText] = useState('');
+
+  // Custom confirmation modal for "Suggest Better Translation?" prompt
+  const [suggestConfirmVisible, setSuggestConfirmVisible] = useState(false);
+  const [pendingSuggestText, setPendingSuggestText] = useState('');
+  const [pendingSuggestTarget, setPendingSuggestTarget] = useState<1 | 2>(1);
   const [translated1, setTranslated1] = useState('');
   const [translated2, setTranslated2] = useState('');
   const [translationId1, setTranslationId1] = useState('');
@@ -215,7 +220,7 @@ export default function HomeScreen() {
   // Auto-populate input with live transcript
   useEffect(() => {
     const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
-    if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
+    if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...' && liveText !== 'No voice detected. Please speak.') {
       setSourceText(liveText);
     }
   }, [speech.transcript, speech.interimTranscript]);
@@ -223,7 +228,10 @@ export default function HomeScreen() {
   // When transcription completes, set the text (auto-translate will kick in via debounce)
   useEffect(() => {
     if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
-      setSourceText(speech.transcript.trim());
+      const finalText = speech.transcript.trim();
+      if (finalText !== 'No voice detected. Please speak.') {
+        setSourceText(finalText);
+      }
     }
   }, [speech.isProcessing, speech.transcript]);
 
@@ -850,24 +858,9 @@ export default function HomeScreen() {
                           const outputText = activeFeedbackTarget?.target === 1 ? translated1 : translated2;
                           if (outputText) {
                             setTimeout(() => {
-                              Alert.alert(
-                                'Suggest Better Translation?',
-                                'Would you like to suggest a better translation?',
-                                [
-                                  { text: 'No', style: 'cancel' },
-                                  {
-                                    text: 'Yes', onPress: () => {
-                                      setRefineText(outputText);
-                                      setRefineModal({
-                                        visible: true,
-                                        translationId: activeFeedbackTarget?.target === 1 ? translationId1 : translationId2,
-                                        originalText: outputText,
-                                        target: activeFeedbackTarget?.target ?? 1,
-                                      });
-                                    },
-                                  },
-                                ],
-                              );
+                              setPendingSuggestText(outputText);
+                              setPendingSuggestTarget(activeFeedbackTarget?.target ?? 1);
+                              setSuggestConfirmVisible(true);
                             }, 300);
                           }
                         }}
@@ -878,6 +871,52 @@ export default function HomeScreen() {
                     </View>
                   );
                 })()}
+              </BlurView>
+            </View>
+          </Modal>
+
+        {/* Custom "Suggest Better Translation?" confirmation modal */}
+          <Modal
+            visible={suggestConfirmVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setSuggestConfirmVisible(false)}
+          >
+            <View style={styles.modalOverlayCentered}>
+              <BlurView
+                intensity={30}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.suggestConfirmModal, isDarkMode && styles.suggestConfirmModalDark]}
+              >
+                <Text style={[styles.suggestConfirmTitle, isDarkMode && { color: '#F8FAFC' }]}>
+                  Suggest Better Translation?
+                </Text>
+                <Text style={[styles.suggestConfirmBody, isDarkMode && { color: '#94A3B8' }]}>
+                  Would you like to suggest a better translation?
+                </Text>
+                <View style={styles.suggestConfirmBtns}>
+                  <TouchableOpacity
+                    style={[styles.suggestConfirmBtn, styles.suggestConfirmBtnNo, isDarkMode && styles.suggestConfirmBtnNoDark]}
+                    onPress={() => setSuggestConfirmVisible(false)}
+                  >
+                    <Text style={[styles.suggestConfirmBtnNoText, isDarkMode && { color: '#94A3B8' }]}>No, thanks</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.suggestConfirmBtn, styles.suggestConfirmBtnYes]}
+                    onPress={() => {
+                      setSuggestConfirmVisible(false);
+                      setRefineText(pendingSuggestText);
+                      setRefineModal({
+                        visible: true,
+                        translationId: pendingSuggestTarget === 1 ? translationId1 : translationId2,
+                        originalText: pendingSuggestText,
+                        target: pendingSuggestTarget,
+                      });
+                    }}
+                  >
+                    <Text style={styles.suggestConfirmBtnYesText}>Yes, suggest</Text>
+                  </TouchableOpacity>
+                </View>
               </BlurView>
             </View>
           </Modal>
@@ -1243,5 +1282,75 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  /* Suggest Better Translation Confirmation Modal */
+  suggestConfirmModal: {
+    width: Dimensions.get('window').width * 0.85,
+    borderRadius: 28,
+    padding: 28,
+    paddingBottom: 24,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  suggestConfirmModalDark: {
+    backgroundColor: 'rgba(30,41,59,0.97)',
+  },
+  suggestConfirmTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  suggestConfirmBody: {
+    fontSize: 15,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 22,
+  },
+  suggestConfirmBtns: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  suggestConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  suggestConfirmBtnNo: {
+    backgroundColor: 'rgba(241,245,249,0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  suggestConfirmBtnNoDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  suggestConfirmBtnNoText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  suggestConfirmBtnYes: {
+    backgroundColor: '#3B82F6',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  suggestConfirmBtnYesText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFF',
   },
 });

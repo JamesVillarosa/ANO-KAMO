@@ -109,6 +109,9 @@ export default function TranslateScreen() {
     const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
     const [refineModal, setRefineModal] = useState({ visible: false, originalText: '' });
     const [refineText, setRefineText] = useState('');
+
+    // Custom styled confirm modal for "Suggest Better Translation?" prompt
+    const [suggestConfirmVisible, setSuggestConfirmVisible] = useState(false);
     const [dictVisible, setDictVisible] = useState(false);
     const [dictWord, setDictWord] = useState('');
     const [dictSrcLang, setDictSrcLang] = useState('');
@@ -805,17 +808,7 @@ export default function TranslateScreen() {
                                     const outputText = fullTranslation;
                                     if (outputText) {
                                         setTimeout(() => {
-                                            Alert.alert(
-                                                'Suggest Better Translation?',
-                                                'Would you like to suggest a better translation?',
-                                                [
-                                                    { text: 'No', style: 'cancel' },
-                                                    {
-                                                        text: 'Yes', onPress: () =>
-                                                            setRefineModal({ visible: true, originalText: outputText }),
-                                                    },
-                                                ],
-                                            );
+                                            setSuggestConfirmVisible(true);
                                         }, 300);
                                     }
                                 }}
@@ -876,6 +869,46 @@ export default function TranslateScreen() {
                             <Send size={16} color="#FFF" />
                             <Text style={styles.submitBtnText}>Submit</Text>
                         </TouchableOpacity>
+                    </GlassBlur>
+                </View>
+            </Modal>
+
+            {/* Custom "Suggest Better Translation?" confirmation modal */}
+            <Modal
+                visible={suggestConfirmVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setSuggestConfirmVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <GlassBlur
+                        intensity={30}
+                        tint={isDarkMode ? 'dark' : 'light'}
+                        style={[styles.suggestConfirmModal, isDarkMode && styles.suggestConfirmModalDark]}
+                    >
+                        <Text style={[styles.suggestConfirmTitle, isDarkMode && { color: '#F8FAFC' }]}>
+                            Suggest Better Translation?
+                        </Text>
+                        <Text style={[styles.suggestConfirmBody, isDarkMode && { color: '#94A3B8' }]}>
+                            Would you like to suggest a better translation?
+                        </Text>
+                        <View style={styles.suggestConfirmBtns}>
+                            <TouchableOpacity
+                                style={[styles.suggestConfirmBtn, styles.suggestConfirmBtnNo, isDarkMode && styles.suggestConfirmBtnNoDark]}
+                                onPress={() => setSuggestConfirmVisible(false)}
+                            >
+                                <Text style={[styles.suggestConfirmBtnNoText, isDarkMode && { color: '#94A3B8' }]}>No, thanks</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.suggestConfirmBtn, styles.suggestConfirmBtnYes]}
+                                onPress={() => {
+                                    setSuggestConfirmVisible(false);
+                                    setRefineModal({ visible: true, originalText: fullTranslation });
+                                }}
+                            >
+                                <Text style={styles.suggestConfirmBtnYesText}>Yes, suggest</Text>
+                            </TouchableOpacity>
+                        </View>
                     </GlassBlur>
                 </View>
             </Modal>
@@ -1385,5 +1418,76 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: 15,
         fontWeight: '700',
+    },
+
+    /* Suggest Better Translation Confirmation Modal */
+    suggestConfirmModal: {
+        width: '100%',
+        maxWidth: 380,
+        borderRadius: 28,
+        padding: 28,
+        paddingBottom: 24,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.97)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+        elevation: 10,
+    },
+    suggestConfirmModalDark: {
+        backgroundColor: 'rgba(15,23,42,0.97)',
+    },
+    suggestConfirmTitle: {
+        fontSize: 19,
+        fontWeight: '700',
+        color: '#1E293B',
+        textAlign: 'center',
+        marginBottom: 10,
+    },
+    suggestConfirmBody: {
+        fontSize: 15,
+        color: '#64748B',
+        textAlign: 'center',
+        marginBottom: 28,
+        lineHeight: 22,
+    },
+    suggestConfirmBtns: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    suggestConfirmBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    suggestConfirmBtnNo: {
+        backgroundColor: 'rgba(241,245,249,0.8)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.06)',
+    },
+    suggestConfirmBtnNoDark: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    suggestConfirmBtnNoText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    suggestConfirmBtnYes: {
+        backgroundColor: '#6366F1',
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    suggestConfirmBtnYesText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#FFF',
     },
 });

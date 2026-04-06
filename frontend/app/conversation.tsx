@@ -753,7 +753,7 @@ export default function ConversationScreen() {
     useEffect(() => {
         if (viewMode === 'face_to_face') return;
         const liveText = (speech.transcript + ' ' + speech.interimTranscript).trim();
-        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...') {
+        if (liveText && liveText !== 'Listening...' && liveText !== 'Processing...' && liveText !== 'Transcribing...' && liveText !== 'No voice detected. Please speak.') {
             setInputText(liveText);
         } else if (speech.isListening || speech.isProcessing) {
             setInputText('');
@@ -764,6 +764,7 @@ export default function ConversationScreen() {
         if (viewMode === 'face_to_face') return;
         if (!speech.isListening && !speech.isProcessing && speech.transcript.trim()) {
             const finalText = speech.transcript.trim();
+            if (finalText === 'No voice detected. Please speak.') return;
             setInputText(finalText);
             handleAutoSend(finalText);
         }
@@ -772,16 +773,18 @@ export default function ConversationScreen() {
     // ── Face-to-Face: auto-send for bottom mic (Speaker A) ──
     useEffect(() => {
         if (viewMode !== 'face_to_face') return;
-        if (!speechBottom.isListening && !speechBottom.isProcessing && speechBottom.transcript.trim()) {
-            handleF2FSend(speechBottom.transcript.trim(), 0);
+        const txt = speechBottom.transcript.trim();
+        if (!speechBottom.isListening && !speechBottom.isProcessing && txt && txt !== 'No voice detected. Please speak.') {
+            handleF2FSend(txt, 0);
         }
     }, [speechBottom.isProcessing, speechBottom.transcript, viewMode]);
 
     // ── Face-to-Face: auto-send for top mic (Speaker B) ──
     useEffect(() => {
         if (viewMode !== 'face_to_face') return;
-        if (!speechTop.isListening && !speechTop.isProcessing && speechTop.transcript.trim()) {
-            handleF2FSend(speechTop.transcript.trim(), 1);
+        const txt = speechTop.transcript.trim();
+        if (!speechTop.isListening && !speechTop.isProcessing && txt && txt !== 'No voice detected. Please speak.') {
+            handleF2FSend(txt, 1);
         }
     }, [speechTop.isProcessing, speechTop.transcript, viewMode]);
 

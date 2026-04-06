@@ -98,6 +98,8 @@ SYSTEM_INSTRUCTION = (
     "7. Never invent content not present in the source text.\n"
     "8. If a word has no direct translation, keep the original word — do not substitute random words.\n"
     "9. The output language must match the target language.\n"
+    "10. Handle Filipino 'tadbalik' or 'invertido' (reversed) slang semantically. \n"
+    "    For example, 'petmalu' (from 'malupet') should be translated to its English equivalent like 'awesome', 'incredible', or 'beast mode' rather than just 'extreme' or its Tagalog root.\n"
     "Tones: neutral, formal, respectful, casual, street, taglish, bisaya_casual, hiligaynon_casual, playful, sarcastic, angry, urgent."
 )
 
