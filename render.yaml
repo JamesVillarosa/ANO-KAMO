@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: ano-kamo-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        value: southeastasia
+      - key: DATABASE_URL
+        value: sqlite:///./app.db
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
